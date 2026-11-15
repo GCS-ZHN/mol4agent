@@ -136,7 +136,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
   ctx.tools.register(defineTool({
     name: 'mol_style',
     description: 'Change the representation or color theme of the active molecular viewer scene. '
-      + 'This replaces the current representation.',
+      + 'Without target this replaces the current representation; with target it adds a representation to that selection.',
     parameters: {
       type: { type: 'string', enum: REPRESENTATION_TYPES, description: 'Representation type, e.g. cartoon or ball-and-stick.' },
       color: { type: 'string', enum: COLOR_THEMES, description: 'Color theme, e.g. chain-id, element-symbol, residue-name.' },
@@ -209,8 +209,8 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
 
   ctx.tools.register(defineTool({
     name: 'mol_measure',
-    description: 'Add a distance, angle, or dihedral measurement between 2/3/4 selections in the active viewer. '
-      + 'Use residue/chain/comp selectors, not raw atom coordinates.',
+    description: 'Add a distance, angle, or dihedral measurement between exactly 2/3/4 selections in the active viewer. '
+      + 'Use chain/residue/residues/comp/schema selectors, not semantic categories or raw coordinates.',
     parameters: {
       kind: { type: 'string', required: true, enum: ['distance', 'angle', 'dihedral'], description: 'Measurement kind.' },
       targets: {
@@ -229,7 +229,11 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       const agent = requireAgent(exec)
       const scene = options.sceneOf(agent.session).scene
       if (scene === null) throw new ToolArgsError(['open a structure with mol_open before measuring'])
-      for (const target of args.targets) assertSelector(target)
+      const needed = args.kind === 'distance' ? 2 : args.kind === 'angle' ? 3 : 4
+      if (args.targets.length !== needed) {
+        throw new ToolArgsError([`${args.kind} needs exactly ${needed} targets, received ${args.targets.length}`])
+      }
+      for (const target of args.targets) assertMeasurementSelector(target)
       return `Added a ${args.kind} measurement to ${scene.label}.`
     },
   }))
@@ -329,6 +333,23 @@ async function isImageCapable(ctx: Context, exec: ToolRunContext): Promise<boole
 function requireAgent(exec: ToolRunContext): Agent {
   if (exec.agent === undefined) throw new ToolContextUnavailableError('molecule tools require an agent Session')
   return exec.agent
+}
+
+const MEASUREMENT_KINDS = new Set(['chain', 'residue', 'residues', 'comp', 'schema'])
+
+function assertMeasurementSelector(value: unknown): void {
+  let selector
+  try {
+    selector = normalizeSelector(value)
+  } catch (error) {
+    throw new ToolArgsError([error instanceof Error ? error.message : String(error), SELECTOR_HELP])
+  }
+  if (!MEASUREMENT_KINDS.has(selector.kind)) {
+    throw new ToolArgsError([
+      'measure targets must be chain/residue/residues/comp/schema selectors',
+      `received ${selector.kind}; semantic categories have no single atom position`,
+    ])
+  }
 }
 
 function assertSelector(value: unknown): void {

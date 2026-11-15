@@ -55,7 +55,7 @@ Package `exports` 指向 `lib`，npm `files` 只包含 `lib` 和 README；`src/`
 | Import | 导出 |
 |---|---|
 | `@gcszhn/mol4agent-core` | `createMolViewer`、协议类型、format 辅助函数、`summarizeStructure`、`compileSelector`、`selectorSchema` |
-| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`、`StructureData`、`MolCommand`、`StructureSelector`、`StructureSummary`、`Mol4AgentError`、`COMMAND_OPS` 辅助函数 |
+| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`、`StructureData`、`MolCommand`、`StructureSelector`、`StructureSummary`、`Mol4AgentError`，以及 `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` 守卫 |
 | `@gcszhn/mol4agent-core/parse` | `summarizeStructure`、`summarizePdbLike`、`summarizeCif`、`summarizeSdf`、`summarizeMol2`、`summarizeXyz`、`summarizeGro` |
 | `@gcszhn/mol4agent-core/react` | `Mol4AgentViewer`、`Mol4AgentViewerHandle`、`Mol4AgentScene` |
 
@@ -68,7 +68,6 @@ const viewer = await createMolViewer({
   container,          // 有真实宽高的 HTMLElement
   theme: 'dark',      // 'light' | 'dark'；默认 dark
   background: '#101418', // 可选；默认跟随主题
-  onError: error => console.error(error),
 })
 
 await viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
@@ -91,7 +90,6 @@ viewer.dispose()
 | `container` | `HTMLElement` | 宿主元素；viewer 用 `position:relative;width:100%;height:100%` 填满 |
 | `theme` | `'light' \| 'dark'` | 初始 Mol* 皮肤和画布背景 |
 | `background` | `string` | 可选，显式指定画布背景 |
-| `onError` | `(error: unknown) => void` | 可选的内部错误回调 |
 
 ### `MolViewer`
 

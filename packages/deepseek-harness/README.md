@@ -8,9 +8,10 @@ preview that an agent can operate.
 - **Structure preview**: `.pdb`, `.ent`, `.pdbqt`, `.pqr`, `.cif`, `.mmcif`,
   `.mcif`, `.bcif`, `.mol`, `.sdf`, `.sd`, `.mol2`, `.xyz`, `.gro` open in
   Mol*'s official UI instead of plain text. The previewer's **Open with** menu
-  still offers code/plain text.
-- **Agent tools**: `mol_info`, `mol_open`, `mol_style`, `mol_select`,
-  `mol_measure`, `mol_capture`.
+  still offers code/plain text (`bcif` has no plain-text fallback because its
+  bytes are binary).
+- **Agent tools**: `mol_info`, `mol_interface`, `mol_open`, `mol_style`,
+  `mol_select`, `mol_focus`, `mol_measure`, `mol_capture`.
 - **Agent-driven page**: tool calls are folded into a durable session
   projection; the open page follows it and applies commands.
 - **Auto-open**: naming a new structure reveals its preview through a
@@ -70,7 +71,7 @@ away.
 | `mol_select` | `target`, `mode?`, `focus?` | Append `select`. `mode` is `select` or `highlight`. |
 | `mol_focus` | `target?` | Append `focus`; target omitted frames the whole structure. |
 | `mol_measure` | `kind`, `targets` | Append `measure`. 2 targets for distance, 3 for angle, 4 for dihedral. |
-| `mol_capture` | `width?`, `height?`, `transparent?` | Block until the open page delivers a PNG (default 1024×768). Returns an image attachment when the routed model accepts images, plus the saved path. |
+| `mol_capture` | `width?`, `height?`, `transparent?` | Block until the open page delivers a PNG (default 1024×768). Returns an image attachment when the routed model accepts images, plus `savedPath` when available. |
 
 `path` is absolute or relative to the session working directory. Files are
 limited to 64 MiB.
@@ -139,7 +140,7 @@ range.
 - The image is attached to the tool result only when `imageCapable` is true;
   otherwise the text result contains the saved path.
 - `savedPath` is `<cwd>/.mol4agent/captures/mol4agent-<timestamp>-<id>.png`.
-- `diagnostics` is reserved for a browser-supplied layout/hierarchy report.
+- `diagnostics` carries the browser-side status/path/command counts and Mol* hierarchy diagnostics.
 
 ### Tool-call to command mapping
 
@@ -179,14 +180,17 @@ interface MolSessionState {
 }
 ```
 
-- `tool/call` for any `mol_*` tool is folded into `scene`/`pending` and bumps
-  `revision`.
-- `tool/result` clears the matching `pending` entry and bumps `revision`.
+- `tool/call` for a scene-changing `mol_*` tool (open/style/select/focus/measure)
+  is folded into `scene` and bumps `revision`; read-only tools (`mol_info`,
+  `mol_interface`) and invalid/absent-scene calls leave state unchanged.
+- `tool/result` clears a matching pending capture and bumps `revision`; other
+  results leave state unchanged.
 - Relative paths are resolved against `cwd` captured when the projection is
   initialized.
 - The projection is replayable: it stores paths and JSON commands, never bytes.
-- `sceneKey` changes when the agent opens a file anew. The client uses it to
-  reload the structure and reset the applied-command cursor.
+- `sceneKey` changes when the agent opens a file anew. The client reloads the
+  structure (clearing old measurements/selection styles) and resets the
+  applied-command cursor; the first scene after a viewer mount is already loaded.
 
 The client reads the scene with `props.useProjection('mol4agent')`. It reads the
 file bytes separately through `remote.workspaceFiles.readBytes`, then calls
@@ -324,7 +328,7 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
 
 - BCIF can be rendered but `mol_info` cannot summarize it from raw bytes yet.
 - Files are capped at 64 MiB.
-- WebGL is required for the 3D canvas.
+- WebGL 2 is required for the 3D canvas.
 - `mol_capture` requires the structure preview to be open; it times out after
   20 s and leaves an internal `mol4agent_capture` command row.
 - `mol_style` without `target` changes the global representation; with `target`
@@ -342,8 +346,8 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
 
 ## Files
 
-- Host: `src/host/{index,projection,tools,capture,commands,prompt,paths}.ts`
-- Client: `src/client/{index,document,bridge}.tsx`, `src/client/{viewer-cache,locale,core-loader}.ts`
+- Host: `src/host/{index,projection,tools,capture,commands,prompt,paths,interface}.ts`
+- Client: `src/client/{index,document,bridge}.tsx`, `src/client/{viewer-cache,locale,core-loader,address}.ts`
 - Shared: `src/{formats,state,selector}.ts`
 - Package: `package.json`, `cordis.patch.yml`, `locale/{en,zh}.json`, `icon.svg`
 - Details: [docs/DETAIL.md](docs/DETAIL.md), [Core API](../core/README.md),

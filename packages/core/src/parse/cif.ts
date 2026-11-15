@@ -36,7 +36,9 @@ export function summarizeCif(text: string, format: MolFormat, label?: string): S
     const chain = columns.get('auth_asym_id') ?? columns.get('label_asym_id')
     const seqId = columns.get('auth_seq_id') ?? columns.get('label_seq_id')
     const insCode = columns.get('pdbx_PDB_ins_code')
+    const modelColumn = columns.get('pdbx_PDB_model_num')
     if (compId === undefined || chain === undefined || seqId === undefined) continue
+    const models = new Set<number>()
     for (; cursor < lines.length; cursor += 1) {
       const row = lines[cursor]!.trim()
       if (row === '' || row === '#') continue
@@ -46,13 +48,17 @@ export function summarizeCif(text: string, format: MolFormat, label?: string): S
       const record = groupPdb === undefined ? 'atom' : values[groupPdb] === 'HETATM' ? 'hetatm' : 'atom'
       const insertion = insCode === undefined ? '' : clean(values[insCode])
       const seq = clean(values[seqId]!)
+      const parsedModel = modelColumn === undefined ? 1 : Number.parseInt(clean(values[modelColumn]) ?? '', 10)
+      const model = Number.isFinite(parsedModel) && parsedModel > 0 ? parsedModel : 1
+      models.add(model)
       builder.atom({
         record,
         compId: clean(values[compId]!) || 'UNK',
         chainId: clean(values[chain]!) || '_',
         seqId: insertion === '' ? seq : `${seq}${insertion}`,
-      })
+      }, model)
     }
+    if (models.size > 0) builder.setModelCount(models.size)
     i = cursor - 1
   }
   return builder.finish(format, label)

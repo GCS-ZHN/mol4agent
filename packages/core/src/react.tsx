@@ -44,7 +44,7 @@ export const Mol4AgentViewer = forwardRef<Mol4AgentViewerHandle, Mol4AgentViewer
     const host = hostRef.current
     if (host === null) return
     let cancelled = false
-    void createMolViewer({ container: host, theme, onError }).then(viewer => {
+    void createMolViewer({ container: host, theme }).then(viewer => {
       if (cancelled) {
         viewer.dispose()
         return

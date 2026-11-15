@@ -8,7 +8,7 @@ in 3D instead of plain text. The agent can then operate the same page through
 
 ## Manual open
 
-The document previewer lists this viewer as **Structure preview** for:
+The document previewer lists this viewer as **Structure** for:
 
 `pdb`, `ent`, `pdbqt`, `pqr`, `cif`, `mmcif`, `mcif`, `bcif`, `mol`, `sdf`, `sd`,
 `mol2`, `xyz`, `gro`

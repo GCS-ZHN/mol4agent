@@ -56,7 +56,7 @@ Package `exports` point at `lib`, and the npm `files` allowlist includes only
 | Import | Exports |
 |---|---|
 | `@gcszhn/mol4agent-core` | `createMolViewer`, protocol types, format helpers, `summarizeStructure`, `compileSelector`, `selectorSchema` |
-| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`, `StructureData`, `MolCommand`, `StructureSelector`, `StructureSummary`, `Mol4AgentError`, `COMMAND_OPS` helpers |
+| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`, `StructureData`, `MolCommand`, `StructureSelector`, `StructureSummary`, `Mol4AgentError`, and the `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` guards |
 | `@gcszhn/mol4agent-core/parse` | `summarizeStructure`, `summarizePdbLike`, `summarizeCif`, `summarizeSdf`, `summarizeMol2`, `summarizeXyz`, `summarizeGro` |
 | `@gcszhn/mol4agent-core/react` | `Mol4AgentViewer`, `Mol4AgentViewerHandle`, `Mol4AgentScene` |
 
@@ -69,7 +69,6 @@ const viewer = await createMolViewer({
   container,          // HTMLElement with a real width/height
   theme: 'dark',      // 'light' | 'dark'; default dark
   background: '#101418', // optional; default follows theme
-  onError: error => console.error(error),
 })
 
 await viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
@@ -92,7 +91,6 @@ stylesheet once per viewer and removes it on `dispose()`.
 | `container` | `HTMLElement` | Host element; the viewer fills it with `position:relative;width:100%;height:100%` |
 | `theme` | `'light' \| 'dark'` | Initial Mol* skin and canvas background |
 | `background` | `string` | Optional explicit canvas background |
-| `onError` | `(error: unknown) => void` | Optional internal error sink |
 
 ### `MolViewer`
 
