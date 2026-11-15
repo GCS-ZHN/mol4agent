@@ -84,19 +84,37 @@ jobs:
 
       - name: Publish core
         working-directory: packages/core
-        run: pnpm publish --access public --no-git-checks
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "@gcszhn/mol4agent-core@$VERSION" version >/dev/null 2>&1; then
+            echo "@gcszhn/mol4agent-core@$VERSION is already published; skipping"
+          else
+            pnpm publish --access public --no-git-checks
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish DSH adapter
         working-directory: packages/deepseek-harness
-        run: pnpm publish --access public --no-git-checks
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "@gcszhn/mol4agent-deepseekharness@$VERSION" version >/dev/null 2>&1; then
+            echo "@gcszhn/mol4agent-deepseekharness@$VERSION is already published; skipping"
+          else
+            pnpm publish --access public --no-git-checks
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish OpenCode adapter
         working-directory: packages/opencode
-        run: pnpm publish --access public --no-git-checks
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "@gcszhn/mol4agent-opencode@$VERSION" version >/dev/null 2>&1; then
+            echo "@gcszhn/mol4agent-opencode@$VERSION is already published; skipping"
+          else
+            pnpm publish --access public --no-git-checks
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
