@@ -105,7 +105,30 @@ change (`lib/client.js`) only needs a page refresh.
 
 ## Quick start (ChatGPT/Codex)
 
-Build and install the plugin into a local Codex marketplace:
+### Install from the GitHub marketplace
+
+Codex reads the marketplace manifest in `.agents/plugins/marketplace.json`.
+The installable plugin payload is published to the generated `plugin-dist`
+branch by CI, so this path does not use npm and does not require a local build:
+
+```sh
+codex plugin marketplace add GCS-ZHN/mol4agent
+codex plugin add mol4agent@mol4agent-github
+```
+
+Start a new conversation (or restart the app if the plugin list does not
+refresh) and ask:
+
+> Open fixtures/1atp.pdb, use cartoon with chain-id coloring, highlight ATP,
+> focus it, and capture a screenshot.
+
+The first preview of a molecular file asks whether to use mol4agent for that
+extension; choose **Yes** once. **Open with** still offers the built-in
+text/code viewer, and every structure tab keeps its own scene.
+
+### Local development install
+
+Build the plugin and register the built copy through a local marketplace:
 
 ```sh
 pnpm --filter @gcszhn/mol4agent-core build
@@ -114,11 +137,6 @@ node packages/chatgpt/scripts/install-local.mjs
 codex plugin marketplace add ~/.codex/mol4agent-marketplace
 codex plugin add mol4agent@mol4agent-local
 ```
-
-Start a new conversation and ask:
-
-> Open fixtures/1atp.pdb, use cartoon with chain-id coloring, highlight ATP,
-> focus it, and capture a screenshot.
 
 You can also click `fixtures/1atp.pdb` in the file tree. The first open asks
 whether to use mol4agent for `.pdb` files; choose **Yes** once, and the structure

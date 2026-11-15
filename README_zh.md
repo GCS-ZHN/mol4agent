@@ -89,7 +89,29 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
 
 ## 快速开始（ChatGPT/Codex）
 
-构建并安装到本地 Codex marketplace：
+### 从 GitHub marketplace 安装
+
+Codex 读取仓库里的 `.agents/plugins/marketplace.json`。可安装的插件产物由 CI
+发布到自动生成的 `plugin-dist` 分支，因此这条安装路径不使用 npm，也不需要在
+本地构建：
+
+```sh
+codex plugin marketplace add GCS-ZHN/mol4agent
+codex plugin add mol4agent@mol4agent-github
+```
+
+新开会话（若插件列表不刷新则重启 app）后让 agent 执行：
+
+> 打开 fixtures/1atp.pdb，用卡通表示、chain-id 配色，高亮配体 ATP 并聚焦，
+> 然后截图。
+
+首次预览分子文件时，Codex 会询问是否用 mol4agent 打开该扩展名，选一次
+**Yes** 即可。**Open with** 仍可切回内置文本/代码预览，每个结构 tab 保持
+自己的 scene。
+
+### 本地开发安装
+
+构建插件，并通过本地 marketplace 安装构建产物：
 
 ```sh
 pnpm --filter @gcszhn/mol4agent-core build
@@ -98,11 +120,6 @@ node packages/chatgpt/scripts/install-local.mjs
 codex plugin marketplace add ~/.codex/mol4agent-marketplace
 codex plugin add mol4agent@mol4agent-local
 ```
-
-新开会话后让 agent 执行：
-
-> 打开 fixtures/1atp.pdb，用卡通表示、chain-id 配色，高亮配体 ATP 并聚焦，
-> 然后截图。
 
 也可以直接在文件树点 `fixtures/1atp.pdb`。首次打开会询问是否用 mol4agent
 打开 `.pdb`，选一次 **Yes** 后结构默认在侧栏打开；**Open with** 仍可切回

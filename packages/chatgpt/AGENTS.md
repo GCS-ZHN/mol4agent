@@ -40,6 +40,18 @@ Codex's MCP extension file viewer.
   host-resource fallback is decoded again by the app (`DecompressionStream`);
   scene snapshots mark it with `fileGzip`.
 
+## Distribution
+
+- Codex installs plugins through Git marketplaces, not npm. The repository root
+  `.agents/plugins/marketplace.json` is the public entrypoint and points the
+  `mol4agent` plugin at the generated `plugin-dist` branch.
+- `plugin-dist` is a build-output branch created by
+  `.github/workflows/plugin-dist.yml`; it contains
+  `plugins/mol4agent/{lib,skills,.codex-plugin,.mcp.json,...}`. Never commit
+  `lib/` on source branches or edit `plugin-dist` by hand.
+- Keep the marketplace name (`mol4agent-github`), plugin name (`mol4agent`), and
+  Git source path/ref in sync with the README install commands.
+
 ## MCP App UI
 
 - Serve the viewer at `ui://mol4agent/viewer.html` with MIME

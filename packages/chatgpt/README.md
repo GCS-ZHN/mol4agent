@@ -148,6 +148,22 @@ external CSP domains; the viewer and Mol* assets are inlined.
 
 ## Install
 
+### From the GitHub marketplace (recommended)
+
+Codex installs plugins from Git, not npm. This repository exposes
+`.agents/plugins/marketplace.json`; the `mol4agent` entry points at the
+generated `plugin-dist` branch, where CI publishes the built `lib/` payload:
+
+```sh
+codex plugin marketplace add GCS-ZHN/mol4agent
+codex plugin add mol4agent@mol4agent-github
+```
+
+Start a new conversation (or restart the app if the plugin list does not
+refresh). The plugin contributes the `mol_*` tools and the viewer MCP App.
+
+### Local development install
+
 Build the package first:
 
 ```sh
@@ -163,9 +179,6 @@ node packages/chatgpt/scripts/install-local.mjs
 codex plugin marketplace add ~/.codex/mol4agent-marketplace
 codex plugin add mol4agent@mol4agent-local
 ```
-
-Then start a new conversation (or restart the app if the plugin list does not
-refresh). The plugin contributes the `mol_*` tools and the viewer MCP App.
 
 The install script copies the built plugin to a stable local marketplace and
 rewrites `.mcp.json` with absolute paths. The repository `.mcp.json` remains

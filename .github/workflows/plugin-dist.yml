@@ -1,0 +1,60 @@
+name: plugin-dist
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: plugin-dist
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build plugin
+        run: |
+          pnpm --filter @gcszhn/mol4agent-core build
+          pnpm --filter @gcszhn/mol4agent-chatgpt build
+
+      - name: Stage plugin
+        run: |
+          mkdir -p dist/plugins/mol4agent
+          cp -R packages/chatgpt/lib dist/plugins/mol4agent/lib
+          cp -R packages/chatgpt/skills dist/plugins/mol4agent/skills
+          cp -R packages/chatgpt/.codex-plugin dist/plugins/mol4agent/.codex-plugin
+          cp packages/chatgpt/.mcp.json dist/plugins/mol4agent/.mcp.json
+          cp packages/chatgpt/icon.svg dist/plugins/mol4agent/icon.svg
+          cp packages/chatgpt/README.md dist/plugins/mol4agent/README.md
+          cp packages/chatgpt/README_zh.md dist/plugins/mol4agent/README_zh.md
+
+      - name: Publish plugin-dist branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          git init -b plugin-dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "plugin-dist: ${GITHUB_SHA}"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" plugin-dist

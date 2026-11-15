@@ -134,6 +134,22 @@ Mol* 资源全部内联。
 
 ## 安装
 
+### 从 GitHub marketplace 安装（推荐）
+
+Codex 通过 Git 安装插件，不使用 npm。仓库根目录的
+`.agents/plugins/marketplace.json` 把 `mol4agent` 指向自动生成的
+`plugin-dist` 分支，CI 会在该分支发布构建好的 `lib/` 产物：
+
+```sh
+codex plugin marketplace add GCS-ZHN/mol4agent
+codex plugin add mol4agent@mol4agent-github
+```
+
+然后新开一个会话（若插件列表不刷新则重启 app）。插件会提供 `mol_*` 工具和
+viewer MCP App。
+
+### 本地开发安装
+
 先构建：
 
 ```sh
@@ -149,9 +165,6 @@ node packages/chatgpt/scripts/install-local.mjs
 codex plugin marketplace add ~/.codex/mol4agent-marketplace
 codex plugin add mol4agent@mol4agent-local
 ```
-
-然后新开一个会话（若插件列表不刷新则重启 app）。插件会提供 `mol_*` 工具和
-viewer MCP App。
 
 安装脚本把构建产物复制到稳定的本地 marketplace，并把 `.mcp.json` 改写为绝对
 路径；仓库里的 `.mcp.json` 保持可移植。
