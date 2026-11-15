@@ -291,8 +291,27 @@ page loading during a rebuild never reads a half-written bundle.
 
 ## Install
 
-The package is a DSH bundle. In the current Desktop `desktop` profile it is
-installed via `plugin_manager` and enabled as `@gcszhn/mol4agent-deepseekharness`.
+The package is a DSH bundle. From this checkout:
+
+```sh
+cd /path/to/mol4agent
+pnpm build
+dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
+```
+
+`dsh plugin` forwards to pnpm in `~/.dsh/profiles/<profile>`. Ensure
+`@gcszhn/mol4agent-deepseekharness` is in that profile's `dsh.profile.bundles`
+(the DSH Plugin manager does this when installing/enabling a bundle), then
+restart DSH.
+
+npm form (0.1.0):
+
+```sh
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
+```
+
+The current Desktop `desktop` profile is installed via `plugin_manager` and
+enabled as `@gcszhn/mol4agent-deepseekharness`.
 
 - Host change: rebuild, then **restart DSH** (the Host loads `lib/host.js` at
   startup).

@@ -61,7 +61,31 @@ viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
 
 ## Quick start (DSH Desktop)
 
-The plugin is installed in the current `desktop` profile:
+### Install / reinstall
+
+From a checkout of this repository:
+
+```sh
+cd /path/to/mol4agent
+pnpm build
+dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
+```
+
+`dsh plugin` forwards to pnpm in `~/.dsh/profiles/<profile>`. The bundle must
+also be listed in `dsh.profile.bundles` in that profile's `package.json`; the
+DSH Plugin manager does this when it installs/enables a bundle. Restart DSH after
+installing or updating the Host bundle.
+
+npm form (0.1.0):
+
+```sh
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
+```
+
+Remove with `dsh plugin --profile desktop remove @gcszhn/mol4agent-deepseekharness`
+(and drop it from `dsh.profile.bundles`).
+
+The current `desktop` profile already has it installed and enabled:
 
 1. Open `fixtures/1crn.pdb` (or `fixtures/1atp.pdb`, `fixtures/aspirin.sdf`,
    `fixtures/1crn.cif`) from the file tree.

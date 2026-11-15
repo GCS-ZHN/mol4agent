@@ -278,8 +278,27 @@ bundle。
 
 ## 安装
 
-本包是 DSH bundle。当前 Desktop `desktop` profile 已通过 `plugin_manager` 安装，
-并启用为 `@gcszhn/mol4agent-deepseekharness`。
+本包是 DSH bundle。在本仓库根目录执行：
+
+```sh
+cd /path/to/mol4agent
+pnpm build
+dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
+```
+
+`dsh plugin` 会把参数转发给 `~/.dsh/profiles/<profile>` 下的 pnpm。还需要把
+`@gcszhn/mol4agent-deepseekharness` 放进该 profile `package.json` 的
+`dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理），然后重启
+DSH。
+
+npm 形式（0.1.0）：
+
+```sh
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
+```
+
+当前 Desktop `desktop` profile 已通过 `plugin_manager` 安装，并启用为
+`@gcszhn/mol4agent-deepseekharness`。
 
 - Host 变更：重新 build，然后**重启 DSH**（Host 启动时加载 `lib/host.js`）。
 - Client 变更：重新 build，然后**刷新页面**；不需要重启。
