@@ -11,6 +11,10 @@ sessions. Read the package playbook before changing that package:
 - **ChatGPT/Codex adapter** (`packages/chatgpt/`):
   [`packages/chatgpt/AGENTS.md`](packages/chatgpt/AGENTS.md)
   — MCP server/app split, tools, long-poll, capture rendezvous, packaging.
+- **OpenCode adapter** (`packages/opencode/`):
+  [`packages/opencode/AGENTS.md`](packages/opencode/AGENTS.md)
+  — server/GUI split, RPC, per-location `globalThis` store, Vite GUI build,
+  capture rendezvous, packaging.
 
 API, architecture, and tool references stay in the READMEs; do not duplicate
 them here or in code comments:
@@ -19,6 +23,7 @@ them here or in code comments:
 - `packages/core/README.md` / `README_zh.md`
 - `packages/deepseek-harness/README.md` / `README_zh.md`
 - `packages/chatgpt/README.md` / `README_zh.md`
+- `packages/opencode/README.md` / `README_zh.md`
 - `docs/architecture.md` / `docs/architecture_zh.md` (architecture; English default)
 - `packages/deepseek-harness/docs/DETAIL.md`
 
