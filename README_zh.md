@@ -66,8 +66,8 @@ viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
 
 ```sh
 pnpm install
-pnpm -r typecheck
-pnpm --filter @gcszhn/mol4agent-deepseekharness build
+pnpm typecheck   # 先构建 core，再对所有包做 typecheck
+pnpm build       # core -> lib JS/d.ts，然后 DSH host/client
 ```
 
 `build` 产出：

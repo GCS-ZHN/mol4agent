@@ -15,11 +15,13 @@
     "locale",
     "docs",
     "icon.svg",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "README_zh.md"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build"
   },
   "engines": {
     "dsh": ">=0.2.2-rc.3 <0.3.0"

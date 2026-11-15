@@ -81,8 +81,8 @@ change (`lib/client.js`) only needs a page refresh.
 
 ```sh
 pnpm install
-pnpm -r typecheck
-pnpm --filter @gcszhn/mol4agent-deepseekharness build
+pnpm typecheck   # builds core first, then typechecks every package
+pnpm build       # core -> lib JS/d.ts, then DSH host/client
 ```
 
 `build` produces:

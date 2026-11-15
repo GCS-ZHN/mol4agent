@@ -40,6 +40,16 @@ pnpm add react
 `molstar` 和 `react` 是 peer dependencies。DSH 适配包把 Mol* 打进单个
 client bundle；普通 web 应用可以直接使用本包。
 
+构建与打包：
+
+```sh
+pnpm --filter @gcszhn/mol4agent-core build
+# 产出 lib/*.js + lib/*.d.ts
+```
+
+Package `exports` 指向 `lib`，npm `files` 只包含 `lib` 和 README；`src/`、
+`AGENTS.md` 和构建脚本不会被打包；`prepack` 会先构建。
+
 ## 入口
 
 | Import | 导出 |

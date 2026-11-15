@@ -40,6 +40,17 @@ pnpm add react
 `molstar` and `react` are peer dependencies. The DSH adapter bundles Mol* into a
 single client script; a plain web app can use the package directly.
 
+Build and pack:
+
+```sh
+pnpm --filter @gcszhn/mol4agent-core build
+# emits lib/*.js + lib/*.d.ts
+```
+
+Package `exports` point at `lib`, and the npm `files` allowlist includes only
+`lib` plus the READMEs. `src/`, `AGENTS.md`, and build scripts are not packed;
+`prepack` builds first.
+
 ## Entrypoints
 
 | Import | Exports |

@@ -4,14 +4,38 @@
   "private": true,
   "type": "module",
   "description": "Harness-neutral Mol* viewer engine: bytes + explicit format in, commands out.",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./protocol": "./src/protocol.ts",
-    "./parse": "./src/parse/index.ts",
-    "./react": "./src/react.tsx"
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "default": "./lib/index.js"
+    },
+    "./protocol": {
+      "types": "./lib/protocol.d.ts",
+      "import": "./lib/protocol.js",
+      "default": "./lib/protocol.js"
+    },
+    "./parse": {
+      "types": "./lib/parse/index.d.ts",
+      "import": "./lib/parse/index.js",
+      "default": "./lib/parse/index.js"
+    },
+    "./react": {
+      "types": "./lib/react.d.ts",
+      "import": "./lib/react.js",
+      "default": "./lib/react.js"
+    }
   },
+  "files": [
+    "lib",
+    "README_zh.md"
+  ],
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build"
   },
   "peerDependencies": {
     "molstar": "^5.13.1",

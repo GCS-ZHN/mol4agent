@@ -263,7 +263,8 @@ sequenceDiagram
 ## 构建
 
 ```sh
-pnpm --filter @gcszhn/mol4agent-deepseekharness build
+pnpm build
+# 或：pnpm --filter @gcszhn/mol4agent-core build && pnpm --filter @gcszhn/mol4agent-deepseekharness build
 ```
 
 产出：
@@ -283,7 +284,8 @@ bundle。
 - Host 变更：重新 build，然后**重启 DSH**（Host 启动时加载 `lib/host.js`）。
 - Client 变更：重新 build，然后**刷新页面**；不需要重启。
 - package manifest 贡献 `lib/host.js`、`lib/client.js`、locale 字典、图标和
-  `cordis.patch.yml`。
+  `cordis.patch.yml`。npm `files` 排除 `src/`、`AGENTS.md` 和构建脚本；
+  `prepack` 会先构建。
 
 ## 限制
 

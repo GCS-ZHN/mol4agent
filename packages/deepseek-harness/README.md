@@ -275,7 +275,8 @@ with `input: { attachments: true }` and `recordInput: false`.
 ## Build
 
 ```sh
-pnpm --filter @gcszhn/mol4agent-deepseekharness build
+pnpm build
+# or: pnpm --filter @gcszhn/mol4agent-core build && pnpm --filter @gcszhn/mol4agent-deepseekharness build
 ```
 
 Produces:
@@ -297,7 +298,8 @@ installed via `plugin_manager` and enabled as `@gcszhn/mol4agent-deepseekharness
   startup).
 - Client change: rebuild, then **refresh the page**; no restart is needed.
 - The package manifest contributes `lib/host.js`, `lib/client.js`, the locale
-  dictionaries, icon, and `cordis.patch.yml`.
+  dictionaries, icon, and `cordis.patch.yml`. The npm `files` allowlist excludes
+  `src/`, `AGENTS.md`, and build scripts; `prepack` runs the build.
 
 ## Limitations
 
