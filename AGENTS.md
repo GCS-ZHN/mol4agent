@@ -51,6 +51,13 @@ are in its AGENTS playbook.
 - Verify with `pnpm typecheck`, the package build, `pnpm test`, real fixtures,
   and the actual harness page. A screenshot alone does not prove panel/layout
   behavior.
+- A new package/adapter is a cross-cutting change: wire it into
+  `.github/workflows/ci.yml` (install, core build, typecheck, unit tests,
+  package build) and, when publishable, into `.github/workflows/release.yml`
+  (build/test, version-match loop, publish step). Every package ships unit tests
+  for its pure logic (suffix/format detection, selectors, scene store, capture
+  hub, summaries) plus a `test` script that CI runs; a manual harness check does
+  not replace those tests.
 - Documentation defaults to English with a synchronized `README_zh.md`. Update
   the relevant READMEs when behavior or APIs change.
 - npm packages contain compiled JS/`.d.ts` plus only the assets/config each
