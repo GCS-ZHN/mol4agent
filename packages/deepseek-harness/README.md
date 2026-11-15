@@ -66,12 +66,12 @@ away.
 |---|---|---|
 | `mol_info` | `path` | Summarize chains, residues, atoms, ligands. Does not open a viewer or change the scene. |
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å, 0 < cutoff ≤ 30) in PDB-like files. Returns ranges for `mol_style`/`mol_focus`. |
-| `mol_open` | `path`, `type?`, `color?`, `select?`, `focus?` | Set a new active scene. Emits `represent` and optionally `select`/`focus`. Opens/reveals the preview via the bridge. |
-| `mol_style` | `type?`, `color?`, `target?`, `colorParams?` | Append `represent`. Without `target` it replaces the scene representation; with `target` it adds a representation to that selection only. `colorParams` carries e.g. `{"value": 16711680}` for uniform red. |
-| `mol_select` | `target`, `mode?`, `focus?` | Append `select`. `mode` is `select` or `highlight`. |
-| `mol_focus` | `target?` | Append `focus`; target omitted frames the whole structure. |
-| `mol_measure` | `kind`, `targets` | Append `measure`. 2 targets for distance, 3 for angle, 4 for dihedral. |
-| `mol_capture` | `width?`, `height?`, `transparent?` | Block until the open page delivers a PNG (default 1024×768). Returns an image attachment when the routed model accepts images, plus `savedPath` when available. |
+| `mol_open` | `path`, `type?`, `color?`, `select?`, `focus?` | Create/update the tab page keyed by the absolute path and make it active. Emits `represent` and optionally `select`/`focus`; the tab page id is the path. |
+| `mol_style` | `tab?`, `type?`, `color?`, `target?`, `colorParams?` | Append `represent` to the tab (`tab` defaults to active). Without `target` it replaces the scene representation; with `target` it adds a representation to that selection only. `colorParams` carries e.g. `{"value": 16711680}` for uniform red. |
+| `mol_select` | `tab?`, `target`, `mode?`, `focus?` | Append `select`. `mode` is `select` or `highlight`. |
+| `mol_focus` | `tab?`, `target?` | Append `focus`; target omitted frames the whole structure. |
+| `mol_measure` | `tab?`, `kind`, `targets` | Append `measure`. 2 targets for distance, 3 for angle, 4 for dihedral. |
+| `mol_capture` | `tab?`, `width?`, `height?`, `transparent?` | Block until the target tab delivers a PNG (default 1024×768). Returns an image attachment when the routed model accepts images, plus `savedPath` when available. |
 
 `path` is absolute or relative to the session working directory. Files are
 limited to 64 MiB.
@@ -165,15 +165,17 @@ session events, and exposed to the browser through the projection wire.
 interface MolSessionState {
   revision: number
   cwd?: string
-  scene: {
+  tabs: Record<string, {
     sceneKey: string   // `${absolutePath}#${callId}`
     path: string
     format: MolFormat
     label: string
     commands: MolCommand[]
-  } | null
+  }>
+  active: string | null   // absolute path
   pending: Record<string, {
     callId: string
+    path?: string
     width?: number
     height?: number
     transparent?: boolean
@@ -181,24 +183,27 @@ interface MolSessionState {
 }
 ```
 
-- `tool/call` for a scene-changing `mol_*` tool (open/style/select/focus/measure)
-  is folded into `scene` and bumps `revision`; `mol_capture` adds a pending entry
-  and bumps `revision` when a scene exists. Read-only tools (`mol_info`,
-  `mol_interface`) and invalid selector/format arguments leave state unchanged.
-  A file that fails to read can still switch the scene before the Host tool
-  reports the error.
+- `mol_open` adds/replaces `tabs[path]` and sets `active`; each tab page has
+  its own `sceneKey` and command list. `mol_style`/`mol_select`/`mol_focus`/
+  `mol_measure` fold into the `tab` argument (or active tab) and bump `revision`.
+- `mol_capture` adds a pending entry for the `tab` argument (or active tab) and
+  bumps `revision`; the header bridge activates that tab so the capture can be
+  delivered. Read-only tools (`mol_info`, `mol_interface`) and invalid
+  selector/format arguments leave state unchanged. A file that fails to read can
+  still create/switch a tab before the Host tool reports the error.
 - `tool/result` clears a matching pending capture and bumps `revision`; other
   results leave state unchanged.
 - Relative paths are resolved against `cwd` captured when the projection is
   initialized.
 - The projection is replayable: it stores paths and JSON commands, never bytes.
-- `sceneKey` changes when the agent opens a file anew. The client reloads the
-  structure (clearing old measurements/selection styles) and resets the
-  applied-command cursor; the first scene after a viewer mount is already loaded.
+- `sceneKey` changes when the agent opens that tab again. Only that tab reloads
+  the structure (clearing old measurements/selection styles) and resets its
+  applied-command cursor; other tabs are untouched.
 
-The client reads the scene with `props.useProjection('mol4agent')`. It reads the
-file bytes separately through `remote.workspaceFiles.readBytes`, then calls
-`@gcszhn/mol4agent-core` with `{ data, format, label }`.
+The client selects `tabs[path]` for its own tab with
+`props.useProjection('mol4agent')`. It reads the file bytes separately through
+`remote.workspaceFiles.readBytes`, then calls `@gcszhn/mol4agent-core` with
+`{ data, format, label }`.
 
 ## Document preview
 
@@ -233,8 +238,9 @@ The body:
 6. captures and delivers PNGs when `pending` contains its call.
 
 The header bridge is registered in `conversation.session.header.utilities`. It
-opens the resource for a new `sceneKey`; a scene that already existed when the
-session is opened is not auto-opened (the chip reopens it).
+opens a resource when a tab is new or reopened, and activates the target tab
+when a capture is pending. Tabs that already existed when the session is opened
+are not auto-opened (the chip reopens the active one).
 
 ## Screenshot loop
 
@@ -273,6 +279,11 @@ with `input: { attachments: true }` and `recordInput: false`.
   while `showControls` is true.
 - **Theme**: the Mol* skin and canvas background follow DSH's
   `theme/change` event.
+- **Tab scope**: each document tab has its own viewer, cache, and projection
+  scene. `mol_open` returns the tab page id (absolute path); pass `tab` to
+  `mol_style`/`mol_select`/`mol_focus`/`mol_measure`/`mol_capture` to target that
+  tab independently. Omitting `tab` uses the last-opened tab. Switching tabs
+  preserves all viewer state; capture activates its target tab.
 - **Tab cache**: an unmounted preview parks its whole Mol* container in a hidden
   holder; remounting the same tab reattaches and resizes instead of re-reading
   the file. The two most recent tabs are kept; plugin unload disposes them.
@@ -342,11 +353,11 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
   only; mmCIF/BCIF interface calculation is not implemented.
 - An 8 Å cutoff can produce a large interface (7CZD A/B: 91 residues); lower
   the cutoff or focus a single range for a cleaner figure.
-- One active scene per session: `mol_open` replaces the scene. Cached viewers
-  remain for tab switches but no longer receive commands after a new scene.
+- A tab page id is the absolute path. Reopening the same path updates that tab
+  (new `sceneKey`) rather than creating a second tab with the same DSH resource.
 - The tab cache keeps two viewers; closing a tab does not immediately free its
   cached viewer (it is evicted by the LRU or plugin unload).
-- The session bridge does not auto-open a scene that already existed when the
+- The session bridge does not auto-open tabs that already existed when the
   session was restored; use the header chip.
 
 ## Files

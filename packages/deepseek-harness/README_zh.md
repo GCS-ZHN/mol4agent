@@ -62,12 +62,12 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 |---|---|---|
 | `mol_info` | `path` | 摘要链、残基、原子、配体。不打开 viewer，也不改变场景。 |
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 在 PDB-like 文件中找两个链组之间的界面残基（默认 8 Å，0 < cutoff ≤ 30），返回可用于 `mol_style`/`mol_focus` 的区间。 |
-| `mol_open` | `path`、`type?`、`color?`、`select?`、`focus?` | 建立新的活动场景；发出 `represent`，可选 `select`/`focus`。通过 bridge 打开/显示预览。 |
-| `mol_style` | `type?`、`color?`、`target?`、`colorParams?` | 追加 `represent`。不传 `target` 替换整个场景表示；传 `target` 只给该选择添加表示。`colorParams` 可传 `{"value": 16711680}` 表示 uniform 红色。 |
-| `mol_select` | `target`、`mode?`、`focus?` | 追加 `select`；`mode` 为 `select` 或 `highlight`。 |
-| `mol_focus` | `target?` | 追加 `focus`；不传 target 聚焦整个结构。 |
-| `mol_measure` | `kind`、`targets` | 追加 `measure`；距离 2 个目标，角度 3 个，二面角 4 个。 |
-| `mol_capture` | `width?`、`height?`、`transparent?` | 阻塞等待打开的页面回传 PNG（默认 1024×768）；当前模型支持图片时把图片作为附件返回，并在可用时给出 `savedPath`。 |
+| `mol_open` | `path`、`type?`、`color?`、`select?`、`focus?` | 按绝对路径创建/更新 tab 页面并设为活动 tab；发出 `represent`，可选 `select`/`focus`。tab 页面 id 即绝对路径。 |
+| `mol_style` | `tab?`、`type?`、`color?`、`target?`、`colorParams?` | 给指定 tab（默认活动 tab）追加 `represent`。不传 `target` 替换整个场景表示；传 `target` 只给该选择添加表示。`colorParams` 可传 `{"value": 16711680}` 表示 uniform 红色。 |
+| `mol_select` | `tab?`、`target`、`mode?`、`focus?` | 追加 `select`；`mode` 为 `select` 或 `highlight`。 |
+| `mol_focus` | `tab?`、`target?` | 追加 `focus`；不传 target 聚焦整个结构。 |
+| `mol_measure` | `tab?`、`kind`、`targets` | 追加 `measure`；距离 2 个目标，角度 3 个，二面角 4 个。 |
+| `mol_capture` | `tab?`、`width?`、`height?`、`transparent?` | 阻塞等待目标 tab 回传 PNG（默认 1024×768）；当前模型支持图片时把图片作为附件返回，并在可用时给出 `savedPath`。 |
 
 `path` 是绝对路径，或相对 session 工作目录。文件上限 64 MiB。
 
@@ -158,15 +158,17 @@ projection wire 暴露给浏览器。
 interface MolSessionState {
   revision: number
   cwd?: string
-  scene: {
+  tabs: Record<string, {
     sceneKey: string   // `${absolutePath}#${callId}`
     path: string
     format: MolFormat
     label: string
     commands: MolCommand[]
-  } | null
+  }>
+  active: string | null   // 绝对路径
   pending: Record<string, {
     callId: string
+    path?: string
     width?: number
     height?: number
     transparent?: boolean
@@ -174,19 +176,21 @@ interface MolSessionState {
 }
 ```
 
-- 会改变场景的 `mol_*` 调用（open/style/select/focus/measure）会折叠进 `scene`
-  并递增 `revision`；有场景时 `mol_capture` 会添加 pending 并递增 `revision`。
-  只读工具（`mol_info`、`mol_interface`）和非法 selector/format 参数保持状态
-  不变；文件读取失败时仍可能先切换 scene，随后 Host 工具报错。
+- `mol_open` 添加/替换 `tabs[path]` 并设置 `active`；每个 tab 页面有独立的
+  `sceneKey` 和命令列表。`mol_style`/`mol_select`/`mol_focus`/`mol_measure`
+  折叠进 `tab` 参数（缺省为活动 tab）并递增 `revision`。
+- `mol_capture` 按 `tab` 参数（缺省为活动 tab）添加 pending 并递增
+  `revision`；header bridge 会激活目标 tab 以完成截图。只读工具（`mol_info`、
+  `mol_interface`）和非法 selector/format 参数保持状态不变；文件读取失败时
+  仍可能先创建/切换 tab，随后 Host 工具报错。
 - `tool/result` 清除对应的 pending 截图项并递增 `revision`；其他结果保持状态
   不变。
 - 相对路径基于 projection 初始化时捕获的 `cwd` 解析。
 - projection 可重放：只存路径和 JSON 命令，不存字节。
-- agent 重新打开文件时 `sceneKey` 变化；client 会重新加载结构（清掉旧
-  measurement/选择样式）并重置已应用命令的游标；viewer 刚 mount 后的第一个
-  scene 已经加载过，不重复读。
+- agent 重新打开该 tab 时 `sceneKey` 变化；只有该 tab 重新加载结构（清掉旧
+  measurement/选择样式）并重置自己的命令游标，其他 tab 不受影响。
 
-client 通过 `props.useProjection('mol4agent')` 读取场景，并通过
+client 通过 `props.useProjection('mol4agent')` 选择自己的 `tabs[path]`，并通过
 `remote.workspaceFiles.readBytes` 单独读文件字节，然后调用
 `@gcszhn/mol4agent-core`，传入 `{ data, format, label }`。
 
@@ -222,8 +226,9 @@ body 的流程：
 6. 当 `pending` 中有自己的 call 时截图并回传。
 
 session header bridge 注册在 `conversation.session.header.utilities`。新
-`sceneKey` 出现时打开对应资源；session 打开时已经存在的场景不会自动打开
-（用 header 上的 chip 重新打开）。
+新 tab 或重新打开的 tab 出现时打开对应资源；有 pending capture 时激活目标
+tab；session 打开时已经存在的 tab 不会自动打开（用 header 上的 chip 重新打开
+活动 tab）。
 
 ## 截图链路
 
@@ -260,6 +265,10 @@ sequenceDiagram
   （`showControls: false`）；点 viewport 上的滑杆按钮展开。Mol* 只在
   `showControls` 为 true 时渲染这些 region。
 - **主题**：Mol* 皮肤和画布背景跟随 DSH 的 `theme/change`。
+- **tab 作用域**：每个文档 tab 有独立 viewer、缓存和 projection scene。
+  `mol_open` 返回 tab 页面 id（绝对路径）；给 `mol_style`/`mol_select`/
+  `mol_focus`/`mol_measure`/`mol_capture` 传 `tab` 即可独立操作该 tab；省略
+  `tab` 使用最后打开的 tab。切换 tab 保留所有 viewer 状态；截图会激活目标 tab。
 - **tab 缓存**：预览卸载时把整个 Mol* 容器停到隐藏 holder；同一个 tab 重新
   mount 时 reattach + resize，而不是重新读文件。保留最近 2 个 tab；插件卸载
   时统一 dispose。
@@ -325,11 +334,11 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
   mmCIF/BCIF 的界面计算尚未实现。
 - 8 Å cutoff 可能产生很大的界面（7CZD A/B：91 个残基）；想要更干净的图可
   降低 cutoff 或只聚焦一个区间。
-- 每个 session 只有一个活动场景：`mol_open` 会替换场景。缓存的 viewer 仍在
-  用于 tab 切换，但新场景之后不会再收到命令。
+- tab 页面 id 是绝对路径；重新打开同一路径会更新该 tab（新的 `sceneKey`），
+  不会为同一 DSH resource 创建第二个 tab。
 - tab 缓存保留 2 个 viewer；关闭 tab 不会立刻释放缓存（由 LRU 或插件卸载
   回收）。
-- session 恢复时，已经存在的场景不会自动打开；用 header 上的 chip。
+- session 恢复时，已经存在的 tab 不会自动打开；用 header 上的 chip。
 
 ## 文件
 

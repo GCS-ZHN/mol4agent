@@ -1,6 +1,6 @@
 /**
- * The `mol4agent` session projection: tool calls become a durable, replayable
- * scene the browser viewer subscribes to.
+ * The `mol4agent` session projection: tool calls become durable, replayable
+ * scenes, one independent scene per document tab page.
  *
  * @module @gcszhn/mol4agent-deepseekharness/host/projection
  */
@@ -23,7 +23,7 @@ import {
 const MEASUREMENT_KINDS = new Set(['chain', 'residue', 'residues', 'comp', 'schema'])
 
 const stateSchema = z.custom<MolSessionState>(
-  value => typeof value === 'object' && value !== null && 'revision' in value && 'pending' in value,
+  value => typeof value === 'object' && value !== null && 'revision' in value && 'tabs' in value && 'pending' in value,
 )
 
 /** Build the projection unit the adapter registers on activation. */
@@ -38,7 +38,7 @@ export function molProjectionDefinition() {
       view: state => state,
       summary: false,
     },
-    stateVersion: 1,
+    stateVersion: 2,
   } satisfies ProjectionDefinition<typeof PROJECTION_KEY, MolSessionState>
 }
 
@@ -72,7 +72,8 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
       return openScene(state, args, callId)
 
     case 'mol_style': {
-      if (state.scene === null) return state
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
       const target = args.target === undefined ? undefined : selectorOf(args.target)
       if (args.target !== undefined && target === undefined) return state
       const command: MolCommand = {
@@ -80,19 +81,21 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
         style: styleOf(args),
         ...(target === undefined ? {} : { target }),
       }
-      return withCommands(state, [...state.scene.commands, command])
+      return withCommands(state, tab.path, [...tab.commands, command])
     }
 
     case 'mol_focus': {
-      if (state.scene === null) return state
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
       const target = args.target === undefined ? undefined : selectorOf(args.target)
       if (args.target !== undefined && target === undefined) return state
       const command: MolCommand = { op: 'focus', ...(target === undefined ? {} : { target }) }
-      return withCommands(state, [...state.scene.commands, command])
+      return withCommands(state, tab.path, [...tab.commands, command])
     }
 
     case 'mol_select': {
-      if (state.scene === null) return state
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
       const target = selectorOf(args.target)
       if (target === undefined) return state
       const command: MolCommand = {
@@ -101,11 +104,12 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
         mode: args.mode === 'highlight' ? 'highlight' : 'select',
         ...(args.focus === true ? { focus: true } : {}),
       }
-      return withCommands(state, [...state.scene.commands, command])
+      return withCommands(state, tab.path, [...tab.commands, command])
     }
 
     case 'mol_measure': {
-      if (state.scene === null) return state
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
       const kind = args.kind
       if (kind !== 'distance' && kind !== 'angle' && kind !== 'dihedral') return state
       const rawTargets = Array.isArray(args.targets) ? args.targets : []
@@ -117,13 +121,15 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
       const needed = kind === 'distance' ? 2 : kind === 'angle' ? 3 : 4
       if (targets.length !== needed) return state
       const command: MolCommand = { op: 'measure', kind, targets }
-      return withCommands(state, [...state.scene.commands, command])
+      return withCommands(state, tab.path, [...tab.commands, command])
     }
 
     case 'mol_capture': {
-      if (state.scene === null) return state
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
       const pending: MolPendingCapture = {
         callId,
+        path: tab.path,
         ...(typeof args.width === 'number' ? { width: args.width } : {}),
         ...(typeof args.height === 'number' ? { height: args.height } : {}),
         ...(args.transparent === true ? { transparent: true } : {}),
@@ -161,15 +167,28 @@ function openScene(state: MolSessionState, args: Record<string, unknown>, callId
     label: baseNameOf(path),
     commands,
   }
-  return { ...state, revision: state.revision + 1, scene }
-}
-
-function withCommands(state: MolSessionState, commands: MolCommand[]): MolSessionState {
-  if (state.scene === null) return state
   return {
     ...state,
     revision: state.revision + 1,
-    scene: { ...state.scene, commands },
+    tabs: { ...state.tabs, [path]: scene },
+    active: path,
+  }
+}
+
+function tabOf(state: MolSessionState, args: Record<string, unknown>): MolSceneState | undefined {
+  const requested = typeof args.tab === 'string' ? args.tab : undefined
+  const key = requested ?? state.active
+  if (key === null) return undefined
+  return state.tabs[key]
+}
+
+function withCommands(state: MolSessionState, key: string, commands: MolCommand[]): MolSessionState {
+  const tab = state.tabs[key]
+  if (tab === undefined) return state
+  return {
+    ...state,
+    revision: state.revision + 1,
+    tabs: { ...state.tabs, [key]: { ...tab, commands } },
   }
 }
 
