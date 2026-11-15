@@ -16,6 +16,11 @@ side panel that the agent operates with `mol_*` tools.
   tabs; opening the same session again shows the previous state. Closing a
   structure tab disposes its viewer (closed-session viewers are cleaned up when
   the window unloads).
+
+> **Tip**: every open structure keeps a live Mol* viewer (WebGL context and
+> memory) alive across tab/session switches. Open only the structures you need,
+> and close the structure tabs when you are done.
+
 - **Same molecular semantics as DSH/ChatGPT**: this adapter passes the same
   `MolFormat`, selectors, commands, and capture semantics to
   `@gcszhn/mol4agent-core`.

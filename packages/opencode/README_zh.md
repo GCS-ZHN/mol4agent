@@ -12,6 +12,11 @@
 - **标签保持状态**：每个结构一个 viewer 标签；切换标签会保留相机、样式和选择。
   viewer 也会在切换会话标签页后保留，切回同一会话时恢复之前的状态；关闭结构标签
   会销毁对应 viewer（已关闭会话的 viewer 在窗口卸载时清理）。
+
+> **温馨提示**：每个打开的结构都会保留一个常驻的 Mol* viewer（占用 WebGL
+> context 和内存），切换标签/会话也不会释放。请只打开需要的结构，用完记得关闭
+> 结构标签。
+
 - **与 DSH/ChatGPT 语义一致**：本适配器把相同的 `MolFormat`、selector、命令
   与截图语义传给 `@gcszhn/mol4agent-core`。
 - **格式**：`.pdb`、`.ent`、`.pdbqt`、`.pqr`、`.cif`、`.mmcif`、`.mcif`、`.bcif`、
