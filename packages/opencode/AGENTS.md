@@ -96,9 +96,12 @@ build (`store.snapshot is not a function`).
 ## GUI build (esbuild + JSX-free Solid)
 
 - All structure tabs carry `group: "structure"` and share one `Panel.render`
-  (`StructureGroup`). That render keeps one `StructureViewer` mounted per visited
-  path and shows only the active tab, so switching tabs does not reload Mol* or
-  reset its camera. Dispose a slot from `Panel.close`; never on deselect.
+  (`StructureGroup`). `StructurePool` in the setup closure owns one
+  `StructureViewer` per `session key + path`: switching tabs shows/hides slots,
+  and a render unmount (session switch) detaches them to a hidden in-DOM
+  container instead of disposing them. Dispose a slot only from `Panel.close`
+  (structure tab) or `pool.retain(sessions.list())` (session tab closed); never
+  on deselect.
 - The GUI bundle is built with **esbuild**, not Vite. Vite's
   `inlineDynamicImports` inlines the lazy `import("@gcszhn/mol4agent-core")`
   eagerly, so Mol*'s Markdown dependency runs `document.createElement("i")` at

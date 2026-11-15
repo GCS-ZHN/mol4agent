@@ -9,8 +9,8 @@
 - **agent 操作同一页面**：`mol_style` / `mol_select` / `mol_focus` / `mol_measure`
   修改打开的页面；`mol_info` / `mol_interface` 无需打开 viewer 即可摘要。
 - **截图**：`mol_capture` 把视口渲染成 PNG 保存到 `.mol4agent/captures/`。
-- **标签保持状态**：每个结构一个 viewer 标签；切换标签会保留相机、样式和选择，
-  只有关掉标签才会销毁对应 viewer。
+- **标签保持状态**：每个结构一个 viewer 标签；切换标签会保留相机、样式和选择。
+  viewer 也会在切换会话标签页后保留，只有关闭结构标签或**关闭会话标签页**时才销毁。
 - **与 DSH/ChatGPT 语义一致**：本适配器把相同的 `MolFormat`、selector、命令
   与截图语义传给 `@gcszhn/mol4agent-core`。
 - **格式**：`.pdb`、`.ent`、`.pdbqt`、`.pqr`、`.cif`、`.mmcif`、`.mcif`、`.bcif`、

@@ -23,7 +23,7 @@ import { createStore, reconcile } from 'solid-js/store'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
 import { bytesToBase64 } from '../base64.ts'
 import { Mol4Agent } from '../rpc.ts'
-import { StructureGroup, type StructureGroupRegistry } from './structure-group.ts'
+import { StructureGroup, StructurePool } from './structure-group.ts'
 import { type FetchedScene, type SceneInfo } from './viewer.tsx'
 
 const EXTENSIONS = ['pdb', 'ent', 'pdbqt', 'pqr', 'cif', 'mmcif', 'mcif', 'bcif', 'mol', 'sdf', 'sd', 'mol2', 'xyz', 'gro', 'gz']
@@ -61,8 +61,6 @@ export default Plugin.define({
     const [active, setActive] = createStore<Record<string, string>>({})
     /** Tab objects per session and path, reused so strip updates do not rebuild triggers. */
     const tabs = new Map<string, { readonly id: string; readonly title: string; readonly group: string }>()
-    /** Per-tab viewer disposers; `Panel.close` removes one, unmount removes all. */
-    const groupRegistry: StructureGroupRegistry = {}
 
     /** Live viewers keyed by sceneId, for capture delivery. */
     const viewers = new Map<string, MolViewer>()
@@ -72,6 +70,25 @@ export default Plugin.define({
     const pendingOpen = new Map<string, string>()
     /** Captures already being delivered, so an event + claim cannot double-run. */
     const inFlight = new Set<string>()
+
+    const trackViewer = (sceneId: string, viewer: MolViewer | undefined): void => {
+      if (viewer !== undefined) {
+        if (!viewers.has(sceneId)) registeredAt.set(sceneId, Date.now())
+        viewers.set(sceneId, viewer)
+      } else {
+        viewers.delete(sceneId)
+        registeredAt.delete(sceneId)
+      }
+    }
+
+    /** Viewers outlive a panel render (session switch) and die with their tab/session. */
+    const pool = new StructurePool({
+      scene: (sessionID: string, path: string) => scenes[sessionID]?.[path],
+      fetchScene: async (sceneId: string, sessionID: string) =>
+        (await rpc.fetchScene({ sceneId, sessionID })) as unknown as FetchedScene,
+      theme: () => ctx.appearance.mode(),
+      onViewer: trackViewer,
+    })
 
     /** `load()` starts a 250 ms camera-focus animation; a capture before it ends
      *  can render only the background, so let a freshly registered viewer settle. */
@@ -208,6 +225,17 @@ export default Plugin.define({
       })()
     })
 
+    // Keep viewers for open sessions only: closing a session tab destroys its
+    // viewers; routing away from a session must not. `layout.ready()` is false
+    // before the app interface mounts, when `sessions.list()` is still empty.
+    createEffect(() => {
+      if (!ctx.layout.ready()) return
+      const alive = new Set(ctx.sessions.list().map(session => session.key))
+      const current = ctx.sessions.current()
+      if (current !== undefined) alive.add(current.key)
+      pool.retain(alive)
+    })
+
     const offScene = rpc.events.on('scene', (event) => {
       const data = (event as unknown as { data: SceneEvent }).data
       const sessionID = data?.sessionID ?? currentSessionID()
@@ -249,23 +277,10 @@ export default Plugin.define({
       render: (props) => createComponent(StructureGroup, {
         tab: () => props.tab.id,
         session: () => props.session,
-        scene: (sessionID: string, path: string) => scenes[sessionID]?.[path],
-        fetchScene: async (sceneId: string, sessionID: string) =>
-          (await rpc.fetchScene({ sceneId, sessionID })) as unknown as FetchedScene,
-        theme: () => ctx.appearance.mode(),
-        onViewer: (sceneId: string, viewer: MolViewer | undefined) => {
-          if (viewer !== undefined) {
-            if (!viewers.has(sceneId)) registeredAt.set(sceneId, Date.now())
-            viewers.set(sceneId, viewer)
-          } else {
-            viewers.delete(sceneId)
-            registeredAt.delete(sceneId)
-          }
-        },
-        registry: groupRegistry,
+        pool,
       }),
       close: (input) => {
-        groupRegistry.dispose?.(input.session.key, input.tab.id)
+        pool.dispose(input.session.key, input.tab.id)
         tabs.delete(`${input.session.id}\n${input.tab.id}`)
       },
     })
@@ -387,11 +402,13 @@ export default Plugin.define({
       disposed = true
       offScene()
       offCapture()
+      pool.disposeAll()
       for (const viewer of viewers.values()) viewer.dispose()
       viewers.clear()
       registeredAt.clear()
       pendingOpen.clear()
       inFlight.clear()
+      tabs.clear()
     }
   },
 })
