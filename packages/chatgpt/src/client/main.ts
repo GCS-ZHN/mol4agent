@@ -20,7 +20,7 @@ interface PollResult {
 }
 
 const app = new App(
-  { name: 'mol4agent', version: '0.1.6' },
+  { name: 'mol4agent', version: '0.1.7' },
   { availableDisplayModes: ['inline', 'fullscreen'] },
   { autoResize: true },
 )
@@ -66,9 +66,7 @@ app.addEventListener('toolcancelled', params => {
 })
 
 expand.addEventListener('click', () => {
-  const current = document.documentElement.dataset.display ?? 'inline'
-  const mode = current === 'fullscreen' ? 'inline' : 'fullscreen'
-  void app.requestDisplayMode({ mode }).then(result => {
+  void app.requestDisplayMode({ mode: 'fullscreen' }).then(result => {
     setDisplayMode(result.mode)
   }).catch(() => {
     expand.hidden = true
@@ -104,7 +102,8 @@ async function openSidePanel(): Promise<void> {
 function setHostHints(): void {
   const context = app.getHostContext()
   const modes = context?.availableDisplayModes
-  expand.hidden = modes === undefined || !modes.includes('fullscreen')
+  expand.hidden = context?.displayMode === 'fullscreen'
+    || (modes !== undefined && !modes.includes('fullscreen'))
   if (app.getHostCapabilities()?.serverTools === undefined) {
     meta.textContent = 'limited host: live updates unavailable'
   }
@@ -129,7 +128,10 @@ function applyHostContext(context: ReturnType<App['getHostContext']>): void {
 
 function setDisplayMode(mode: 'inline' | 'fullscreen' | 'pip'): void {
   document.documentElement.dataset.display = mode
-  expand.textContent = mode === 'fullscreen' ? 'Exit' : 'Expand'
+  // The side-panel tab has its own close button; only offer opening the tab
+  // from an inline card. Never show an "Exit" toggle in the tab.
+  expand.hidden = mode !== 'inline'
+  expand.textContent = 'Expand'
   requestAnimationFrame(() => viewer?.resize())
 }
 

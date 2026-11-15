@@ -52,7 +52,7 @@ APIs, but **molecular behavior must be consistent**:
 3. **Agent-initiated open.** Naming a structure makes the preview appear/open
    without another human click.
 4. **Harness parity.** All adapters share the same `MolFormat`, selectors,
-   commands, per-selection styling, and capture semantics. DSH and the future
+   commands, per-selection styling, and capture semantics. DSH and the
    ChatGPT/Codex adapter differ only in transport, authorization, and preview
    APIs; adapter-specific behavior belongs in that adapter's README/AGENTS and
    must not leak into core.
