@@ -11,6 +11,10 @@ sessions. Read the package playbook before changing that package:
 - **ChatGPT/Codex adapter** (`packages/chatgpt/`):
   [`packages/chatgpt/AGENTS.md`](packages/chatgpt/AGENTS.md)
   — MCP server/app split, tools, long-poll, capture rendezvous, packaging.
+- **OpenCode adapter** (`packages/opencode/`):
+  [`packages/opencode/AGENTS.md`](packages/opencode/AGENTS.md)
+  — server/GUI split, RPC, per-location `globalThis` store, esbuild GUI build,
+  capture rendezvous, packaging.
 
 API, architecture, and tool references stay in the READMEs; do not duplicate
 them here or in code comments:
@@ -19,6 +23,7 @@ them here or in code comments:
 - `packages/core/README.md` / `README_zh.md`
 - `packages/deepseek-harness/README.md` / `README_zh.md`
 - `packages/chatgpt/README.md` / `README_zh.md`
+- `packages/opencode/README.md` / `README_zh.md`
 - `docs/architecture.md` / `docs/architecture_zh.md` (architecture; English default)
 - `packages/deepseek-harness/docs/DETAIL.md`
 
@@ -35,9 +40,14 @@ are in its AGENTS playbook.
   path detection, IO, or session state in core, it is in the wrong package.
 - Use the official Mol* UI (`createPluginUI` + `DefaultPluginUISpec`); do not
   reintroduce the headless viewer, the `Viewer` wrapper, or a custom toolbar.
-- Viewer state is **tab-page scoped**: one tab is one viewer and one scene.
-  Human preview-mode switches and agent `mol_open` share the body, never a
-  mutable scene across tabs. Read [architecture §1.3.1](docs/architecture.md#131-sidebar-tab-state-and-file-open-paths)
+- Viewer state is **tab-page scoped and preserved**: one tab is one viewer and
+  one scene. Human preview-mode switches and agent `mol_open` share the body,
+  never a mutable scene across tabs. Switching tabs (panel tabs, document tabs,
+  or sessions while the tab stays open) must reveal/reattach the existing
+  viewer; never remount or reload it, because that resets the camera pose,
+  style/color, selection, and measurements. Reset state only when the tab is
+  closed or a structure is explicitly reloaded. Read
+  [architecture §1.3.1](docs/architecture.md#131-sidebar-tab-state-and-file-open-paths)
   before changing the preview, bridge, projection, or capture routing.
 - Keep agent operations on `mol_*` tools. Shell/code is for calculations
   (interface geometry, H-bond candidates, builds), not for driving the viewer.
@@ -46,6 +56,13 @@ are in its AGENTS playbook.
 - Verify with `pnpm typecheck`, the package build, `pnpm test`, real fixtures,
   and the actual harness page. A screenshot alone does not prove panel/layout
   behavior.
+- A new package/adapter is a cross-cutting change: wire it into
+  `.github/workflows/ci.yml` (install, core build, typecheck, unit tests,
+  package build) and, when publishable, into `.github/workflows/release.yml`
+  (build/test, version-match loop, publish step). Every package ships unit tests
+  for its pure logic (suffix/format detection, selectors, scene store, capture
+  hub, summaries) plus a `test` script that CI runs; a manual harness check does
+  not replace those tests.
 - Documentation defaults to English with a synchronized `README_zh.md`. Update
   the relevant READMEs when behavior or APIs change.
 - npm packages contain compiled JS/`.d.ts` plus only the assets/config each

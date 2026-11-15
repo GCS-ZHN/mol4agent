@@ -28,6 +28,7 @@ flowchart TB
   subgraph Harnesses["Agent harnesses"]
     DSH["@gcszhn/mol4agent-deepseekharness<br/>DSH adapter"]
     OA["@gcszhn/mol4agent-chatgpt<br/>ChatGPT/Codex adapter"]
+    OC["@gcszhn/mol4agent-opencode<br/>OpenCode adapter"]
   end
 
   subgraph Core["@gcszhn/mol4agent-core"]
@@ -38,6 +39,7 @@ flowchart TB
 
   DSH -->|"path → bytes + MolFormat"| Proto
   OA -->|"path → bytes + MolFormat"| Proto
+  OC -->|"path → bytes + MolFormat"| Proto
   Proto --> Viewer
   Proto --> Parse
   Viewer --> Capture["PNG capture"]
@@ -64,6 +66,7 @@ viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
 | [`@gcszhn/mol4agent-core`](packages/core) | Harness-neutral Mol* engine, command protocol, selectors, byte summaries, PNG capture | Implemented; verified with real 1CRN/1ATP/aspirin |
 | [`@gcszhn/mol4agent-deepseekharness`](packages/deepseek-harness) | DSH adapter: right-sidebar document preview, session projection, `mol_*` tools, screenshot delivery | Implemented and installed in the Desktop profile |
 | [`@gcszhn/mol4agent-chatgpt`](packages/chatgpt) | ChatGPT/Codex adapter: MCP App viewer, `mol_*` tools, long-poll scene updates, screenshot round trip | Implemented; local marketplace install, protocol tests, and a real MCP Apps smoke test |
+| [`@gcszhn/mol4agent-opencode`](packages/opencode) | OpenCode 2.2+ adapter: side-panel Mol* viewer, `mol_*` tools, RPC scene updates, screenshot round trip | Implemented; server + GUI verified end-to-end in the OpenCode desktop app (2.3.0) |
 
 ## Quick start (DSH Desktop)
 
@@ -156,7 +159,7 @@ file-handler details.
 ```sh
 pnpm install
 pnpm typecheck   # builds core first, then typechecks every package
-pnpm build       # every package: core, DSH host/client, ChatGPT server/app
+pnpm build       # every package: core, DSH host/client, ChatGPT server/app, OpenCode server/GUI/RPC
 ```
 
 `build` produces:
@@ -174,6 +177,8 @@ pnpm build       # every package: core, DSH host/client, ChatGPT server/app
 - [ChatGPT/Codex adapter](packages/chatgpt/README.md): MCP App, file-tree
   structure preview, `mol_*` tools, long-poll scene updates, capture rendezvous,
   local install.
+- [OpenCode adapter](packages/opencode/README.md): side-panel viewer, `mol_*`
+  tools, RPC scene updates, capture rendezvous, local install.
 - [Architecture design](docs/architecture.md) / [中文](docs/architecture_zh.md): product
   goals, layers, the cross-harness contract, and high-level flows. Package
   details live in the package docs.

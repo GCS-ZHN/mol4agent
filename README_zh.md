@@ -20,6 +20,7 @@ flowchart TB
   subgraph Harnesses["Agent harnesses"]
     DSH["@gcszhn/mol4agent-deepseekharness<br/>DSH adapter"]
     OA["@gcszhn/mol4agent-chatgpt<br/>ChatGPT/Codex adapter"]
+    OC["@gcszhn/mol4agent-opencode<br/>OpenCode adapter"]
   end
 
   subgraph Core["@gcszhn/mol4agent-core"]
@@ -30,6 +31,7 @@ flowchart TB
 
   DSH -->|"path → bytes + MolFormat"| Proto
   OA -->|"path → bytes + MolFormat"| Proto
+  OC -->|"path → bytes + MolFormat"| Proto
   Proto --> Viewer
   Proto --> Parse
   Viewer --> Capture["PNG capture"]
@@ -54,6 +56,7 @@ viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
 | [`@gcszhn/mol4agent-core`](packages/core) | 与 harness 无关的 Mol* 渲染引擎、命令协议、选择器、字节摘要、PNG 截图 | 已实现；用真实 1CRN/1ATP/aspirin 验证 |
 | [`@gcszhn/mol4agent-deepseekharness`](packages/deepseek-harness) | DSH 适配：右侧文档预览、session projection、`mol_*` 工具、截图回传 | 已实现并安装到 Desktop profile |
 | [`@gcszhn/mol4agent-chatgpt`](packages/chatgpt) | ChatGPT/Codex 适配：MCP App viewer、`mol_*` 工具、长轮询场景更新、截图回传 | 已实现；本地 marketplace 安装，协议测试与真实 MCP Apps 冒烟测试通过 |
+| [`@gcszhn/mol4agent-opencode`](packages/opencode) | OpenCode 2.2+ 适配：侧栏 Mol* viewer、`mol_*` 工具、RPC 场景更新、截图回传 | 已实现；在 OpenCode 桌面端（2.3.0）完成 server + GUI 端到端验证 |
 
 ## 快速开始（DSH Desktop）
 
@@ -136,7 +139,7 @@ tab。工具参考与文件处理器细节见
 ```sh
 pnpm install
 pnpm typecheck   # 先构建 core，再对所有包做 typecheck
-pnpm build       # 所有包：core、DSH host/client、ChatGPT server/app
+pnpm build       # 所有包：core、DSH host/client、ChatGPT server/app、OpenCode server/GUI/RPC
 ```
 
 `build` 产出：
@@ -150,6 +153,8 @@ pnpm build       # 所有包：core、DSH host/client、ChatGPT server/app
 - [DSH agent 接口](packages/deepseek-harness/README_zh.md)：`mol_*` 工具、session projection、文档预览、截图回传。
 - [ChatGPT/Codex 适配](packages/chatgpt/README_zh.md)：MCP App、文件树结构预览、
   `mol_*` 工具、长轮询场景更新、截图会合、本地安装。
+- [OpenCode 适配](packages/opencode/README_zh.md)：侧栏 viewer、`mol_*` 工具、
+  RPC 场景更新、截图会合、本地安装。
 - [总体架构](docs/architecture_zh.md)（[English](docs/architecture.md)）：产品目标、分层、跨 harness 契约和高层流程；具体实现见各包文档。
 - [DSH 适配细节](packages/deepseek-harness/docs/DETAIL.md)：工具行为、选择器示例、限制。
 

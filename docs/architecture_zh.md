@@ -49,7 +49,7 @@ R1–R5 是验收基线；任何一个 harness 适配器都必须满足，而不
 以下是所有带文档预览面的适配器都必须满足的验收要求；适配器特有 API 和限制留在各自 README。
 
 - **侧边栏可视化**：通过 harness 文件预览打开的受支持分子文件，在宿主右侧边栏用官方 Mol* UI 渲染，不另开窗口，也不做自定义 app shell；agent 主动打开时该页面自动显示。
-- **tab 页面级状态**：一个预览 tab 就是一个独立 viewer 实例和一个独立 scene。其 tab 页面 id（DSH 中为绝对路径）拥有自己的命令、pending capture、相机、表示、measurement 和控制面板状态。切换 tab 只 reattach/保留 viewer，不得重新读文件、把命令复制到别的 tab，或把截图投递给别的 tab。只有宿主主题等全局服务共享；适配器可以限制保留的 viewer 数（DSH：LRU 2），淘汰时不得影响活动 tab。
+- **tab 页面级状态**：一个预览 tab 就是一个独立 viewer 实例和一个独立 scene。其 tab 页面 id（DSH 中为绝对路径）拥有自己的命令、pending capture、相机、表示、measurement 和控制面板状态。切换 tab 只 reattach/保留 viewer，不得重新读文件、重新挂载 viewer、把命令复制到别的 tab，或把截图投递给别的 tab。只有宿主主题等全局服务共享；适配器可以限制保留的 viewer 数（DSH：LRU 2），淘汰时不得影响活动 tab。
 - **人工打开与预览模式**：受支持的分子文件默认结构预览；宿主原有 **Open with** 可把该 tab 切到纯文本/代码（BCIF 等纯二进制格式没有文本回退），切回结构预览时不能丢失该 tab 的 viewer 状态。人打开的文件不能被不同路径的 agent tab 悄悄替换。
 - **agent 打开**：`mol_open` 按结构路径创建或更新 tab 页面，设为活动 agent tab，并返回 tab 页面 id；页面无需人点击即打开。样式/选择/聚焦/测量/截图工具接受该 id，缺省使用活动 agent tab；操作一个 tab 不得改变另一个 tab，截图会激活目标 tab。
 - **人机共存**：人工打开和 agent 打开共用同一个预览 body 和 scene 模型。重新打开同一路径更新该 tab（新的 scene key）；打开不同路径创建独立 tab。agent 操作始终是 `mol_*` 工具调用，不是页面级代码注入。
@@ -85,6 +85,7 @@ flowchart TB
 | core | 官方 Mol* UI viewer、命令/选择器语义、字节摘要、PNG capture | 路径、后缀、IO、session、harness UI | [core README](../packages/core/README_zh.md)、[core AGENTS](../packages/core/AGENTS.md) |
 | harness adapter | 格式识别、读字节、预览挂载、agent 工具、状态投影、截图回传、宿主 UI 生命周期 | Mol* 内部实现、core 协议语义 | [DSH README](../packages/deepseek-harness/README_zh.md)、[DETAIL](../packages/deepseek-harness/docs/DETAIL.md)、[DSH AGENTS](../packages/deepseek-harness/AGENTS.md) |
 | ChatGPT/Codex 适配 | MCP 工具 + MCP App UI 下的同一套语义 | 另起一套分子行为 | [ChatGPT README](../packages/chatgpt/README_zh.md)、[AGENTS](../packages/chatgpt/AGENTS.md) |
+| OpenCode 适配 | `mol_*` 工具 + 侧栏 Mol* GUI 下的同一套语义 | 另起一套分子行为 | [OpenCode README](../packages/opencode/README_zh.md)、[AGENTS](../packages/opencode/AGENTS.md) |
 
 **稳定边界**：core 的输入永远是 `bytes + 显式 format`；适配器负责把「路径」或「raw data」变成这个输入。适配器可以不同，分子语义不能分叉。
 
@@ -189,5 +190,9 @@ App；两者共享长轮询场景与 claim/deliver 截图会合。每个 `mcp-ex
 - **ChatGPT/Codex 适配**：MCP App viewer、`mol_*` 工具、长轮询场景更新、
   截图会合、本地 marketplace 安装，以及文件树的 MCP extension file viewer
   均已实现；按扩展名授权与单活场景限制记录在包 README。
+- **OpenCode 适配**：侧栏 Mol* viewer、`mol_*` 工具、RPC 场景更新、截图会合、
+  选文件打开均已实现。需要 `@opencode/plugin` 2.2.0+（`./gui` 窗口 API，2.3.0
+  验证）。OpenCode 工具结果无内联图片，`mol_capture` 返回保存路径；文件树点击
+  不做拦截，请用 Ctrl+P 文件检索（即 `/open`）打开（见包 README）。
 
 下一步不是继续扩写本文，而是把新能力写进对应 package 的 README/AGENTS，并只在这里更新总体目标或分层的变化。

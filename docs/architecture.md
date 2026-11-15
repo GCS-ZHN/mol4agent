@@ -81,10 +81,10 @@ surface; adapter-specific APIs and limits stay in that adapter's README.
   scene. Its tab page id (for DSH: the absolute path) owns its commands, pending
   captures, camera, representations, measurements, and control-panel state.
   Switching tabs reattaches/preserves its viewer; it must not reload the file,
-  copy commands into another tab, or deliver a capture as another tab's. Only
-  host services such as the light/dark theme are shared. An adapter may cap
-  retained viewers (DSH: LRU 2) and must evict them without touching the active
-  tab.
+  remount the viewer, copy commands into another tab, or deliver a capture as
+  another tab's. Only host services such as the light/dark theme are shared. An
+  adapter may cap retained viewers (DSH: LRU 2) and must evict them without
+  touching the active tab.
 - **Human open and preview mode.** Structure preview is the default for a
   supported molecular file. The host's existing **Open with** affordance can
   switch that tab to plain text/code (binary-only formats such as BCIF have no
@@ -133,6 +133,7 @@ flowchart TB
 | core | Official Mol* UI viewer, command/selector semantics, byte summaries, PNG capture | Paths, suffixes, IO, sessions, harness UI | [core README](../packages/core/README.md), [core AGENTS](../packages/core/AGENTS.md) |
 | harness adapter | Format detection, byte reads, preview mounting, agent tools, state projection, screenshot delivery, host UI lifecycle | Mol* internals, core protocol semantics | [DSH README](../packages/deepseek-harness/README.md), [DETAIL](../packages/deepseek-harness/docs/DETAIL.md), [DSH AGENTS](../packages/deepseek-harness/AGENTS.md) |
 | ChatGPT/Codex adapter | The same semantics behind MCP tools and an MCP App UI | A second molecular behavior | [ChatGPT README](../packages/chatgpt/README.md), [AGENTS](../packages/chatgpt/AGENTS.md) |
+| OpenCode adapter | The same semantics behind `mol_*` tools and a side-panel Mol* GUI | A second molecular behavior | [OpenCode README](../packages/opencode/README.md), [AGENTS](../packages/opencode/AGENTS.md) |
 
 **Stable boundary**: core input is always `bytes + explicit format`. Adapters turn
 a path or raw data into that input. Adapters may differ; molecular semantics may
@@ -267,6 +268,12 @@ See the [ChatGPT README](../packages/chatgpt/README.md).
   updates, screenshot rendezvous, local marketplace install, and the MCP
   extension file viewer for the file tree are implemented. The per-extension
   permission and one-active-scene limits are in its README.
+- **OpenCode adapter**: side-panel Mol* viewer, `mol_*` tools, RPC scene
+  updates, screenshot rendezvous, and pick-file open are implemented. It needs
+  `@opencode/plugin` 2.2.0+ (the `./gui` window API; verified on 2.3.0). OpenCode
+  tool results have no inline image, so `mol_capture` returns the saved path; the
+  file-tree `.pdb` click is not intercepted, so open structures with Ctrl+P
+  (`/open`) or the pick-file command (see its README).
 
 The next step is not to grow this document further. Put new capabilities in the
 relevant package README/AGENTS, and update this document only when overall goals

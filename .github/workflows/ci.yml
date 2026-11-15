@@ -41,11 +41,13 @@ jobs:
           pnpm --filter @gcszhn/mol4agent-core typecheck
           pnpm --filter @gcszhn/mol4agent-deepseekharness typecheck
           pnpm --filter @gcszhn/mol4agent-chatgpt typecheck
+          pnpm --filter @gcszhn/mol4agent-opencode typecheck
 
       - name: Unit tests
         run: |
           pnpm --filter @gcszhn/mol4agent-core test
           pnpm --filter @gcszhn/mol4agent-deepseekharness test
+          pnpm --filter @gcszhn/mol4agent-opencode test
 
       - name: Build ChatGPT adapter
         run: pnpm --filter @gcszhn/mol4agent-chatgpt build
@@ -55,3 +57,6 @@ jobs:
 
       - name: Build DSH adapter
         run: pnpm --filter @gcszhn/mol4agent-deepseekharness build
+
+      - name: Build OpenCode adapter
+        run: pnpm --filter @gcszhn/mol4agent-opencode build

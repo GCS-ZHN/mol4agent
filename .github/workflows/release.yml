@@ -40,17 +40,20 @@ jobs:
           pnpm --filter @gcszhn/mol4agent-core typecheck
           pnpm --filter @gcszhn/mol4agent-deepseekharness typecheck
           pnpm --filter @gcszhn/mol4agent-chatgpt typecheck
+          pnpm --filter @gcszhn/mol4agent-opencode typecheck
           pnpm --filter @gcszhn/mol4agent-core test
           pnpm --filter @gcszhn/mol4agent-deepseekharness test
+          pnpm --filter @gcszhn/mol4agent-opencode test
           pnpm --filter @gcszhn/mol4agent-chatgpt build
           pnpm --filter @gcszhn/mol4agent-chatgpt test
           pnpm --filter @gcszhn/mol4agent-deepseekharness build
+          pnpm --filter @gcszhn/mol4agent-opencode build
 
       - name: Verify package versions match tag
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           test -n "$TAG" || { echo "tag must be vX.Y.Z"; exit 1; }
-          for pkg in packages/core packages/deepseek-harness packages/chatgpt; do
+          for pkg in packages/core packages/deepseek-harness packages/chatgpt packages/opencode; do
             VERSION="$(node -p "require('./$pkg/package.json').version")"
             if [ "$VERSION" != "$TAG" ]; then
               echo "$pkg version $VERSION != tag $GITHUB_REF_NAME"
@@ -87,6 +90,12 @@ jobs:
 
       - name: Publish DSH adapter
         working-directory: packages/deepseek-harness
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish OpenCode adapter
+        working-directory: packages/opencode
         run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
