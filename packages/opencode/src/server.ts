@@ -49,11 +49,11 @@ const CAPTURE_TIMEOUT_MS = readPositiveInt('MOL4AGENT_CAPTURE_TIMEOUT_MS', 45_00
  * `globalThis` only makes the container shared across locations in this
  * process, which is the scope the RPC event broadcast reaches.
  *
- * The key carries a schema version: hot-reloading a changed store shape must use
- * a new key, otherwise `??=` keeps the stale instance from the previous build.
+ * The key is stable and carries no schema version: the package is unreleased.
+ * A dev hot reload that changes the store shape can keep the previous instance
+ * (`??=`), so restart the server after such a change.
  */
-const STORE_SCHEMA = 'v3'
-const globalKey = `__mol4agent_opencode_${STORE_SCHEMA}__`
+const globalKey = '__mol4agent_opencode_state__'
 const g = globalThis as unknown as Record<string, unknown>
 const store = (g[`${globalKey}store`] ??= new SceneStore()) as SceneStore
 const captures = (g[`${globalKey}captures`] ??= new CaptureHub()) as CaptureHub

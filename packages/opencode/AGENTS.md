@@ -36,8 +36,7 @@ the desktop app's location, so the scene store must be a single process-wide
 instance. Pin it on `globalThis`:
 
 ```ts
-const STORE_SCHEMA = 'v2'
-const globalKey = `__mol4agent_opencode_${STORE_SCHEMA}__`
+const globalKey = '__mol4agent_opencode_state__'
 const g = globalThis as unknown as Record<string, unknown>
 const store = (g[`${globalKey}store`] ??= new SceneStore()) as SceneStore
 const captures = (g[`${globalKey}captures`] ??= new CaptureHub()) as CaptureHub
@@ -45,9 +44,9 @@ const captures = (g[`${globalKey}captures`] ??= new CaptureHub()) as CaptureHub
 
 Do not move `store`/`captures` back into `setup` or onto a module-level `const`;
 both are per-location. `globalThis` is per-process, which is the scope the RPC
-event broadcast reaches. Bump `STORE_SCHEMA` whenever the store's shape changes:
-hot-reloading with `??=` otherwise keeps the stale instance from the previous
-build (`store.snapshot is not a function`).
+event broadcast reaches. The key is stable and carries no schema version while
+the package is unreleased; a dev hot reload that changes the store shape can
+keep the old instance (`??=`), so restart the server after such a change.
 
 ### Session buckets and tab targeting
 

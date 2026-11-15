@@ -23,6 +23,7 @@ import { createStore, reconcile } from 'solid-js/store'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
 import { bytesToBase64 } from '../base64.ts'
 import { Mol4Agent } from '../rpc.ts'
+import { captureDecision, mergeScenes, routeSceneEvent, selectScene } from './routing.ts'
 import { StructureGroup, StructurePool } from './structure-group.ts'
 import { type FetchedScene, type SceneInfo } from './viewer.tsx'
 
@@ -83,7 +84,7 @@ export default Plugin.define({
 
     /** Viewers outlive a panel render (session switch) and die with their tab/session. */
     const pool = new StructurePool({
-      scene: (sessionID: string, path: string) => scenes[sessionID]?.[path],
+      scene: (sessionID: string, path: string) => selectScene(scenes, sessionID, path),
       fetchScene: async (sceneId: string, sessionID: string) =>
         (await rpc.fetchScene({ sceneId, sessionID })) as unknown as FetchedScene,
       theme: () => ctx.appearance.mode(),
@@ -127,12 +128,10 @@ export default Plugin.define({
       try {
         const list = (await rpc.listScenes({ sessionID })) as unknown as SceneList
         if (disposed || token !== refreshToken) return
-        const next: Record<string, SceneInfo> = {}
-        for (const scene of list.scenes) next[scene.path] = scene
         // `reconcile` removes paths the session no longer has; a plain
         // set would leave stale keys behind. Keep other sessions' maps so a
         // switch back does not rebuild their viewers.
-        setScenes(sessionID, reconcile(next))
+        setScenes(sessionID, reconcile(mergeScenes(list.scenes)))
         setActive(sessionID, list.active)
       } catch (reason) {
         if (token === refreshToken) console.warn('[mol4agent] could not list scenes', reason)
@@ -172,7 +171,11 @@ export default Plugin.define({
       openTab(session, capture.path, false)
       const viewer = await waitForViewer(capture.sceneId, 15_000)
       if (disposed) return
-      if (viewer === undefined) {
+      // A session switch during the wait must leave the capture pending for the
+      // next claim, not fail it. Only fail when the session still matches.
+      const decision = captureDecision(capture.sessionID, currentSessionID(), viewer !== undefined)
+      if (decision === 'leave-pending') return
+      if (decision === 'fail') {
         await rpc.failCapture({
           captureId: capture.captureId,
           message:
@@ -180,7 +183,7 @@ export default Plugin.define({
         })
         return
       }
-      if (capture.sessionID !== currentSessionID()) return
+      if (viewer === undefined) return
       const since = registeredAt.get(capture.sceneId)
       const settle = since === undefined ? 0 : FIRST_FRAME_SETTLE_MS - (Date.now() - since)
       if (settle > 0) await new Promise(resolve => setTimeout(resolve, settle))
@@ -238,19 +241,25 @@ export default Plugin.define({
 
     const offScene = rpc.events.on('scene', (event) => {
       const data = (event as unknown as { data: SceneEvent }).data
-      const sessionID = data?.sessionID ?? currentSessionID()
-      if (sessionID !== currentSessionID()) {
+      const route = routeSceneEvent(currentSessionID(), data)
+      if (route.action === 'ignore') return
+      if (route.action === 'queue') {
         // The agent opened a structure while another session is routed; open it
         // when the user switches there instead of dropping the event.
-        if (data?.open === true && data.path !== undefined) pendingOpen.set(sessionID, data.path)
+        pendingOpen.set(route.sessionID, route.path)
         return
       }
       const session = ctx.sessions.current()
-      void refresh(sessionID).then(() => {
-        if (disposed || sessionID !== currentSessionID()) return
+      void refresh(route.sessionID).then(() => {
+        if (disposed) return
+        if (route.sessionID !== currentSessionID()) {
+          // Routed away while refreshing: keep the open for the next visit.
+          if (route.path !== undefined) pendingOpen.set(route.sessionID, route.path)
+          return
+        }
         // Always reopen on `open` (also when the active path is unchanged, e.g.
         // the user closed the tab and `mol_open` reopened the same file).
-        if (data?.open === true && data.path !== undefined) openTab(session, data.path, true)
+        if (route.path !== undefined) openTab(session, route.path, true)
       })
     })
     const offCapture = rpc.events.on('capture', (event) => {
@@ -334,7 +343,20 @@ export default Plugin.define({
         const resolved = isPath(href) ? href : (linkedPaths.get(basenameOf(href)) ?? href)
         const session = link.session ?? ctx.sessions.current()
         const sessionID = link.session?.id ?? currentSessionID()
-        const directory = link.session?.location?.directory ?? ctx.sessions.current()?.directory
+        // Only use the link's own workspace. Falling back to the routed
+        // session's directory would resolve another session's relative path in
+        // the wrong workspace.
+        const directory = link.session === undefined
+          ? ctx.sessions.current()?.directory
+          : link.session.location?.directory
+        if (link.session !== undefined && directory === undefined) {
+          ctx.toast.show({
+            variant: 'error',
+            title: 'Could not open structure',
+            description: 'The session workspace is not available yet; try again in a moment.',
+          })
+          return
+        }
         const baseDirectory = link.base === undefined
           ? directory
           : isAbsolutePath(link.base)
