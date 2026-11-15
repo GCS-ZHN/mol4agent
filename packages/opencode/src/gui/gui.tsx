@@ -1,7 +1,7 @@
 /**
  * OpenCode 2 GUI part for mol4agent: a side panel with one Mol* viewer tab per
  * open structure, the launcher, a pick-file command, and a `LinkHandler`
- * (Ctrl+P file search).
+ * (Ctrl+P file search, the `/open` command).
  *
  * There is deliberately no `/mol_open` slash command: its name collides with
  * the agent tool `mol_open`, and Ctrl+P plus the pick-file command cover the
@@ -173,7 +173,8 @@ export default Plugin.define({
     })
 
     // Intercept clicks on a molecular file/link and open it in the Mol* panel.
-    // Ctrl+P file search goes through this; the built-in file tree does not.
+    // Ctrl+P file search (the `/open` command) goes through this; the built-in
+    // file tree does not.
     // `match` sees the absolute path but `open` may get only the basename, so
     // cache the full path from `match` and reuse it in `open`.
     const MOLECULAR_HREF = /\.(pdb|ent|pdbqt|pqr|cif|mmcif|mcif|bcif|mol|sdf|sd|mol2|xyz|gro)(\.gz)?$/iu

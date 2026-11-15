@@ -272,7 +272,8 @@ See the [ChatGPT README](../packages/chatgpt/README.md).
   updates, screenshot rendezvous, and pick-file open are implemented. It needs
   `@opencode/plugin` 2.2.0+ (the `./gui` window API; verified on 2.3.0). OpenCode
   tool results have no inline image, so `mol_capture` returns the saved path; the
-  file-tree `.pdb` click is not yet intercepted (see its README).
+  file-tree `.pdb` click is not intercepted, so open structures with Ctrl+P
+  (`/open`) or the pick-file command (see its README).
 
 The next step is not to grow this document further. Put new capabilities in the
 relevant package README/AGENTS, and update this document only when overall goals

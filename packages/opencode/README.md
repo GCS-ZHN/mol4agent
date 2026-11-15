@@ -3,9 +3,9 @@
 OpenCode 2 adapter for [mol4agent](../../README.md): an in-harness Mol* 3D viewer
 side panel that the agent operates with `mol_*` tools.
 
-- **In-harness preview**: `mol_open` (agent), **Ctrl+P file search** (LinkHandler),
-  and the "Open molecular structure" pick-file command (human) render a structure
-  in the side panel's official Mol* UI — no external app.
+- **In-harness preview**: `mol_open` (agent), **Ctrl+P file search** (`/open`)
+  via LinkHandler, and the "Open molecular structure" pick-file command (human)
+  render a structure in the side panel's official Mol* UI — no external app.
 - **Agent-operated page**: `mol_style`, `mol_select`, `mol_focus`, `mol_measure`
   mutate the open page; `mol_info` and `mol_interface` summarize files without a
   viewer.
@@ -24,11 +24,12 @@ side panel that the agent operates with `mol_*` tools.
 
 - **Agent**: `mol_open` (run `mol_info` first to pick chains/residues).
 - **Human**:
-  - **Ctrl+P file search** → type the file name → select the `.pdb`/`.cif`/... entry. It opens in the Mol* panel via the `LinkHandler`.
+  - **Ctrl+P file search** (the `/open` command) → type the file name → select the `.pdb`/`.cif`/... entry. It opens in the Mol* panel via the `LinkHandler`.
   - **Open molecular structure** command (system file picker).
 - **No `/mol_open` slash command**: its name would collide with the agent tool
-  `mol_open`; Ctrl+P and the pick-file command cover the human paths.
-- **Not the built-in file tree**: clicking a `.pdb` in the file tree opens the plain-text editor. OpenCode does not route file-tree clicks to plugins (a `FileViewer` registered for the `"text"` kind is ignored), so use **Ctrl+P** instead of clicking the tree.
+  `mol_open`; Ctrl+P (that is, `/open`) and the pick-file command cover the
+  human paths.
+- **Not the built-in file tree**: clicking a `.pdb` in the file tree opens the plain-text editor. OpenCode does not route file-tree clicks to plugins (a `FileViewer` registered for the `"text"` kind is ignored), so use **Ctrl+P** (`/open`) instead of clicking the tree.
 
 ## Architecture
 
@@ -39,8 +40,8 @@ The package is an OpenCode plugin with three parts:
   stores the scene log.
 - **GUI** (`exports["./gui-experimental"]`, `src/gui/`): a side `Panel` with one
   Mol* viewer tab per open structure, the launcher, the pick-file command, and a
-  `LinkHandler` (Ctrl+P file search and `.pdb` links open the structure). It
-  follows scenes through RPC and renders/delivers screenshots.
+  `LinkHandler` (Ctrl+P file search, i.e. `/open`, and `.pdb` links open the
+  structure). It follows scenes through RPC and renders/delivers screenshots.
 - **RPC** (`exports["./rpc"]`, `src/rpc.ts`): the typed `mol4agent` contract.
 
 Core receives only `{ data, format, label }` plus JSON commands; paths, suffix
@@ -127,9 +128,9 @@ pnpm --filter @gcszhn/mol4agent-opencode build
   returns the saved path (and a `file` reference) rather than attaching the PNG
   to the model context.
 - The built-in file tree cannot open a structure: clicking a `.pdb` there opens
-  the text editor. Use **Ctrl+P file search** or the pick-file command instead.
-  A `FileViewer` for the `"text"` kind is ignored by the host (it only renders
-  kinds the file view does not render itself).
+  the text editor. Use **Ctrl+P file search** (`/open`) or the pick-file command
+  instead. A `FileViewer` for the `"text"` kind is ignored by the host (it only
+  renders kinds the file view does not render itself).
 - Scene tools target the routed session's last `mol_open` unless you pass `tab`
   (the path `mol_open` returned). Scenes are bucket-per-session; the panel shows
   the routed session's scenes.
