@@ -65,7 +65,7 @@ away.
 | Tool | Parameters | Behavior |
 |---|---|---|
 | `mol_info` | `path` | Summarize chains, residues, atoms, ligands. Does not open a viewer or change the scene. |
-| `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å) in PDB-like files. Returns ranges for `mol_style`/`mol_focus`. |
+| `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å, 0 < cutoff ≤ 30) in PDB-like files. Returns ranges for `mol_style`/`mol_focus`. |
 | `mol_open` | `path`, `type?`, `color?`, `select?`, `focus?` | Set a new active scene. Emits `represent` and optionally `select`/`focus`. Opens/reveals the preview via the bridge. |
 | `mol_style` | `type?`, `color?`, `target?`, `colorParams?` | Append `represent`. Without `target` it replaces the scene representation; with `target` it adds a representation to that selection only. `colorParams` carries e.g. `{"value": 16711680}` for uniform red. |
 | `mol_select` | `target`, `mode?`, `focus?` | Append `select`. `mode` is `select` or `highlight`. |
@@ -184,7 +184,9 @@ interface MolSessionState {
 - `tool/call` for a scene-changing `mol_*` tool (open/style/select/focus/measure)
   is folded into `scene` and bumps `revision`; `mol_capture` adds a pending entry
   and bumps `revision` when a scene exists. Read-only tools (`mol_info`,
-  `mol_interface`) and invalid/absent-scene calls leave state unchanged.
+  `mol_interface`) and invalid selector/format arguments leave state unchanged.
+  A file that fails to read can still switch the scene before the Host tool
+  reports the error.
 - `tool/result` clears a matching pending capture and bumps `revision`; other
   results leave state unchanged.
 - Relative paths are resolved against `cwd` captured when the projection is
@@ -331,8 +333,9 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
 - BCIF can be rendered but `mol_info` cannot summarize it from raw bytes yet.
 - Files are capped at 64 MiB.
 - WebGL 2 is required for the 3D canvas.
-- `mol_capture` requires the structure preview to be open; it times out after
-  20 s and leaves an internal `mol4agent_capture` command row.
+- `mol_capture` requires the structure preview to be open and times out after
+  20 s. A timeout produces no command row; a successful delivery leaves one
+  internal `mol4agent_capture` command row.
 - `mol_style` without `target` changes the global representation; with `target`
   it adds a selection component. Labels are not exposed as a tool yet.
 - `mol_interface` currently parses PDB-like ATOM records (`pdb`/`pdbqt`/`pqr`)

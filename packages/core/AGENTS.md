@@ -29,9 +29,9 @@ keep its protocol consistent for every adapter.
   toggles the whole set. Do not turn it on by default to "fix" one panel.
 - Inject the theme stylesheet and subscribe to runtime theme changes; swap the
   CSS and canvas background via `setTheme`. Do not bake the initial theme in.
-- `load()` must clear the previous structures/trajectories before adding the new
-  one. Otherwise components and selection representations accumulate across
-  reloads and the canvas mixes old and new styles.
+- `load()` must clear the previous structures/trajectories **and the root
+  measurement group** before adding the new one. Otherwise components,
+  selection representations, and measurement labels accumulate across reloads.
 
 ## Representations
 
