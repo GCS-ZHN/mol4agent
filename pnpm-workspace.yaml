@@ -1,6 +1,5 @@
 packages:
   - packages/*
-onlyBuiltDependencies:
-  - esbuild
-ignoredBuiltDependencies:
-  - "@scarf/scarf"
+allowBuilds:
+  esbuild: true
+  "@scarf/scarf": false
