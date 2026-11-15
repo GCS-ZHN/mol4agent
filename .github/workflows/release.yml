@@ -35,11 +35,14 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck and build
+      - name: Build and test
         run: |
-          pnpm typecheck
-          pnpm build
-          pnpm test
+          pnpm --filter @gcszhn/mol4agent-core build
+          pnpm --filter @gcszhn/mol4agent-core typecheck
+          pnpm --filter @gcszhn/mol4agent-deepseekharness typecheck
+          pnpm --filter @gcszhn/mol4agent-core test
+          pnpm --filter @gcszhn/mol4agent-deepseekharness test
+          pnpm --filter @gcszhn/mol4agent-deepseekharness build
 
       - name: Verify package versions match tag
         run: |

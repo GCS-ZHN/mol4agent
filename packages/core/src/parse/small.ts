@@ -22,7 +22,11 @@ export function summarizeGro(text: string, format: MolFormat, label?: string): S
   const title = (lines[0] ?? '').trim()
   const builder = new SummaryBuilder()
   builder.setTitle(title)
-  const body = lines.slice(1, Math.max(1, lines.length - 1))
+  // GRO line 2 is the declared atom count; only the final line is the box.
+  const declared = Number.parseInt((lines[1] ?? '').trim(), 10)
+  const body = Number.isFinite(declared) && declared >= 0
+    ? lines.slice(2, Math.max(2, lines.length - 1))
+    : lines.slice(1, Math.max(1, lines.length - 1))
   for (const line of body) {
     const seqId = line.slice(0, 5).trim() || '?'
     const compId = line.slice(5, 10).trim() || 'UNK'

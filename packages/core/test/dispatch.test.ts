@@ -14,7 +14,7 @@ test('summarizeStructure dispatches every supported text format', () => {
     ['sdf', 'sdf\n  1  0  0  0  0  0            999 V2000\n$$$$\n'],
     ['mol2', '@<TRIPOS>MOLECULE\nx\n@<TRIPOS>ATOM\n1 C1 0 0 0 C.ar 1 LIG 0\n'],
     ['xyz', '1\nx\nC 0 0 0\n'],
-    ['gro', 'x\n    1ALA     1   0.000   0.000   0.000\n   1.000   1.000   1.000\n'],
+    ['gro', 'x\n    1\n    1ALA     1   0.000   0.000   0.000\n   1.000   1.000   1.000\n'],
   ]
   for (const [format, text] of cases) {
     const summary = summarizeStructure({ data: text, format: format as never, label: `x.${format}` })

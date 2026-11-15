@@ -112,6 +112,7 @@ test('XYZ reads the declared count and comment', () => {
 test('GRO uses fixed residue columns and drops the box line', () => {
   const text = [
     'GRO test',
+    '    2',
     '    1ALA     1   0.000   0.000   0.000',
     '    2GLY     2   1.000   0.000   0.000',
     '   1.000   1.000   1.000',

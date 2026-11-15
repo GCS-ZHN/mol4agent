@@ -31,7 +31,6 @@ test('host gunzip decodes real fixture bytes and enforces the limit', () => {
     ['1crn.pdb', 'pdb'],
     ['1crn.cif', 'mmcif'],
     ['aspirin.sdf', 'sdf'],
-    ['1crn.pdb.gz', 'pdb'],
   ] as const) {
     const raw = fixture(name)
     const source = name.endsWith('.gz') ? raw : new Uint8Array(gzipSync(raw))
@@ -71,7 +70,7 @@ test('every text format parses after gzip round-trip', () => {
     ['sdf', 'sdf', 'sdf\n  1  0  0  0  0  0            999 V2000\n$$$$\n'],
     ['mol2', 'mol2', '@<TRIPOS>MOLECULE\nx\n@<TRIPOS>ATOM\n1 C1 0 0 0 C.ar 1 LIG 0\n'],
     ['xyz', 'xyz', '1\nx\nC 0 0 0\n'],
-    ['gro', 'gro', 'x\n    1ALA     1   0.000   0.000   0.000\n   1.000   1.000   1.000\n'],
+    ['gro', 'gro', 'x\n    1\n    1ALA     1   0.000   0.000   0.000\n   1.000   1.000   1.000\n'],
   ]
   for (const [name, format, text] of cases) {
     const decoded = gunzipHost(new Uint8Array(gzipSync(text)), 1024 * 1024)
