@@ -46,6 +46,8 @@ const SELECTOR_HELP =
   + '{"kind":"chain","chain":"A"}, {"kind":"residues","chain":"A","start":10,"end":25}, '
   + '{"kind":"residue","chain":"A","index":42}, {"kind":"comp","compId":"ATP"}'
 
+const MEASUREMENT_KINDS = new Set(['chain', 'residue', 'residues', 'comp', 'schema'])
+
 const selectorSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('all') }),
   z.object({ kind: z.literal('polymer') }),
@@ -192,6 +194,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       + 'path environment variables. Use it when a relative structure path unexpectedly fails.',
     inputSchema: {},
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _meta: { ui: { visibility: ['app'] } },
   }, async (_args, extra) => {
     const info = await inspectWorkspace(server, extra.signal)
     const env = [
@@ -362,8 +365,9 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
 
   server.registerTool('mol_measure', {
     title: 'Measure a distance, angle, or dihedral',
-    description: 'Add a distance (2 targets), angle (3 targets), or dihedral (4 targets) measurement '
-      + 'between selections in the active viewer. Use residue/chain/comp selectors, not raw coordinates.',
+    description: 'Add a distance (exactly 2 targets), angle (exactly 3 targets), or dihedral '
+      + '(exactly 4 targets) measurement between atomic selections in the active viewer. Use '
+      + 'chain/residue/residues/comp/schema selectors, not semantic categories or raw coordinates.',
     inputSchema: {
       kind: z.enum(['distance', 'angle', 'dihedral']),
       targets: z.array(selectorSchema).min(2).max(4)
@@ -377,6 +381,13 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       throw new Error(`${args.kind} needs exactly ${needed} targets; got ${args.targets.length}`)
     }
     const targets = args.targets.map(target => normalizeSelector(target))
+    for (const target of targets) {
+      if (!MEASUREMENT_KINDS.has(target.kind)) {
+        throw new Error(
+          `measure targets must be chain/residue/residues/comp/schema selectors; received ${target.kind}`,
+        )
+      }
+    }
     validateTargets(store, targets)
     const next = store.push({
       op: 'measure',
@@ -399,6 +410,10 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       transparent: z.boolean().optional().describe('Render with a transparent background.'),
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    _meta: {
+      ui: { resourceUri: VIEWER_URI },
+      'openai/outputTemplate': VIEWER_URI,
+    },
   }, async (args, extra) => {
     const scene = requireScene(store, 'capture')
     const width = args.width ?? options.captureWidth

@@ -20,7 +20,7 @@ interface PollResult {
 }
 
 const app = new App(
-  { name: 'mol4agent', version: '0.1.4' },
+  { name: 'mol4agent', version: '0.1.6' },
   { availableDisplayModes: ['inline', 'fullscreen'] },
   { autoResize: true },
 )
@@ -313,7 +313,6 @@ async function ensureViewer(): Promise<MolViewer> {
   viewer = await createMolViewer({
     container: viewerHost,
     theme,
-    onError: reason => console.error('[mol4agent]', reason),
   })
   return viewer
 }

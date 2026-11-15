@@ -14,7 +14,7 @@ import { CaptureHub } from './capture.ts'
 import { SceneStore } from './scene.ts'
 import { registerMolTools } from './tools.ts'
 
-export const VERSION = '0.1.4'
+export const VERSION = '0.1.6'
 
 const INSTRUCTIONS = `mol4agent provides an interactive 3D molecular viewer.
 

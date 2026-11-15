@@ -167,9 +167,9 @@ portable.
 - **One active scene per server process**: `mol_open` replaces the scene. Older
   scene bytes stay available for a few remounts, but commands target the
   current scene.
-- **Capture needs the app mounted**: if the conversation card has been removed
-  or the host blocks app→tool calls, `mol_capture` times out with an actionable
-  error. The PNG is still available from a previous successful capture.
+- **Capture needs a viewer**: after a long tool sequence the original card can
+  unmount. Retry `mol_capture` once; its UI resource mounts a fresh viewer and
+  the retry renders. If the host blocks app→tool calls, the tool times out.
 - **App→tool capability**: live updates and capture require the host to allow
   `serverTools`; the README notes this fallback for restricted hosts.
 - BCIF renders but `mol_info` cannot summarize it from raw bytes yet.

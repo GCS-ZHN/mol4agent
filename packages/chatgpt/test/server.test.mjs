@@ -176,6 +176,16 @@ test('rejects selectors that cannot match the structure', async t => {
   assert.equal(badResidueChain.isError, true)
   assert.match(badResidueChain.content[0].text, /chain "Z" does not exist/)
 
+  const badMeasure = await client.callTool({
+    name: 'mol_measure',
+    arguments: {
+      kind: 'distance',
+      targets: [{ kind: 'ligand' }, { kind: 'ligand' }],
+    },
+  })
+  assert.equal(badMeasure.isError, true)
+  assert.match(badMeasure.content[0].text, /must be chain\/residue\/residues\/comp\/schema/)
+
   const badRange = await client.callTool({
     name: 'mol_select',
     arguments: { target: { kind: 'residues', chain: 'A', start: 900, end: 910 } },
