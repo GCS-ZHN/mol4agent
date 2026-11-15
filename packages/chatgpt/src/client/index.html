@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-display="inline">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>mol4agent</title>
+    <style>
+      :root {
+        --mol-bg: #0f1216;
+        --mol-bar: #161b21;
+        --mol-fg: #e8eef5;
+        --mol-muted: #95a3b4;
+        --mol-border: #28313b;
+        --mol-accent: #7fd4ff;
+        --mol-danger: #ff8f9a;
+        color-scheme: dark;
+      }
+      html[data-theme="light"] {
+        --mol-bg: #ffffff;
+        --mol-bar: #f4f6f8;
+        --mol-fg: #17202a;
+        --mol-muted: #5d6b7a;
+        --mol-border: #d9e0e7;
+        --mol-accent: #0a6fa8;
+        --mol-danger: #b4232f;
+        color-scheme: light;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: var(--mol-bg);
+        color: var(--mol-fg);
+        font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        overflow: hidden;
+      }
+      #app {
+        display: flex;
+        flex-direction: column;
+        height: var(--mol-viewer-height, 620px);
+        min-height: 360px;
+        background: var(--mol-bg);
+      }
+      html[data-display="fullscreen"] #app,
+      html[data-display="pip"] #app {
+        height: 100vh;
+      }
+      #bar {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 38px;
+        padding: 0 11px;
+        border-bottom: 1px solid var(--mol-border);
+        background: var(--mol-bar);
+        flex: none;
+        user-select: none;
+      }
+      #mark {
+        width: 18px;
+        height: 18px;
+        flex: none;
+      }
+      #label {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 45%;
+      }
+      #meta {
+        color: var(--mol-muted);
+        font-size: 11px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #spacer { flex: 1; }
+      #expand {
+        border: 1px solid var(--mol-border);
+        background: transparent;
+        color: var(--mol-fg);
+        border-radius: 6px;
+        height: 25px;
+        padding: 0 9px;
+        font: inherit;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      #expand:hover { border-color: var(--mol-accent); color: var(--mol-accent); }
+      #expand[hidden] { display: none; }
+      #stage {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+      }
+      #viewer {
+        position: absolute;
+        inset: 0;
+      }
+      #overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: var(--mol-bg);
+        text-align: center;
+        transition: opacity 160ms ease;
+      }
+      #overlay[hidden] { display: none; }
+      #status {
+        max-width: 560px;
+        color: var(--mol-muted);
+        white-space: pre-wrap;
+      }
+      #status strong {
+        display: block;
+        color: var(--mol-fg);
+        font-size: 14px;
+        margin-bottom: 6px;
+      }
+      #status.error { color: var(--mol-danger); }
+      #toast {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        padding: 7px 11px;
+        border-radius: 7px;
+        border: 1px solid var(--mol-border);
+        background: var(--mol-bar);
+        color: var(--mol-fg);
+        box-shadow: 0 6px 24px rgb(0 0 0 / 22%);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 160ms ease;
+      }
+      #toast.show { opacity: 1; }
+      .spinner {
+        width: 20px;
+        height: 20px;
+        margin: 0 auto 10px;
+        border: 2px solid var(--mol-border);
+        border-top-color: var(--mol-accent);
+        border-radius: 50%;
+        animation: spin 900ms linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        .spinner { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="bar">
+        <svg id="mark" viewBox="0 0 24 24" aria-hidden="true">
+          <g fill="none" stroke="var(--mol-accent)" stroke-width="1.5" stroke-linecap="round">
+            <path d="M6 6 L12 11 L18 6"/>
+            <path d="M12 11 L12 18"/>
+            <path d="M6 6 L6 14 L12 18 L18 14 L18 6"/>
+          </g>
+        </svg>
+        <span id="label">mol4agent</span>
+        <span id="meta">waiting for a structure</span>
+        <span id="spacer"></span>
+        <button id="expand" type="button" hidden>Expand</button>
+      </div>
+      <div id="stage">
+        <div id="viewer"></div>
+        <div id="overlay">
+          <div id="status"><div class="spinner"></div><strong>Waiting for a structure</strong>Use mol_open to load a PDB, mmCIF, SDF, MOL2, XYZ, or GRO file.</div>
+        </div>
+        <div id="toast"></div>
+      </div>
+    </div>
+    <script>
+      /*__MOL4AGENT_JS__*/
+    </script>
+  </body>
+</html>

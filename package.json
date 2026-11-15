@@ -11,6 +11,7 @@
     "typecheck": "pnpm --filter @gcszhn/mol4agent-core build && pnpm -r typecheck",
     "build": "pnpm -r build",
     "build:dsh": "pnpm --filter @gcszhn/mol4agent-core build && pnpm --filter @gcszhn/mol4agent-deepseekharness build",
+    "build:chatgpt": "pnpm --filter @gcszhn/mol4agent-core build && pnpm --filter @gcszhn/mol4agent-chatgpt build",
     "build:core": "pnpm --filter @gcszhn/mol4agent-core build"
   },
   "repository": {

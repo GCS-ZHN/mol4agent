@@ -38,7 +38,7 @@ R1–R5 是验收基线；任何一个 harness 适配器都必须满足，而不
 1. **结构预览是一等公民**：在 harness 预览器里打开受支持的分子文件，默认进入 Mol* 官方 3D UI；宿主原有的「打开方式」仍可切回纯文本/代码。
 2. **agent 操作人看到的同一页面**：打开、改表示/配色、选择/高亮、聚焦、测量、截图都走适配器的 agent 工具；人在旁边看页面变化，不以页面级代码注入作为 agent 接口。
 3. **agent 主动打开**：agent 指定结构后，预览自动显示/打开，不需要人再点一次。
-4. **harness 一致性**：所有适配器共享同一套 `MolFormat`、选择器、命令、选择集着色和 capture 语义。DSH 与未来的 ChatGPT/Codex 适配器只在传输、鉴权、预览接口上不同；适配器特有行为必须写进该适配器的 README/AGENTS，不得泄漏进 core。
+4. **harness 一致性**：所有适配器共享同一套 `MolFormat`、选择器、命令、选择集着色和 capture 语义。DSH 与 ChatGPT/Codex 适配器只在传输、鉴权、预览接口上不同；适配器特有行为必须写进该适配器的 README/AGENTS，不得泄漏进 core。
 5. **可预期的 UX**：使用 Mol* 官方 UI/controls；跟随宿主 light/dark；官方控制面板组默认关闭；切换文档 tab 保留 viewer 状态；截图通过工具结果返回 PNG，或明确给出保存路径。
 6. **可靠边界**：core 只接收 bytes + 显式 format；路径、后缀识别、鉴权、IO、session、UI 属于适配器。错误要结构化、模型可行动；不要把整份结构文件当纯文本输出。
 
@@ -84,7 +84,7 @@ flowchart TB
 |---|---|---|---|
 | core | 官方 Mol* UI viewer、命令/选择器语义、字节摘要、PNG capture | 路径、后缀、IO、session、harness UI | [core README](../packages/core/README_zh.md)、[core AGENTS](../packages/core/AGENTS.md) |
 | harness adapter | 格式识别、读字节、预览挂载、agent 工具、状态投影、截图回传、宿主 UI 生命周期 | Mol* 内部实现、core 协议语义 | [DSH README](../packages/deepseek-harness/README_zh.md)、[DETAIL](../packages/deepseek-harness/docs/DETAIL.md)、[DSH AGENTS](../packages/deepseek-harness/AGENTS.md) |
-| 未来 ChatGPT/Codex | 其预览/传输接口下的同一套语义 | 另起一套分子行为 | 未来包文档 |
+| ChatGPT/Codex 适配 | MCP 工具 + MCP App UI 下的同一套语义 | 另起一套分子行为 | [ChatGPT README](../packages/chatgpt/README_zh.md)、[AGENTS](../packages/chatgpt/AGENTS.md) |
 
 **稳定边界**：core 的输入永远是 `bytes + 显式 format`；适配器负责把「路径」或「raw data」变成这个输入。适配器可以不同，分子语义不能分叉。
 
@@ -158,6 +158,11 @@ sequenceDiagram
 ```
 
 具体 DSH 的 projection 事件、CaptureHub、documentPreviews 挂载等机制属于适配器细节，见 [DETAIL](../packages/deepseek-harness/docs/DETAIL.md)。
+ChatGPT/Codex 适配注册了 MCP extension file viewer：文件树在侧栏
+`mcp-extension` 标签页打开受支持的结构，`mol_open` 为 agent 打开同一个 MCP
+App；两者共享长轮询场景与 claim/deliver 截图会合。每个 `mcp-extension`
+标签页绑定自己的 scene id，因此侧栏预览与 agent 页面满足 §1.3.1 的 tab
+页面隔离要求。见 [ChatGPT README](../packages/chatgpt/README_zh.md)。
 
 ---
 
@@ -181,6 +186,8 @@ sequenceDiagram
 
 - **core**：协议、Mol* 官方 UI viewer、选择器、摘要、per-selection 样式、PNG capture 已实现。
 - **DSH adapter**：文档预览、agent 工具、session projection、截图回传、面板/主题/tab 生命周期已实现。
-- **ChatGPT/Codex**：未来适配器，复用 core 语义，只实现其传输/预览接口。
+- **ChatGPT/Codex 适配**：MCP App viewer、`mol_*` 工具、长轮询场景更新、
+  截图会合、本地 marketplace 安装，以及文件树的 MCP extension file viewer
+  均已实现；按扩展名授权与单活场景限制记录在包 README。
 
 下一步不是继续扩写本文，而是把新能力写进对应 package 的 README/AGENTS，并只在这里更新总体目标或分层的变化。

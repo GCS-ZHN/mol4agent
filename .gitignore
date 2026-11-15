@@ -8,3 +8,5 @@ dist/
 .pnpm-store/
 
 .mol4agent/
+packages/chatgpt/test/.build/
+packages/chatgpt/test/artifacts/

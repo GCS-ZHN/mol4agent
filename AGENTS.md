@@ -8,6 +8,9 @@ sessions. Read the package playbook before changing that package:
 - **DSH adapter** (`packages/deepseek-harness/`):
   [`packages/deepseek-harness/AGENTS.md`](packages/deepseek-harness/AGENTS.md)
   — Host/client split, projection, tools, preview, screenshot loop, packaging.
+- **ChatGPT/Codex adapter** (`packages/chatgpt/`):
+  [`packages/chatgpt/AGENTS.md`](packages/chatgpt/AGENTS.md)
+  — MCP server/app split, tools, long-poll, capture rendezvous, packaging.
 
 API, architecture, and tool references stay in the READMEs; do not duplicate
 them here or in code comments:
@@ -15,6 +18,7 @@ them here or in code comments:
 - `README.md` / `README_zh.md`
 - `packages/core/README.md` / `README_zh.md`
 - `packages/deepseek-harness/README.md` / `README_zh.md`
+- `packages/chatgpt/README.md` / `README_zh.md`
 - `docs/architecture.md` / `docs/architecture_zh.md` (architecture; English default)
 - `packages/deepseek-harness/docs/DETAIL.md`
 

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mol4agent": {
+      "command": "node",
+      "args": [
+        "lib/server.js"
+      ],
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 120
+    }
+  }
+}

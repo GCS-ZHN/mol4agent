@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>mol4agent UI test</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: #0b0e12; color: #d9e2ec; font: 13px ui-sans-serif, system-ui, sans-serif; }
+      #page { width: 1000px; margin: 0 auto; }
+      #mount { width: 1000px; height: 620px; overflow: hidden; }
+      #capture { display: block; width: 800px; height: 600px; margin-top: 16px; }
+      #capture[hidden] { display: none; }
+      pre { white-space: pre-wrap; padding: 12px; background: #141a21; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <div id="page">
+      <div id="mount"></div>
+      <pre id="result">pending</pre>
+      <img id="capture" alt="captured molecular view" hidden>
+    </div>
+    <script type="module" src="/host.js"></script>
+  </body>
+</html>
