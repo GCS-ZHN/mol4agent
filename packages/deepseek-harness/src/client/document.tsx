@@ -14,10 +14,11 @@ import type { DocumentPreviewProps } from '@deepseek-ai/dsh-client-ui-sidebar-do
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type { MolFormat, MolViewer } from '@gcszhn/mol4agent-core'
-import { baseNameOf, formatOfFile } from '../formats.ts'
+import { baseNameOf, formatOfFile, isGzipFile } from '../formats.ts'
 import type { MolPendingCapture, MolSessionState } from '../state.ts'
 import { sessionPathOf } from './address.ts'
 import { loadMolCore } from './core-loader.ts'
+import { gunzipBytes } from './gzip.ts'
 import { putCachedViewer, takeCachedViewer } from './viewer-cache.ts'
 
 /** Services and copy injected by the plugin's slot registration. */
@@ -51,6 +52,8 @@ interface LoadedMark {
 }
 
 const EMPTY_MARK: LoadedMark = { revision: -1, version: undefined, sceneKey: undefined, applied: 0 }
+
+const MAX_PREVIEW_BYTES = 64 * 1024 * 1024
 
 export function MolBody(props: MolBodyProps): ReactNode {
   const { tab } = props.useTabInfo()
@@ -116,8 +119,9 @@ export function MolBody(props: MolBodyProps): ReactNode {
     setStatus('loading')
     setError(undefined)
     try {
-      const bytes = await latest.readBytes(latest.path, latest.signal)
+      const raw = await latest.readBytes(latest.path, latest.signal)
       if (viewerRef.current !== viewer) return
+      const bytes = isGzipFile(latest.path) ? await gunzipBytes(raw, MAX_PREVIEW_BYTES) : raw
       await viewer.load({ data: bytes, format: latest.format, label: baseNameOf(latest.path) })
       latest.addResource(latest.resourceAddress)
       if (latest.content.kind === 'renderer') latest.content.loaded(latest.version ?? 'unknown')

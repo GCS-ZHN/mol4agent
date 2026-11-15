@@ -43,8 +43,9 @@ are in its AGENTS playbook.
   (interface geometry, H-bond candidates, builds), not for driving the viewer.
 - A new selector/command/tool is a cross-package change: update core semantics,
   every adapter, the prompt, and the relevant READMEs in the same change.
-- Verify with `pnpm typecheck`, the package build, real fixtures, and the actual
-  harness page. A screenshot alone does not prove panel/layout behavior.
+- Verify with `pnpm typecheck`, the package build, `pnpm test`, real fixtures,
+  and the actual harness page. A screenshot alone does not prove panel/layout
+  behavior.
 - Documentation defaults to English with a synchronized `README_zh.md`. Update
   the relevant READMEs when behavior or APIs change.
 - npm packages contain compiled JS/`.d.ts` plus only the assets/config each

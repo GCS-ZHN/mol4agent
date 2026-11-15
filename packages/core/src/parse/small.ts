@@ -51,7 +51,8 @@ export function summarizeMol2(text: string, format: MolFormat, label?: string): 
     if (section !== 'ATOM' || trimmed === '') continue
     const fields = trimmed.split(/\s+/u)
     if (fields.length < 6) continue
-    const compId = fields[5] ?? 'UNK'
+    // MOL2 ATOM columns: id name x y z type subst_id subst_name charge.
+    const compId = fields[7] ?? fields[5] ?? 'UNK'
     const seqId = fields[6] ?? '1'
     builder.atom({ record: 'hetatm', compId, chainId: '_', seqId })
   }

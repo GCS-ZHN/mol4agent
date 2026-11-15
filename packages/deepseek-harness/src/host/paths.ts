@@ -10,7 +10,8 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolArgsError } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import type { MolFormat } from '@gcszhn/mol4agent-core/protocol'
-import { EXTENSION_FORMATS, baseNameOf, formatOfFile } from '../formats.ts'
+import { EXTENSION_FORMATS, baseNameOf, formatOfFile, isGzipFile } from '../formats.ts'
+import { gunzipBytes } from './gzip.ts'
 
 /** One file this adapter can hand to the viewer. */
 export interface ResolvedMoleculeFile {
@@ -58,11 +59,21 @@ export async function resolveMoleculeFile(
       'use a smaller file or raise the adapter limit',
     ])
   }
-  const bytes = await readFile(absolutePath, { signal })
+  const raw = new Uint8Array(await readFile(absolutePath, { signal }))
+  let bytes: Uint8Array = raw
+  if (isGzipFile(absolutePath)) {
+    try {
+      bytes = gunzipBytes(raw, maxFileBytes)
+    } catch (reason) {
+      throw new ToolArgsError([
+        `cannot decompress ${absolutePath}: ${reason instanceof Error ? reason.message : String(reason)}`,
+      ])
+    }
+  }
   return {
     absolutePath,
     format,
     label: baseNameOf(absolutePath),
-    bytes: new Uint8Array(bytes),
+    bytes,
   }
 }

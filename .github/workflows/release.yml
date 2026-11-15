@@ -39,7 +39,7 @@ jobs:
         run: |
           pnpm typecheck
           pnpm build
-          pnpm -r test --if-present
+          pnpm test
 
       - name: Verify package versions match tag
         run: |

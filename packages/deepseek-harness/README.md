@@ -7,7 +7,9 @@ preview that an agent can operate.
 
 - **Structure**: `.pdb`, `.ent`, `.pdbqt`, `.pqr`, `.cif`, `.mmcif`,
   `.mcif`, `.bcif`, `.mol`, `.sdf`, `.sd`, `.mol2`, `.xyz`, `.gro` open in
-  Mol*'s official UI instead of plain text. The previewer's **Open with** menu
+  Mol*'s official UI instead of plain text. Every claimed suffix also accepts a
+  `.gz` variant (for example `.pdb.gz`, `.cif.gz`, `.sdf.gz`); the adapter
+  decodes it before handing bytes to core. The previewer's **Open with** menu
   still offers code/plain text (`bcif` has no plain-text fallback because its
   bytes are binary).
 - **Agent tools**: `mol_info`, `mol_interface`, `mol_open`, `mol_style`,
@@ -342,7 +344,9 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
 ## Limitations
 
 - BCIF can be rendered but `mol_info` cannot summarize it from raw bytes yet.
-- Files are capped at 64 MiB.
+- Gzip variants are decoded by the adapter; compressed or decompressed input over
+  64 MiB is rejected. The browser needs `DecompressionStream` for gzip previews.
+- Files are capped at 64 MiB, including a 64 MiB cap on gzip-decompressed output.
 - WebGL 2 is required for the 3D canvas.
 - `mol_capture` requires the structure preview to be open and times out after
   20 s. A timeout produces no command row; a successful delivery leaves one

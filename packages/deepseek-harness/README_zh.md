@@ -6,8 +6,9 @@ mol4agent 的 DeepSeek Harness（DSH）适配包：右侧栏分子文档预览�
 
 - **结构预览**：`.pdb`、`.ent`、`.pdbqt`、`.pqr`、`.cif`、`.mmcif`、`.mcif`、
   `.bcif`、`.mol`、`.sdf`、`.sd`、`.mol2`、`.xyz`、`.gro` 默认用 Mol* 官方
-  UI 打开，而不是纯文本；预览器的「打开方式」仍可切回代码/纯文本（`bcif`
-  是二进制，没有纯文本回退）。
+  UI 打开，而不是纯文本。每个后缀也接受 `.gz` 变体（例如 `.pdb.gz`、
+  `.cif.gz`、`.sdf.gz`），适配器会先解压再交给 core。预览器的「打开方式」仍
+  可切回代码/纯文本（`bcif` 是二进制，没有纯文本回退）。
 - **agent 工具**：`mol_info`、`mol_interface`、`mol_open`、`mol_style`、
   `mol_select`、`mol_focus`、`mol_measure`、`mol_capture`。
 - **agent 驱动页面**：工具调用被折叠进可持久化的 session projection；打开的
@@ -69,7 +70,8 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | `mol_measure` | `tab?`、`kind`、`targets` | 追加 `measure`；距离 2 个目标，角度 3 个，二面角 4 个。 |
 | `mol_capture` | `tab?`、`width?`、`height?`、`transparent?` | 阻塞等待目标 tab 回传 PNG（默认 1024×768）；当前模型支持图片时把图片作为附件返回，并在可用时给出 `savedPath`。 |
 
-`path` 是绝对路径，或相对 session 工作目录。文件上限 64 MiB。
+`path` 是绝对路径，或相对 session 工作目录。文件上限 64 MiB；gzip 解压后
+同样限制 64 MiB。
 
 `mol_info` 示例：
 
@@ -324,6 +326,8 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
 ## 限制
 
 - BCIF 可以渲染，但 `mol_info` 目前还不能从 raw bytes 摘要。
+- gzip 变体由适配器解压；压缩前或解压后超过 64 MiB 都会拒绝。浏览器预览
+  gzip 需要 `DecompressionStream`。
 - 文件上限 64 MiB。
 - 3D 画布需要 WebGL 2。
 - `mol_capture` 要求结构预览处于打开状态；20 秒超时。**超时不会**产生命令

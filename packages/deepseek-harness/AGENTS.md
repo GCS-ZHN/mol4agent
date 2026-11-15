@@ -14,6 +14,9 @@ semantics.
   the viewer directly from a Host tool body.
 - The browser body follows the projection, reads bytes through
   `remote.workspaceFiles.readBytes`, and calls core with `{ data, format, label }`.
+- Gzip is adapter transport: recognize `.gz` variants, decode in the Host and in
+  the browser before calling core, and enforce the decompressed-size cap. Never
+  pass compressed bytes to core or Mol*.
 - Add a tool in `tools.ts`, fold it in `projection.ts`, describe it in
   `prompt.ts`, and update both READMEs. Mutating tools use
   `isConcurrencySafe: () => false`.
@@ -72,7 +75,8 @@ semantics.
 
 ## Verification
 
-- Run `pnpm typecheck` (builds core first) and `pnpm build`.
+- Run `pnpm typecheck` (builds core first), `pnpm build`, and
+  `pnpm --filter @gcszhn/mol4agent-deepseekharness test`.
 - Test the real DSH page: panel default closed and toggle, theme switch, tab
   switch without reload, reload same file without component accumulation,
   interface target styling, and capture delivery.

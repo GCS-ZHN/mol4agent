@@ -63,7 +63,9 @@ keep its protocol consistent for every adapter.
 
 ## Verification
 
-- `pnpm typecheck` (root builds core first), then `pnpm --filter @gcszhn/mol4agent-core build`.
+- `pnpm typecheck` (root builds core first), then
+  `pnpm --filter @gcszhn/mol4agent-core test` and
+  `pnpm --filter @gcszhn/mol4agent-core build`.
 - Verify real fixtures: 1CRN PDB/CIF, 1ATP, aspirin SDF, 7CZD. Exercise load,
   global style, targeted style, focus, and capture.
 - For UI changes, use headless Chrome + SwiftShader and click the actual viewport

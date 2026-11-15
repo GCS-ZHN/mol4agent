@@ -11,11 +11,13 @@ in 3D instead of plain text. The agent can then operate the same page through
 The document previewer lists this viewer as **Structure** for:
 
 `pdb`, `ent`, `pdbqt`, `pqr`, `cif`, `mmcif`, `mcif`, `bcif`, `mol`, `sdf`, `sd`,
-`mol2`, `xyz`, `gro`
+`mol2`, `xyz`, `gro`, and every one of those with a `.gz` suffix (for example
+`pdb.gz`, `cif.gz`, `sdf.gz`).
 
-It is the default choice for those suffixes. The previewer's **Open with** menu
-still lists **Code** and **Plain text**, so you can switch back at any time;
-`bcif` has no plain-text fallback because its bytes are binary.
+It is the default choice for those suffixes. Gzip is decoded by the adapter
+before core receives bytes; the decompressed size is capped. The previewer's
+**Open with** menu still lists **Code** and **Plain text**, so you can switch
+back at any time; `bcif` has no plain-text fallback because its bytes are binary.
 
 The viewer mounts Mol*'s own React UI: viewport controls (reset, screenshot,
 settings, selection, fullscreen). The official control-panel set (right
