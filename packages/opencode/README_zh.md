@@ -67,7 +67,19 @@ OpenCode v1 无法运行本适配器：v1 是终端 UI，没有 GUI 插件层、
 
 selector 与其他适配器使用相同的 JSON 形状，见 [README.md](README.md)。
 
-## 本地安装
+## 安装
+
+### 从 npm 安装
+
+```sh
+opencode plugin add @gcszhn/mol4agent-opencode
+```
+
+`plugin add` 会安装包并写入**全局** `opencode.json(c)`，桌面端会在每个窗口加载
+其 GUI 部分。可用 `@0.1.0` 固定版本；用 `opencode plugin list` 确认（桌面端
+**Settings > Extensions > Plugins** 也可查看）。
+
+### 从本地源码安装
 
 ```sh
 pnpm install
@@ -75,7 +87,7 @@ pnpm --filter @gcszhn/mol4agent-core build
 pnpm --filter @gcszhn/mol4agent-opencode build
 ```
 
-把包目录加到**全局** `opencode.json(c)`，桌面端会在每个窗口加载其 GUI 部分：
+`opencode plugin add` 只接受 npm/Git spec；本地源码请在全局配置里直接写目录：
 
 ```jsonc
 {

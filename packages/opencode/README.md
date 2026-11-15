@@ -82,7 +82,20 @@ Selectors are the same JSON shapes as the other adapters:
 {"kind":"comp","compId":"ATP"}
 ```
 
-## Install (local)
+## Install
+
+### From npm
+
+```sh
+opencode plugin add @gcszhn/mol4agent-opencode
+```
+
+`plugin add` installs the package and writes it to the **global**
+`opencode.json(c)`, so the desktop app loads its GUI part in every window.
+Pin an exact version with `@0.1.0`, and confirm with `opencode plugin list`
+(or **Settings > Extensions > Plugins** in the desktop app).
+
+### From a local checkout
 
 Build core, then this package:
 
@@ -92,8 +105,8 @@ pnpm --filter @gcszhn/mol4agent-core build
 pnpm --filter @gcszhn/mol4agent-opencode build
 ```
 
-Add the package directory to the **global** `opencode.json(c)` so the desktop
-app loads its GUI part in every window:
+`opencode plugin add` only accepts npm/Git specs; point the global config at the
+checkout directory instead:
 
 ```jsonc
 {
