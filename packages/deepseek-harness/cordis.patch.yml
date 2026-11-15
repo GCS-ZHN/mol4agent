@@ -1,0 +1,7 @@
+# DeepSeek Harness bundle layer for mol4agent.
+#
+# The plugin takes no config yet. Once P0 lands, add a `config:` block for
+# autoOpen / default style / capture size (see docs/architecture.md).
+- insert:
+    - id: mol4agent
+      name: '@gcszhn/mol4agent-deepseekharness'

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Molecular structure preview",
+    "description": "Render molecular structure files in 3D in the right-sidebar preview and let the agent operate the view (representation, color, selection, measurement, screenshot)."
+  }
+}

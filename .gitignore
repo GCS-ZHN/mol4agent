@@ -1,0 +1,10 @@
+node_modules/
+lib/
+dist/
+*.tsbuildinfo
+.DS_Store
+.tmp/
+
+.pnpm-store/
+
+.mol4agent/

@@ -1,0 +1,31 @@
+{
+  "name": "@gcszhn/mol4agent-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Harness-neutral Mol* viewer engine: bytes + explicit format in, commands out.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol.ts",
+    "./parse": "./src/parse/index.ts",
+    "./react": "./src/react.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "molstar": "^5.13.1",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "molstar": "5.13.1",
+    "react": "18.3.1",
+    "typescript": "^5.7.3"
+  }
+}
