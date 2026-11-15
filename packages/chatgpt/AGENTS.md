@@ -17,6 +17,14 @@ Codex's MCP extension file viewer.
   Node modules, or infer formats.
 - Mutating tools append JSON commands to `SceneStore` and wake the app's
   `mol_viewer_poll`; never push WebGL objects or bytes into scene commands.
+- Keep scene isolation: `mol_open`/`mol_style`/... target the **active agent
+  scene**; `mol_view_file` creates an independent **file** scene and never
+  replaces the agent scene. Each app binds to its initial `sceneId`, ignores
+  scenes with another id, and polls with its own mode (`agent`/`file`/
+  `capture`). Never let a new `mol_open` hijack an older tab.
+- `mol_capture` captures the active agent scene. File tabs must not claim agent
+  captures; the capture app uses `mode: "capture"` and may claim any pending
+  agent capture.
 - A new model-facing tool is a cross-package change: update core semantics if
   needed, the DSH adapter and prompt, this adapter, and every relevant README in
   the same change. Transport-only app tools (`mol_viewer_poll`,

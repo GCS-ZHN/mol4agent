@@ -281,7 +281,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     } else if (args.focus === true) {
       commands.push({ op: 'focus' })
     }
-    const scene = store.open({
+    const scene = store.openAgent({
       path: file.absolutePath,
       label: file.label,
       format: file.format,
@@ -314,7 +314,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       ...(target === undefined ? {} : { target }),
     }
     const scene = requireScene(store, 'style')
-    const next = store.push(command)
+    const next = store.pushAgent(command)
     return textResult(describeStyle(args), { scene: next ?? scene })
   })
 
@@ -332,7 +332,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     const scene = requireScene(store, 'select')
     const target = normalizeSelector(args.target)
     validateTargets(store, [target])
-    const next = store.push({
+    const next = store.pushAgent({
       op: 'select',
       target,
       mode: args.mode ?? 'select',
@@ -356,7 +356,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     const scene = requireScene(store, 'focus')
     const target = args.target === undefined ? undefined : normalizeSelector(args.target)
     if (target !== undefined) validateTargets(store, [target])
-    const next = store.push({ op: 'focus', ...(target === undefined ? {} : { target }) })
+    const next = store.pushAgent({ op: 'focus', ...(target === undefined ? {} : { target }) })
     return textResult(
       target === undefined ? 'Focused the whole structure.' : `Focused ${describeSelector(target)}.`,
       { scene: next ?? scene },
@@ -389,7 +389,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       }
     }
     validateTargets(store, targets)
-    const next = store.push({
+    const next = store.pushAgent({
       op: 'measure',
       kind: args.kind,
       targets,
@@ -470,17 +470,36 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     const file = args.file
     const format = formatOfFile(file.name)
     if (format === undefined) throw new Error(`unsupported molecular file type: ${file.name}`)
-    const canReadDirectly = file.resourceUri === undefined || file.resourceUri.startsWith('file://')
-      || typeof file.text === 'string' || typeof file.blob === 'string'
-    const resolved = canReadDirectly
-      ? await resolveViewedFile(server, file, options.maxFileBytes, extra.signal)
-      : undefined
-    const scene = store.open({
+    const metadataPath = findMolecularPath(extra._meta)
+    const candidates = [...new Set(
+      [metadataPath, file.name].filter((candidate): candidate is string => candidate !== undefined && candidate !== ''),
+    )]
+    let resolved: ResolvedMoleculeFile | undefined
+    let lastError: unknown
+    for (const candidate of candidates) {
+      try {
+        resolved = await resolveViewedFile(
+          server,
+          { ...file, name: candidate },
+          options.maxFileBytes,
+          extra.signal,
+        )
+        break
+      } catch (reason) {
+        lastError = reason
+      }
+    }
+    if (resolved === undefined && file.resourceUri === undefined) {
+      throw lastError instanceof Error ? lastError : new Error(String(lastError))
+    }
+    const scene = store.openFile({
       path: resolved?.absolutePath ?? file.name,
       label: resolved?.label ?? baseNameOf(file.name),
       format,
       bytes: resolved?.bytes ?? new Uint8Array(),
-      ...(file.resourceUri === undefined ? {} : { fileResourceUri: file.resourceUri }),
+      ...(resolved !== undefined || file.resourceUri === undefined
+        ? {}
+        : { fileResourceUri: file.resourceUri }),
       commands: [{ op: 'represent', style: { type: 'cartoon', color: 'chain-id' } }],
     })
     return textResult(
@@ -499,13 +518,51 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     inputSchema: {
       sceneId: z.string().optional().describe('The scene the app currently has.'),
       revision: z.number().int().optional().describe('The scene revision the app has applied.'),
+      mode: z.enum(['agent', 'file', 'capture']).optional()
+        .describe('Which scene source this app follows. Default agent.'),
       timeoutMs: z.number().int().min(1000).max(30_000).optional().describe('Server wait budget. Default 20000.'),
     },
     _meta: { ui: { visibility: ['app'] } },
   }, async (args, extra) => {
+    const mode = args.mode ?? 'agent'
     const deadline = Date.now() + (args.timeoutMs ?? 20_000)
     while (!extra.signal.aborted) {
-      const scene = store.snapshot()
+      if (mode === 'capture') {
+        const capture = captures.claim()
+        if (capture !== null) return pollResult(capture.scene, capture, false)
+        const remaining = deadline - Date.now()
+        if (remaining <= 0) return pollResult(null, null, true)
+        const status = await store.waitForChange(Math.min(remaining, 5000), extra.signal)
+        if (status === 'aborted') break
+        continue
+      }
+
+      if (mode === 'file') {
+        if (args.sceneId === undefined || args.sceneId === '') {
+          const remaining = deadline - Date.now()
+          if (remaining <= 0) return pollResult(null, null, true)
+          const status = await store.waitForChange(Math.min(remaining, 5000), extra.signal)
+          if (status === 'aborted') break
+          continue
+        }
+        const scene = store.snapshotById(args.sceneId)
+        if (scene === null) return pollResult(null, null, false, true)
+        if (scene.revision !== args.revision) return pollResult(scene, null, false)
+        const remaining = deadline - Date.now()
+        if (remaining <= 0) return pollResult(scene, null, true)
+        const status = await store.waitForChange(Math.min(remaining, 5000), extra.signal)
+        if (status === 'aborted') break
+        continue
+      }
+
+      // A mounted agent tab is bound to the scene it was opened for. It must
+      // not follow a later mol_open: each tab keeps its own structure.
+      const scene = args.sceneId !== undefined && args.sceneId !== ''
+        ? store.snapshotById(args.sceneId)
+        : store.snapshotAgent()
+      if (scene === null && args.sceneId !== undefined && args.sceneId !== '') {
+        return pollResult(null, null, false, true)
+      }
       const sceneChanged = scene !== null
         && (args.sceneId === undefined || scene.sceneId !== args.sceneId || scene.revision !== args.revision)
       if (sceneChanged) return pollResult(scene, null, false)
@@ -518,7 +575,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       const status = await store.waitForChange(Math.min(remaining, 5000), extra.signal)
       if (status === 'aborted') break
     }
-    return pollResult(store.snapshot(), null, false)
+    return pollResult(mode === 'agent' ? store.snapshotAgent() : null, null, false)
   })
 
   server.registerTool('mol_capture_deliver', {
@@ -574,10 +631,11 @@ function pollResult(
   scene: SceneSnapshot | null,
   capture: ReturnType<CaptureHub['claim']>,
   timedOut: boolean,
+  missing = false,
 ): CallToolResult {
   return {
     content: [{ type: 'text', text: timedOut ? 'No viewer changes.' : 'Viewer update.' }],
-    structuredContent: { scene, capture, timedOut },
+    structuredContent: { scene, capture, timedOut, ...(missing ? { missing: true } : {}) },
   }
 }
 
@@ -589,13 +647,13 @@ function textResult(text: string, structuredContent?: Record<string, unknown>): 
 }
 
 function requireScene(store: SceneStore, action: string): SceneSnapshot {
-  const scene = store.snapshot()
+  const scene = store.snapshotAgent()
   if (scene === null) throw new Error(`open a structure with mol_open before trying to ${action} it`)
   return scene
 }
 
 function validateTargets(store: SceneStore, selectors: readonly StructureSelector[]): void {
-  const scene = store.snapshot()
+  const scene = store.snapshotAgent()
   if (scene === null) return
   const record = store.record(scene.sceneId)
   if (record?.summary === undefined) return
@@ -700,6 +758,24 @@ function summarizeSafely(bytes: Uint8Array, format: SceneRecord['format']): Stru
   } catch {
     return undefined
   }
+}
+
+/**
+ * Codex attaches the selected file path to the file-viewer tool call metadata.
+ * Find it so the server can read the bytes once and every tab can use the
+ * shared structure resource instead of an app-scoped host resource.
+ */
+function findMolecularPath(value: unknown, depth = 0): string | undefined {
+  if (depth > 5 || value === null || typeof value !== 'object') return undefined
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    if (typeof child === 'string') {
+      if (/[\\/]/u.test(child) && formatOfFile(child) !== undefined) return child
+      continue
+    }
+    const found = findMolecularPath(child, depth + 1)
+    if (found !== undefined) return found
+  }
+  return undefined
 }
 
 async function resolveViewedFile(

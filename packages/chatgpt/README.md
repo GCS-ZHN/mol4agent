@@ -78,12 +78,23 @@ shown, use **Settings → File type handlers** and set `.pdb` to
 **Structure preview**. The built-in text/code preview remains available from
 **Open with**.
 
-### One live scene, one long poll
+### Independent scenes per tab, per-tab long poll
 
-Each mutating tool updates an in-memory scene log and wakes the app's
-`mol_viewer_poll` long poll. The app loads the structure resource once and
-applies only new commands, so a newly mounted card can reconstruct the current
-picture from a full snapshot.
+The store keeps one **active agent scene** plus independent **file-viewer
+scenes**. `mol_open` creates an agent scene; `mol_view_file` creates a file
+scene. Each app instance binds to the scene it was opened for and polls by
+`sceneId`, so opening another structure never replaces or reloads an existing
+tab.
+
+- `mol_style` / `mol_select` / `mol_focus` / `mol_measure` mutate the active
+  agent scene only; file-viewer tabs are unaffected.
+- A later `mol_open` creates a new agent scene/tab; older agent tabs keep their
+  own structure.
+- File tabs never follow agent styling and never claim an agent capture.
+- `mol_capture` captures the active agent scene (the latest `mol_open`).
+
+Each app loads its structure resource once and applies only new commands; a
+newly mounted card reconstructs its picture from a full snapshot.
 
 ### Capture rendezvous
 
@@ -161,12 +172,12 @@ portable.
 - **Per-extension permission**: Codex asks once whether the plugin may open an
   extension. The answer is stored per host + extension; choose it in
   **File type handlers** if the prompt is skipped.
-- **Host resource read**: the file viewer reads the selected file through the
-  host's MCP extension resource, not through the server's filesystem. A host
-  that blocks host-resource reads cannot render the file-tree viewer.
-- **One active scene per server process**: `mol_open` replaces the scene. Older
-  scene bytes stay available for a few remounts, but commands target the
-  current scene.
+- **Host resource fallback**: the file viewer prefers the host metadata path so
+  the server can read bytes once and share `mol4agent://structure/{sceneId}`;
+  if the path is unavailable it falls back to the app-scoped host resource.
+- **One active agent scene**: `mol_open` replaces the agent scene targeted by
+  model tools. Older agent tabs and file tabs stay on their own bound scenes.
+  `mol_capture` captures the active agent scene.
 - **Capture needs a viewer**: after a long tool sequence the original card can
   unmount. Retry `mol_capture` once; its UI resource mounts a fresh viewer and
   the retry renders. If the host blocks app→tool calls, the tool times out.

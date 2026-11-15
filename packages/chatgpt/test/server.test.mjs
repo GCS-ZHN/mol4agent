@@ -101,6 +101,7 @@ test('opens a scene, reads its bytes, and appends commands', async t => {
   })
   assert.equal(opened.isError, undefined)
   const scene = opened.structuredContent?.scene
+  assert.equal(scene.source, 'agent')
   assert.equal(scene.label, '1crn.pdb')
   assert.equal(scene.format, 'pdb')
   assert.equal(scene.commands.length, 1)
@@ -237,6 +238,7 @@ test('file viewer creates a host-resource scene and a direct scene', async t => 
   })
   assert.equal(hostScene.isError, undefined)
   assert.equal(hostScene.structuredContent?.scene.format, 'pdb')
+  assert.equal(hostScene.structuredContent?.scene.source, 'file')
   assert.equal(hostScene.structuredContent?.scene.fileResourceUri, 'codex-resource://test-file-viewer')
   assert.equal(hostScene.structuredContent?.scene.commands[0].op, 'represent')
 
@@ -246,7 +248,105 @@ test('file viewer creates a host-resource scene and a direct scene', async t => 
   })
   assert.equal(directScene.isError, undefined)
   assert.equal(directScene.structuredContent?.scene.label, '1crn.pdb')
+  assert.equal(directScene.structuredContent?.scene.source, 'file')
   assert.equal(directScene.structuredContent?.scene.fileResourceUri, undefined)
+
+  const metadataScene = await client.callTool({
+    name: 'mol_view_file',
+    arguments: {
+      file: { name: '1crn.pdb', resourceUri: 'codex-resource://test-file-viewer' },
+    },
+    _meta: { 'openai/file': { path: fixture } },
+  })
+  assert.equal(metadataScene.isError, undefined)
+  assert.equal(metadataScene.structuredContent?.scene.fileResourceUri, undefined)
+  assert.equal(metadataScene.structuredContent?.scene.source, 'file')
+  const shared = await client.readResource({
+    uri: `mol4agent://structure/${metadataScene.structuredContent.scene.sceneId}`,
+  })
+  assert.match(shared.contents[0].text, /ATOM  /)
+})
+
+test('keeps every agent or file-viewer tab on its own scene', async t => {
+  const { client } = await withClient(t)
+  const agentA = await client.callTool({ name: 'mol_open', arguments: { path: fixture } })
+  const agentAScene = agentA.structuredContent.scene
+  const fileF = await client.callTool({
+    name: 'mol_view_file',
+    arguments: { file: { name: fixture } },
+  })
+  const fileFScene = fileF.structuredContent.scene
+  assert.equal(agentAScene.source, 'agent')
+  assert.equal(fileFScene.source, 'file')
+  assert.notEqual(agentAScene.sceneId, fileFScene.sceneId)
+
+  const agentB = await client.callTool({ name: 'mol_open', arguments: { path: aspirin } })
+  const agentBScene = agentB.structuredContent.scene
+  assert.equal(agentBScene.source, 'agent')
+  assert.notEqual(agentBScene.sceneId, agentAScene.sceneId)
+
+  // The older agent tab must not jump to the newly opened agent scene.
+  const oldAgentPoll = await client.callTool({
+    name: 'mol_viewer_poll',
+    arguments: { sceneId: agentAScene.sceneId, revision: agentAScene.revision, mode: 'agent', timeoutMs: 1000 },
+  })
+  assert.equal(oldAgentPoll.structuredContent.scene.sceneId, agentAScene.sceneId)
+
+  // The file tab must remain on its file scene.
+  const filePoll = await client.callTool({
+    name: 'mol_viewer_poll',
+    arguments: { sceneId: fileFScene.sceneId, revision: fileFScene.revision, mode: 'file', timeoutMs: 1000 },
+  })
+  assert.equal(filePoll.structuredContent.scene.sceneId, fileFScene.sceneId)
+
+  // Agent styling only mutates the active agent scene, never the file scene.
+  await client.callTool({ name: 'mol_style', arguments: { type: 'ball-and-stick' } })
+  const fileAfterStyle = await client.callTool({
+    name: 'mol_viewer_poll',
+    arguments: { sceneId: fileFScene.sceneId, revision: fileFScene.revision, mode: 'file', timeoutMs: 1000 },
+  })
+  assert.equal(fileAfterStyle.structuredContent.scene.sceneId, fileFScene.sceneId)
+  assert.equal(fileAfterStyle.structuredContent.scene.commands.length, fileFScene.commands.length)
+
+  const agentBPoll = await client.callTool({
+    name: 'mol_viewer_poll',
+    arguments: { sceneId: agentBScene.sceneId, revision: agentBScene.revision, mode: 'agent', timeoutMs: 1000 },
+  })
+  assert.equal(agentBPoll.structuredContent.scene.sceneId, agentBScene.sceneId)
+  assert.ok(agentBPoll.structuredContent.scene.revision > agentBScene.revision)
+
+  // A file tab must not steal the agent scene's pending capture.
+  const capturePromise = client.callTool({
+    name: 'mol_capture',
+    arguments: { width: 320, height: 240 },
+  })
+  const fileCapturePoll = await client.callTool({
+    name: 'mol_viewer_poll',
+    arguments: { sceneId: fileFScene.sceneId, revision: fileFScene.revision, mode: 'file', timeoutMs: 1000 },
+  })
+  assert.equal(fileCapturePoll.structuredContent.capture, null)
+
+  const agentCapturePoll = await client.callTool({
+    name: 'mol_viewer_poll',
+    arguments: {
+      sceneId: agentBScene.sceneId,
+      revision: agentBPoll.structuredContent.scene.revision,
+      mode: 'agent',
+      timeoutMs: 1000,
+    },
+  })
+  assert.ok(agentCapturePoll.structuredContent.capture)
+  await client.callTool({
+    name: 'mol_capture_deliver',
+    arguments: {
+      captureId: agentCapturePoll.structuredContent.capture.captureId,
+      data: onePixelPng,
+      width: 320,
+      height: 240,
+    },
+  })
+  const captured = await capturePromise
+  assert.equal(captured.isError, undefined)
 })
 
 test('rendezvous: capture claim and PNG delivery', async t => {

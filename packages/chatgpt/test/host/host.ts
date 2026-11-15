@@ -16,6 +16,7 @@ const scene = {
   revision: 2,
   label: '1atp.pdb',
   format: 'pdb',
+  source: 'agent',
   commands: [
     { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } },
     { op: 'select', target: { kind: 'ligand' }, mode: 'highlight', focus: true },
@@ -48,6 +49,12 @@ const bridge = new AppBridge(
       availableDisplayModes: ['inline', 'fullscreen'],
       containerDimensions: { width: 1000, height: 620 },
       locale: 'en',
+      toolInfo: {
+        tool: {
+          name: 'mol_open',
+          inputSchema: { type: 'object', properties: {} },
+        },
+      },
     },
   },
 )
@@ -67,6 +74,7 @@ bridge.oncalltool = async (params: CallToolRequest['params']): Promise<CallToolR
       const args = params.arguments as { sceneId?: unknown; revision?: unknown } | undefined
       const hasScene = args?.sceneId === scene.sceneId && args.revision === scene.revision
       if (captureDelivered) {
+        await new Promise(resolve => { setTimeout(resolve, 200) })
         return { content: [{ type: 'text', text: 'idle' }], structuredContent: { scene: null, capture: null, timedOut: true } }
       }
       if (!hasScene) {

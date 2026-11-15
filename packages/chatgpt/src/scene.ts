@@ -11,12 +11,16 @@ import { randomUUID } from 'node:crypto'
 import type { MolCommand, MolFormat, StructureSummary } from '@gcszhn/mol4agent-core/protocol'
 import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
 
+/** Where a scene came from; agent tools only mutate the agent scene. */
+export type SceneSource = 'agent' | 'file'
+
 /** JSON-safe scene description sent to the app and stored in tool results. */
 export interface SceneSnapshot {
   readonly sceneId: string
   readonly revision: number
   readonly label: string
   readonly format: MolFormat
+  readonly source: SceneSource
   /** Host resource URI for a file viewer; absent for agent-opened scenes. */
   readonly fileResourceUri?: string
   readonly commands: readonly MolCommand[]
@@ -28,6 +32,7 @@ export interface SceneRecord {
   readonly path: string
   readonly label: string
   readonly format: MolFormat
+  readonly source: SceneSource
   readonly bytes: Uint8Array
   readonly fileResourceUri?: string
   readonly commands: readonly MolCommand[]
@@ -43,22 +48,33 @@ interface Waiter {
   readonly signal: AbortSignal
 }
 
-const MAX_SCENES = 6
+const MAX_SCENES = 12
 
 /**
  * In-memory scene store with a long-poll notification channel.
  *
- * The MCP server is a local, single-user process. One active scene is enough
- * for the agent workflow; older scenes are kept briefly so an app that is
- * unmounted/remounted can still read its bytes.
+ * The agent scene is the target of `mol_open`/`mol_style`/... . File-viewer
+ * scenes are independent: opening a file from the tree must not replace or
+ * mutate the agent's scene, and each file tab follows only its own scene.
  */
 export class SceneStore {
-  private currentScene: SceneRecord | null = null
+  private agentScene: SceneRecord | null = null
   private readonly byId = new Map<string, SceneRecord>()
   private readonly listeners = new Set<() => void>()
 
-  /** Replace the active scene and return its initial snapshot. */
-  open(input: {
+  /** Replace the agent scene and return its initial snapshot. */
+  openAgent(input: {
+    readonly path: string
+    readonly label: string
+    readonly format: MolFormat
+    readonly bytes: Uint8Array
+    readonly commands: readonly MolCommand[]
+  }): SceneSnapshot {
+    return this.open(input, 'agent', true)
+  }
+
+  /** Add an independent file-viewer scene without touching the agent scene. */
+  openFile(input: {
     readonly path: string
     readonly label: string
     readonly format: MolFormat
@@ -66,43 +82,61 @@ export class SceneStore {
     readonly fileResourceUri?: string
     readonly commands: readonly MolCommand[]
   }): SceneSnapshot {
+    return this.open(input, 'file', false)
+  }
+
+  private open(input: {
+    readonly path: string
+    readonly label: string
+    readonly format: MolFormat
+    readonly bytes: Uint8Array
+    readonly fileResourceUri?: string
+    readonly commands: readonly MolCommand[]
+  }, source: SceneSource, makeActive: boolean): SceneSnapshot {
     const summary = safeSummary(input.bytes, input.format)
     const record: SceneRecord = {
       sceneId: randomUUID(),
       path: input.path,
       label: input.label,
       format: input.format,
+      source,
       bytes: input.bytes,
       ...(input.fileResourceUri === undefined ? {} : { fileResourceUri: input.fileResourceUri }),
       commands: input.commands,
       revision: 1,
       ...(summary === undefined ? {} : { summary }),
     }
-    this.currentScene = record
+    if (makeActive) this.agentScene = record
     this.byId.set(record.sceneId, record)
     this.evictOldScenes()
     this.notify()
     return snapshotOf(record)
   }
 
-  /** Append one command to the active scene. Returns null when nothing is open. */
-  push(command: MolCommand): SceneSnapshot | null {
-    const current = this.currentScene
+  /** Append one command to the agent scene. Returns null when nothing is open. */
+  pushAgent(command: MolCommand): SceneSnapshot | null {
+    const current = this.agentScene
     if (current === null) return null
     const record: SceneRecord = {
       ...current,
       commands: [...current.commands, command],
       revision: current.revision + 1,
     }
-    this.currentScene = record
+    this.agentScene = record
     this.byId.set(record.sceneId, record)
     this.notify()
     return snapshotOf(record)
   }
 
-  /** Current scene snapshot, if any. */
-  snapshot(): SceneSnapshot | null {
-    return this.currentScene === null ? null : snapshotOf(this.currentScene)
+  /** Current agent scene snapshot, if any. */
+  snapshotAgent(): SceneSnapshot | null {
+    return this.agentScene === null ? null : snapshotOf(this.agentScene)
+  }
+
+  /** Snapshot of a specific scene, including independent file-viewer scenes. */
+  snapshotById(sceneId: string): SceneSnapshot | null {
+    const record = this.byId.get(sceneId)
+    return record === undefined ? null : snapshotOf(record)
   }
 
   /** Full record for a scene id, used by the structure resource. */
@@ -112,11 +146,11 @@ export class SceneStore {
 
   /** Last time a scene was created or changed. */
   get revision(): number {
-    return this.currentScene?.revision ?? 0
+    return this.agentScene?.revision ?? 0
   }
 
   get sceneId(): string | null {
-    return this.currentScene?.sceneId ?? null
+    return this.agentScene?.sceneId ?? null
   }
 
   /** Wait until the store changes, the timeout expires, or the caller aborts. */
@@ -150,7 +184,7 @@ export class SceneStore {
     while (this.byId.size > MAX_SCENES) {
       const oldest = this.byId.keys().next()
       if (oldest.done === true) return
-      if (oldest.value === this.currentScene?.sceneId) return
+      if (oldest.value === this.agentScene?.sceneId) return
       this.byId.delete(oldest.value)
     }
   }
@@ -162,6 +196,7 @@ function snapshotOf(record: SceneRecord): SceneSnapshot {
     revision: record.revision,
     label: record.label,
     format: record.format,
+    source: record.source,
     ...(record.fileResourceUri === undefined ? {} : { fileResourceUri: record.fileResourceUri }),
     commands: record.commands,
   }

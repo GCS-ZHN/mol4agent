@@ -122,8 +122,10 @@ Start a new conversation and ask:
 You can also click `fixtures/1atp.pdb` in the file tree. The first open asks
 whether to use mol4agent for `.pdb` files; choose **Yes** once, and the structure
 opens in the side panel by default. **Open with** still offers the built-in
-text/code viewer. See the [ChatGPT adapter README](packages/chatgpt/README.md)
-for the tool reference and file-handler details.
+text/code viewer. Each structure tab stays on its own scene; opening another
+structure does not reload existing tabs. See the
+[ChatGPT adapter README](packages/chatgpt/README.md) for the tool reference and
+file-handler details.
 
 ## Development
 

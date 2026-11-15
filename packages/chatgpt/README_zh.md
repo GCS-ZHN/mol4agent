@@ -68,11 +68,20 @@ Codex 支持 **MCP extension file viewer**。插件把 `mol_view_file` 注册为
 弹出提示，在 **Settings → File type handlers** 把 `.pdb` 设为
 **Structure preview**。内置文本/代码预览仍可从 **Open with** 选择。
 
-### 单活场景 + 长轮询
+### 每个 tab 独立场景 + 独立长轮询
 
-每个变更类工具更新内存里的场景日志，并唤醒 app 的 `mol_viewer_poll` 长轮询。
-app 只加载一次结构资源，之后只应用新增命令；新挂载的卡片也能用完整快照重建
-当前画面。
+store 保留一个**活跃 agent scene** 和多个独立的 **file-viewer scene**。
+`mol_open` 创建 agent scene，`mol_view_file` 创建 file scene。每个 app 实例绑定
+到自己打开时的 scene，并按 `sceneId` 轮询；再打开一个结构不会替换或重载已有 tab。
+
+- `mol_style` / `mol_select` / `mol_focus` / `mol_measure` 只修改活跃 agent
+  scene；文件树 tab 不受影响。
+- 后续 `mol_open` 创建新的 agent scene/tab；旧 agent tab 保持自己的结构。
+- 文件 tab 不跟随 agent 样式，也不会抢 agent 的截图请求。
+- `mol_capture` 截取活跃 agent scene（最近一次 `mol_open`）。
+
+每个 app 只加载一次结构资源，之后只应用新增命令；新挂载的卡片用完整快照重建
+自己的画面。
 
 ### 截图会合
 
@@ -147,10 +156,12 @@ viewer MCP App。
 
 - **按扩展名授权一次**：Codex 首次会询问是否允许插件打开该扩展名，答案按
   host + 扩展名保存；若跳过提示，可在 **File type handlers** 里设置。
-- **依赖宿主资源读取**：文件树 viewer 通过宿主的 MCP extension 资源读文件，
-  不走 server 文件系统；禁止宿主资源读取的宿主无法显示文件树预览。
-- **每个 server 进程只有一个活场景**：`mol_open` 会替换场景；旧场景字节会为
-  重新挂载保留几次，但命令只作用于当前场景。
+- **宿主资源回退**：文件树 viewer 优先用宿主 metadata 路径，让 server 读一次
+  字节并通过 `mol4agent://structure/{sceneId}` 共享；路径不可用时才回退到
+  app 作用域的宿主资源。
+- **只有一个活跃 agent scene**：`mol_open` 替换的是模型工具操作的 agent scene；
+  旧 agent tab 和文件 tab 保持各自绑定的 scene。`mol_capture` 截取活跃
+  agent scene。
 - **截图需要 viewer**：长工具序列后原卡片可能已卸载；重试一次
   `mol_capture`，它的 UI 资源会挂载新的 viewer 并完成渲染。宿主禁止
   app→tool 调用时才会超时。

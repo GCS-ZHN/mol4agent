@@ -10,17 +10,18 @@
 import { App, PostMessageTransport } from '@modelcontextprotocol/ext-apps'
 import { createMolViewer, type MolViewer } from '@gcszhn/mol4agent-core'
 import type { MolFormat } from '@gcszhn/mol4agent-core/protocol'
-import type { SceneSnapshot } from '../scene.ts'
+import type { SceneSnapshot, SceneSource } from '../scene.ts'
 import type { PendingCapture } from '../capture.ts'
 
 interface PollResult {
   readonly scene: SceneSnapshot | null
   readonly capture: PendingCapture | null
   readonly timedOut: boolean
+  readonly missing?: boolean
 }
 
 const app = new App(
-  { name: 'mol4agent', version: '0.1.7' },
+  { name: 'mol4agent', version: '0.1.8' },
   { availableDisplayModes: ['inline', 'fullscreen'] },
   { autoResize: true },
 )
@@ -40,6 +41,10 @@ let loadedSceneId: string | null = null
 let appliedCommands = 0
 let currentSceneId = ''
 let currentRevision = -1
+let boundSceneId: string | null = null
+let appKind: SceneSource | 'capture' | 'unknown' = 'unknown'
+let pollMode: SceneSource | 'capture' = 'agent'
+let pollStarted = false
 let disposed = false
 let queue: Promise<void> = Promise.resolve()
 let toastTimer: ReturnType<typeof setTimeout> | undefined
@@ -53,7 +58,14 @@ app.addEventListener('toolresult', params => {
   const structured = params.structuredContent as { scene?: SceneSnapshot } | undefined
   if (structured?.scene !== undefined) {
     const scene = structured.scene
-    void enqueue(() => applyScene(scene))
+    if (appKind === 'unknown') appKind = scene.source
+    if (appKind === 'file' && scene.source !== 'file') return
+    if (appKind === 'agent' && scene.source !== 'agent') return
+    if (appKind !== 'capture' && boundSceneId !== null && scene.sceneId !== boundSceneId) return
+    void enqueue(async () => {
+      const applied = await applyScene(scene)
+      if (applied && !pollStarted) startPoll(appKind === 'file' ? 'file' : 'agent')
+    })
   }
 })
 
@@ -85,7 +97,11 @@ async function main(): Promise<void> {
   applyHostContext(app.getHostContext())
   setHostHints()
   void openSidePanel()
-  void pollLoop()
+  const toolName = app.getHostContext()?.toolInfo?.tool.name
+  if (toolName === 'mol_capture') appKind = 'capture'
+  else if (toolName === 'mol_view_file') appKind = 'file'
+  else if (toolName === 'mol_open') appKind = 'agent'
+  if (appKind === 'capture') startPoll('capture')
 }
 
 async function openSidePanel(): Promise<void> {
@@ -143,6 +159,7 @@ async function pollLoop(): Promise<void> {
         arguments: {
           sceneId: currentSceneId,
           revision: currentRevision,
+          mode: pollMode,
           timeoutMs: 20_000,
         },
       })
@@ -151,14 +168,19 @@ async function pollLoop(): Promise<void> {
         continue
       }
       const poll = result.structuredContent as unknown as PollResult | undefined
+      if (poll?.missing === true) {
+        showStatus('This structure tab is no longer available. Reopen the file to continue.', 'error')
+        return
+      }
       if (poll?.scene !== null && poll?.scene !== undefined) {
         const scene = poll.scene
-        await enqueue(() => applyScene(scene))
+        await enqueue(async () => { await applyScene(scene) })
       }
       if (poll?.capture !== null && poll?.capture !== undefined) {
         const capture = poll.capture
         await enqueue(() => deliverCapture(capture))
       }
+      if (poll?.timedOut === true && !poll.scene && !poll.capture) await sleep(100)
     } catch (reason) {
       if (disposed) return
       meta.textContent = 'reconnecting to mol4agent…'
@@ -175,6 +197,13 @@ async function pollLoop(): Promise<void> {
   }
 }
 
+function startPoll(mode: SceneSource | 'capture'): void {
+  if (pollStarted) return
+  pollStarted = true
+  pollMode = mode
+  void pollLoop()
+}
+
 function enqueue(task: () => Promise<void>): Promise<void> {
   queue = queue.then(task).catch(reason => {
     console.warn('[mol4agent]', reason)
@@ -182,32 +211,48 @@ function enqueue(task: () => Promise<void>): Promise<void> {
   return queue
 }
 
-async function applyScene(scene: SceneSnapshot): Promise<void> {
-  if (scene.sceneId === currentSceneId && scene.revision < currentRevision) return
-  const currentViewer = await ensureViewer()
-  if (scene.sceneId !== loadedSceneId) {
-    showStatus(`Loading ${scene.label}…`)
-    const uri = scene.fileResourceUri ?? `mol4agent://structure/${scene.sceneId}`
-    const resource = await app.readServerResource({ uri })
-    const data = decodeStructure(resource)
-    await currentViewer.load({ data, format: scene.format, label: scene.label })
-    loadedSceneId = scene.sceneId
-    appliedCommands = 0
-  }
-  if (scene.commands.length < appliedCommands) appliedCommands = 0
-  const commands = scene.commands.slice(appliedCommands)
-  if (commands.length > 0) {
-    const results = await currentViewer.apply(commands)
-    for (const result of results) {
-      if (!result.ok) console.warn('[mol4agent]', result.message)
+async function applyScene(scene: SceneSnapshot): Promise<boolean> {
+  try {
+    if (appKind === 'file' && scene.source !== 'file') return false
+    if (appKind === 'agent' && scene.source !== 'agent') return false
+    if (appKind !== 'capture') {
+      if (boundSceneId === null) boundSceneId = scene.sceneId
+      else if (scene.sceneId !== boundSceneId) return false
     }
-    appliedCommands = scene.commands.length
+    if (scene.sceneId === currentSceneId && scene.revision < currentRevision) return false
+    const currentViewer = await ensureViewer()
+    if (scene.sceneId !== loadedSceneId) {
+      showStatus(`Loading ${scene.label}…`)
+      const uri = scene.fileResourceUri ?? `mol4agent://structure/${scene.sceneId}`
+      const resource = await withTimeout(
+        app.readServerResource({ uri }),
+        15_000,
+        `timed out reading ${scene.label}`,
+      )
+      const data = decodeStructure(resource)
+      await currentViewer.load({ data, format: scene.format, label: scene.label })
+      loadedSceneId = scene.sceneId
+      appliedCommands = 0
+    }
+    if (scene.commands.length < appliedCommands) appliedCommands = 0
+    const commands = scene.commands.slice(appliedCommands)
+    if (commands.length > 0) {
+      const results = await currentViewer.apply(commands)
+      for (const result of results) {
+        if (!result.ok) console.warn('[mol4agent]', result.message)
+      }
+      appliedCommands = scene.commands.length
+    }
+    currentSceneId = scene.sceneId
+    currentRevision = scene.revision
+    label.textContent = scene.label
+    meta.textContent = `${scene.format} · revision ${scene.revision}`
+    hideStatus()
+    return true
+  } catch (reason) {
+    showStatus(`Could not load ${scene.label}.\n${messageOf(reason)}`, 'error')
+    throw reason
   }
-  currentSceneId = scene.sceneId
-  currentRevision = scene.revision
-  label.textContent = scene.label
-  meta.textContent = `${scene.format} · revision ${scene.revision}`
-  hideStatus()
 }
 
 async function deliverCapture(capture: PendingCapture): Promise<void> {
@@ -367,6 +412,19 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => { setTimeout(resolve, ms) })
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => { reject(new Error(message)) }, ms)
+    promise.then(value => {
+      clearTimeout(timer)
+      resolve(value)
+    }, reason => {
+      clearTimeout(timer)
+      reject(reason)
+    })
+  })
 }
 
 function messageOf(reason: unknown): string {

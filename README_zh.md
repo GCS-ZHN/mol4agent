@@ -106,7 +106,8 @@ codex plugin add mol4agent@mol4agent-local
 
 也可以直接在文件树点 `fixtures/1atp.pdb`。首次打开会询问是否用 mol4agent
 打开 `.pdb`，选一次 **Yes** 后结构默认在侧栏打开；**Open with** 仍可切回
-内置文本/代码预览。工具参考与文件处理器细节见
+内置文本/代码预览。每个结构 tab 保持自己的 scene，再打开一个结构不会重载已有
+tab。工具参考与文件处理器细节见
 [ChatGPT 适配 README](packages/chatgpt/README_zh.md)。
 
 ## 开发
