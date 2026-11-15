@@ -15,6 +15,17 @@
   `.mol`、`.sdf`、`.sd`、`.mol2`、`.xyz`、`.gro`，以及 `.gz` 变体（server 端先解压
   再交给 core）。
 
+![OpenCode 桌面端：agent 在左侧改代码，右侧侧栏用官方 Mol* UI 渲染 aspirin.sdf](docs/opencode-viewer.jpg)
+
+## 打开结构（OpenCode）
+
+- **agent**：`mol_open`（先 `mol_info` 选链/残基）。
+- **人类**：
+  - **Ctrl+P 文件检索** → 输入文件名 → 选中 `.pdb`/`.cif`/... 条目，会通过 `LinkHandler` 在 Mol* 面板里打开。
+  - `/mol_open <path>` 斜杠命令。
+  - **Open molecular structure** 命令（系统选文件）。
+- **不能从内置文件树打开**：在文件树里点击 `.pdb` 会打开纯文本编辑器。OpenCode 不会把文件树点击路由给插件（注册 `"text"` kind 的 `FileViewer` 会被忽略），所以请用 **Ctrl+P** 而不是点文件树。
+
 ## 架构
 
 本包是一个包含三部分的 OpenCode 插件：
@@ -74,7 +85,8 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 }
 ```
 
-GUI 重新构建后无需重启即可热更新；server 改动需要 `/reload`。
+server 部分按当前 location 加载；GUI 部分由桌面端加载。GUI 重新构建后无需重启即可
+热更新（`pnpm --filter @gcszhn/mol4agent-opencode build`）；server 改动需要 `/reload`。
 
 ## 开发
 
@@ -83,13 +95,23 @@ pnpm --filter @gcszhn/mol4agent-opencode typecheck
 pnpm --filter @gcszhn/mol4agent-opencode build
 ```
 
+`build` 产出：
+
+- `dist/index.js` — server 部分（ESM；core 打包，`@opencode/*`/`node:*` external）。
+- `dist/gui.cjs` — GUI 部分（单 CommonJS 文件；core + Mol* + React 打包）。
+- `dist/rpc.js` — RPC 契约。
+
 ## 限制
 
 - OpenCode 的工具结果没有内联图片内容类型，因此 `mol_capture` 返回保存路径
   （加一个 `file` 引用），而不是把 PNG 附加到模型上下文。
-- 点击文件树里的 `.pdb` 仍打开内置文本编辑器。请用 **Ctrl+P 文件搜索**
-  （LinkHandler）、`/mol_open <path>` 或选文件命令打开结构。注册 `"text"` kind 的
-  `FileViewer` 会被宿主忽略（它只渲染 file view 自己不渲染的 kind），所以暂无法
-  自动拦截文件树点击。
+- **内置文件树不能打开结构**：在文件树里点 `.pdb` 会打开文本编辑器。请用
+  **Ctrl+P 文件检索**、`/mol_open <path>` 或选文件命令。注册 `"text"` kind 的
+  `FileViewer` 会被宿主忽略（它只渲染 file view 自己不渲染的 kind）。
+- Scene 工具默认作用于当前 session 上次 `mol_open` 的结构；传 `tab`（`mol_open`
+  返回的路径）可指定某个已打开结构。场景按 session 分桶；面板只显示当前 session。
+- `mol_capture` 需要目标 viewer 标签挂载：它会先激活该标签，若 15 秒内仍无法创建
+  viewer（例如窄屏时侧栏未打开）则失败。
 - `mol_interface` 只解析 PDB 类 ATOM 记录；`mol_info` 尚不能从原始字节摘要 BCIF。
-- 文件上限 64 MiB；需要 WebGL 2。
+- 文件上限 64 MiB（含 gzip 解压后）；需要 WebGL 2。每个 session 最多保留 12 个打开的
+  结构标签（淘汰最旧的非活动标签）。

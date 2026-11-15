@@ -11,6 +11,7 @@ import type { SceneSnapshot } from './scene.ts'
 /** One capture waiting for the GUI to render it. */
 export interface PendingCapture {
   readonly captureId: string
+  readonly sessionID: string
   readonly scene: SceneSnapshot
   readonly width: number
   readonly height: number
@@ -40,6 +41,7 @@ export class CaptureHub {
   private readonly waiters = new Map<string, Waiter>()
 
   enqueue(input: {
+    readonly sessionID: string
     readonly scene: SceneSnapshot
     readonly width: number
     readonly height: number
@@ -48,6 +50,7 @@ export class CaptureHub {
   }): PendingCapture {
     const capture: PendingCapture = {
       captureId: randomUUID(),
+      sessionID: input.sessionID,
       scene: input.scene,
       width: input.width,
       height: input.height,
@@ -64,8 +67,16 @@ export class CaptureHub {
     return this.pending.find(capture => capture.captureId === captureId)?.saveDir
   }
 
+  /** Pending captures for one session, for a GUI that (re)mounts mid-capture. */
+  pendingForSession(sessionID: string): readonly PendingCapture[] {
+    return this.pending.filter(capture => capture.sessionID === sessionID)
+  }
+
   wait(captureId: string, timeoutMs: number, signal: AbortSignal): Promise<CaptureDelivery> {
-    if (signal.aborted) return Promise.reject(new Error('capture request was cancelled'))
+    if (signal.aborted) {
+      this.removePending(captureId)
+      return Promise.reject(new Error('capture request was cancelled'))
+    }
     return new Promise<CaptureDelivery>((resolve, reject) => {
       const settle = (): void => {
         clearTimeout(timer)

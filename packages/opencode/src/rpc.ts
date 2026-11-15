@@ -15,7 +15,11 @@ export const Mol4Agent = Rpc.define({
   id: 'mol4agent',
   methods: {
     listScenes: {
-      input: { type: 'object', properties: {}, additionalProperties: false },
+      input: {
+        type: 'object',
+        properties: { sessionID: { type: 'string' } },
+        additionalProperties: false,
+      },
       output: {
         type: 'object',
         properties: {
@@ -65,13 +69,13 @@ export const Mol4Agent = Rpc.define({
     openPath: {
       input: {
         type: 'object',
-        properties: { path: { type: 'string' }, cwd: { type: 'string' } },
+        properties: { path: { type: 'string' }, cwd: { type: 'string' }, sessionID: { type: 'string' } },
         required: ['path'],
         additionalProperties: false,
       },
       output: {
         type: 'object',
-        properties: { ok: { type: 'boolean' }, path: { type: 'string' }, error: { type: 'string' } },
+        properties: { ok: { type: 'boolean' }, path: { type: 'string' }, tab: { type: 'string' }, error: { type: 'string' } },
         required: ['ok'],
         additionalProperties: false,
       },
@@ -104,20 +108,60 @@ export const Mol4Agent = Rpc.define({
       },
       output: { type: 'object', properties: {}, additionalProperties: false },
     },
+    pendingCaptures: {
+      input: {
+        type: 'object',
+        properties: { sessionID: { type: 'string' } },
+        additionalProperties: false,
+      },
+      output: {
+        type: 'object',
+        properties: {
+          captures: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                captureId: { type: 'string' },
+                sceneId: { type: 'string' },
+                path: { type: 'string' },
+                label: { type: 'string' },
+                width: { type: 'integer' },
+                height: { type: 'integer' },
+                transparent: { type: 'boolean' },
+              },
+              required: ['captureId', 'sceneId', 'path', 'label', 'width', 'height'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['captures'],
+        additionalProperties: false,
+      },
+    },
   },
   events: {
-    scene: { schema: { type: 'object', properties: {}, additionalProperties: false } },
+    scene: {
+      schema: {
+        type: 'object',
+        properties: { sessionID: { type: 'string' } },
+        required: ['sessionID'],
+        additionalProperties: false,
+      },
+    },
     capture: {
       schema: {
         type: 'object',
         properties: {
+          sessionID: { type: 'string' },
           captureId: { type: 'string' },
           sceneId: { type: 'string' },
+          path: { type: 'string' },
           width: { type: 'integer' },
           height: { type: 'integer' },
           transparent: { type: 'boolean' },
         },
-        required: ['captureId', 'sceneId', 'width', 'height'],
+        required: ['sessionID', 'captureId', 'sceneId', 'path', 'width', 'height'],
         additionalProperties: false,
       },
     },

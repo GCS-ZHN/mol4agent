@@ -12,12 +12,14 @@
   },
   "files": [
     "dist",
+    "docs",
     "README.md",
     "README_zh.md"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
     "prepack": "npm run build"
   },
   "engines": {

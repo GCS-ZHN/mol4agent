@@ -1,7 +1,13 @@
 /**
- * The adapter-owned scene log. A scene stores the file bytes once and a
- * cumulative list of JSON commands, so any viewer instance can rebuild the
- * current picture from a snapshot without observing earlier tool calls.
+ * The adapter-owned scene log, bucketed per session.
+ *
+ * OpenCode's server serves several sessions at once, so the scene log must not
+ * be a single process-wide `active` tab: session A's `mol_open` must not open a
+ * panel in session B, and one session's style must not change another's scene.
+ * The store is therefore one process-wide object (`globalThis`, see server.ts)
+ * holding a per-session bucket. Each bucket keeps path-keyed tabs so agent
+ * tools can target a tab by path (`mol_style({ tab })`), and a global
+ * `byId` map gives O(1) access to any scene by its unique id.
  *
  * @module @gcszhn/mol4agent-opencode/scene
  */
@@ -36,24 +42,38 @@ export interface SceneRecord {
   readonly summary?: StructureSummary
 }
 
-/**
- * In-memory scene store. Agent tools mutate the active scene (the last
- * `mol_open`); every opened path keeps its own independent tab scene, so a new
- * open never replaces an older tab's structure.
- */
+interface SessionState {
+  readonly tabs: Map<string, SceneRecord>
+  activePath: string | null
+}
+
+/** How many tabs one session keeps before the oldest non-active one is evicted. */
+const MAX_TABS = 12
+
 export class SceneStore {
-  private readonly tabs = new Map<string, SceneRecord>()
-  private readonly byId = new Map<string, string>()
-  private activePath: string | null = null
+  private readonly sessions = new Map<string, SessionState>()
+  private readonly byId = new Map<string, SceneRecord>()
+
+  private bucket(sessionID: string): SessionState {
+    let state = this.sessions.get(sessionID)
+    if (state === undefined) {
+      state = { tabs: new Map(), activePath: null }
+      this.sessions.set(sessionID, state)
+    }
+    return state
+  }
 
   /** Create/replace the tab for `path`, make it active, and return its snapshot. */
-  open(input: {
+  open(sessionID: string, input: {
     readonly path: string
     readonly label: string
     readonly format: MolFormat
     readonly bytes: Uint8Array
     readonly commands: readonly MolCommand[]
   }): SceneSnapshot {
+    const state = this.bucket(sessionID)
+    const previous = state.tabs.get(input.path)
+    if (previous !== undefined) this.byId.delete(previous.sceneId)
     const summary = safeSummary(input.bytes, input.format)
     const record: SceneRecord = {
       sceneId: randomUUID(),
@@ -66,55 +86,61 @@ export class SceneStore {
       revision: 1,
       ...(summary === undefined ? {} : { summary }),
     }
-    this.tabs.set(input.path, record)
-    this.byId.set(record.sceneId, input.path)
-    this.activePath = input.path
+    state.tabs.set(input.path, record)
+    this.byId.set(record.sceneId, record)
+    state.activePath = input.path
+    this.evict(state, input.path)
     return snapshotOf(record)
   }
 
-  /** Append one command to the active scene. Returns null when nothing is open. */
-  pushActive(command: MolCommand): SceneSnapshot | null {
-    if (this.activePath === null) return null
-    const current = this.tabs.get(this.activePath)
+  /** Append one command to a tab (or the active tab when `path` is omitted). */
+  push(sessionID: string, path: string | null, command: MolCommand): SceneSnapshot | null {
+    const state = this.bucket(sessionID)
+    const target = path ?? state.activePath
+    if (target === null) return null
+    const current = state.tabs.get(target)
     if (current === undefined) return null
     const record: SceneRecord = {
       ...current,
       commands: [...current.commands, command],
       revision: current.revision + 1,
     }
-    this.tabs.set(this.activePath, record)
+    state.tabs.set(target, record)
+    this.byId.set(record.sceneId, record)
     return snapshotOf(record)
   }
 
-  /** The active scene's path, or null. */
-  active(): string | null {
-    return this.activePath
+  /** The active tab path for a session, or null. */
+  active(sessionID: string): string | null {
+    return this.bucket(sessionID).activePath
   }
 
-  /** Snapshot of the active scene, if any. */
-  snapshotActive(): SceneSnapshot | null {
-    if (this.activePath === null) return null
-    const record = this.tabs.get(this.activePath)
+  /** Snapshot of a tab (or the active tab when `path` is omitted). */
+  snapshot(sessionID: string, path: string | null): SceneSnapshot | null {
+    const state = this.bucket(sessionID)
+    const target = path ?? state.activePath
+    if (target === null) return null
+    const record = state.tabs.get(target)
     return record === undefined ? null : snapshotOf(record)
   }
 
   /** Full record for a scene id, used to fetch bytes. */
   recordBySceneId(sceneId: string): SceneRecord | undefined {
-    const path = this.byId.get(sceneId)
-    return path === undefined ? undefined : this.tabs.get(path)
+    return this.byId.get(sceneId)
   }
 
-  /** Lightweight list of every open scene, for the GUI panel. */
-  list(): { readonly active: string; readonly scenes: readonly SceneSnapshot[] } {
+  /** Lightweight list of one session's open scenes, for the GUI panel. */
+  list(sessionID: string): { readonly active: string; readonly scenes: readonly SceneSnapshot[] } {
+    const state = this.bucket(sessionID)
     return {
-      active: this.activePath ?? '',
-      scenes: [...this.tabs.values()].map(snapshotOf),
+      active: state.activePath ?? '',
+      scenes: [...state.tabs.values()].map(snapshotOf),
     }
   }
 
   /** Bytes + metadata for one scene, base64-encoded for the RPC wire. */
   fetch(sceneId: string): { sceneId: string; format: MolFormat; label: string; binary: boolean; data: string } | undefined {
-    const record = this.recordBySceneId(sceneId)
+    const record = this.byId.get(sceneId)
     if (record === undefined) return undefined
     return {
       sceneId: record.sceneId,
@@ -122,6 +148,21 @@ export class SceneStore {
       label: record.label,
       binary: record.binary,
       data: bytesToBase64(record.bytes),
+    }
+  }
+
+  private evict(state: SessionState, keepPath: string): void {
+    while (state.tabs.size > MAX_TABS) {
+      let evicted = false
+      for (const path of state.tabs.keys()) {
+        if (path === keepPath || path === state.activePath) continue
+        const record = state.tabs.get(path)
+        if (record !== undefined) this.byId.delete(record.sceneId)
+        state.tabs.delete(path)
+        evicted = true
+        break
+      }
+      if (!evicted) return
     }
   }
 }

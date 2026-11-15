@@ -36,14 +36,32 @@ the desktop app's location, so the scene store must be a single process-wide
 instance. Pin it on `globalThis`:
 
 ```ts
+const STORE_SCHEMA = 'v2'
+const globalKey = `__mol4agent_opencode_${STORE_SCHEMA}__`
 const g = globalThis as unknown as Record<string, unknown>
-const store = (g['__mol4agent_opencode__store'] ??= new SceneStore()) as SceneStore
-const captures = (g['__mol4agent_opencode__captures'] ??= new CaptureHub()) as CaptureHub
+const store = (g[`${globalKey}store`] ??= new SceneStore()) as SceneStore
+const captures = (g[`${globalKey}captures`] ??= new CaptureHub()) as CaptureHub
 ```
 
 Do not move `store`/`captures` back into `setup` or onto a module-level `const`;
 both are per-location. `globalThis` is per-process, which is the scope the RPC
-event broadcast reaches.
+event broadcast reaches. Bump `STORE_SCHEMA` whenever the store's shape changes:
+hot-reloading with `??=` otherwise keeps the stale instance from the previous
+build (`store.snapshot is not a function`).
+
+### Session buckets and tab targeting
+
+- One server process serves several sessions. `SceneStore` is **bucketed per
+  `sessionID`** (`open`/`push`/`snapshot`/`active`/`list` all take it), so one
+  session's `mol_open` or style never mutates another session's panel. The GUI
+  filters `listScenes`/`pendingCaptures` and `scene`/`capture` events by
+  `ctx.sessions.current()`.
+- Each bucket keeps path-keyed tabs; `mol_open` returns `tab` (the absolute
+  path) and every scene tool accepts it to target a non-active tab. Without
+  `tab`, tools target the session's last `mol_open`.
+- A session keeps at most 12 tabs (oldest non-active evicted); `byId` maps
+  `sceneId` to the record for `fetchScene`. Reopening a path replaces its tab
+  and invalidates the old `sceneId`.
 
 ## RPC
 
@@ -51,9 +69,14 @@ event broadcast reaches.
   server bundles its own copy and the GUI bundles another; they match by `id`.
   Do not rely on object identity.
 - `events.emit` broadcasts; `events.on`/`events.subscribe` are live-only. The
-  GUI must do an initial `listScenes({})` on mount, not only follow events.
+  GUI must do an initial `listScenes({ sessionID })` on mount, plus a
+  `pendingCaptures({ sessionID })` claim, not only follow events.
+- `scene` and `capture` payloads carry `sessionID` (a `capture` also carries
+  `path` so the GUI can reveal the right tab without a scene lookup). The GUI
+  ignores payloads for another session.
 - Event payloads are objects (`event.data`). Method inputs are JSON Schema, so
-  handlers receive `unknown`; cast and validate defensively.
+  handlers receive `unknown`; cast and validate defensively. Keep the
+  `pendingCaptures` output schema in sync with what the server returns.
 
 ## Tools
 
@@ -88,18 +111,20 @@ event broadcast reaches.
 
 ## Human open
 
-- The file-tree `.pdb` click opens the built-in text editor. A `FileViewer` for
-  the `"text"` kind is ignored by the host (it only renders kinds the file view
-  does not render itself), so automatic file-tree interception is not possible
-  yet. Document this limitation in the README.
-- Provide human paths instead: **Ctrl+P file search** via `LinkHandler`, the
-  `/mol_open <path>` slash command, and the pick-file command. `LinkHandler.open`
-  may receive only the basename from the file tree; cache the full path seen in
-  `match` and reuse it in `open`.
+- The built-in file tree does not route a `.pdb` click to plugins: it opens the
+  text editor, and a `FileViewer` for the `"text"` kind is ignored by the host
+  (it only renders kinds the file view does not render itself). Automatic
+  file-tree interception is not possible; document the limitation in the README.
+- Provide human paths instead: **Ctrl+P file search** via `LinkHandler` (this is
+  the only file-search route that reaches the handler), the `/mol_open <path>`
+  slash command, and the pick-file command. `LinkHandler.open` may receive only
+  the basename, so cache the full path seen in `match` and reuse it in `open`.
+  Reject non-`file://` URLs so a remote link is never treated as a path.
 
 ## Verification
 
-- `pnpm --filter @gcszhn/mol4agent-opencode typecheck`, then the package build
+- `pnpm --filter @gcszhn/mol4agent-opencode typecheck`, `test` (Node's
+  `--experimental-strip-types` runner), then the package build
   (`node scripts/build.mjs`). Core must be built first.
 - The server part hot-reloads on `dist/index.js` rebuild + `/reload`; the GUI
   hot-reloads in every window on `dist/gui.cjs` rebuild. A plugin whose GUI

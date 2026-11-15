@@ -13,7 +13,7 @@ sessions. Read the package playbook before changing that package:
   — MCP server/app split, tools, long-poll, capture rendezvous, packaging.
 - **OpenCode adapter** (`packages/opencode/`):
   [`packages/opencode/AGENTS.md`](packages/opencode/AGENTS.md)
-  — server/GUI split, RPC, per-location `globalThis` store, Vite GUI build,
+  — server/GUI split, RPC, per-location `globalThis` store, esbuild GUI build,
   capture rendezvous, packaging.
 
 API, architecture, and tool references stay in the READMEs; do not duplicate

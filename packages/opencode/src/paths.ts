@@ -51,9 +51,12 @@ export async function resolveMoleculeFile(
   }
   let bytes: Uint8Array = new Uint8Array(await readFile(absolutePath, { signal }))
   if (isGzipFile(absolutePath)) {
-    bytes = new Uint8Array(gunzipSync(bytes))
-    if (bytes.byteLength > maxFileBytes) {
-      throw new Error(`decompressed file is too large (${bytes.byteLength} bytes; limit ${maxFileBytes})`)
+    try {
+      // `maxOutputLength` caps decompression so a gzip bomb cannot allocate
+      // gigabytes before the size check.
+      bytes = new Uint8Array(gunzipSync(bytes, { maxOutputLength: maxFileBytes }))
+    } catch (reason) {
+      throw new Error(`could not decompress ${absolutePath} (limit ${maxFileBytes} bytes): ${reason instanceof Error ? reason.message : String(reason)}`)
     }
   }
   return {

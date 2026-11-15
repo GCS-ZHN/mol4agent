@@ -85,6 +85,7 @@ flowchart TB
 | core | 官方 Mol* UI viewer、命令/选择器语义、字节摘要、PNG capture | 路径、后缀、IO、session、harness UI | [core README](../packages/core/README_zh.md)、[core AGENTS](../packages/core/AGENTS.md) |
 | harness adapter | 格式识别、读字节、预览挂载、agent 工具、状态投影、截图回传、宿主 UI 生命周期 | Mol* 内部实现、core 协议语义 | [DSH README](../packages/deepseek-harness/README_zh.md)、[DETAIL](../packages/deepseek-harness/docs/DETAIL.md)、[DSH AGENTS](../packages/deepseek-harness/AGENTS.md) |
 | ChatGPT/Codex 适配 | MCP 工具 + MCP App UI 下的同一套语义 | 另起一套分子行为 | [ChatGPT README](../packages/chatgpt/README_zh.md)、[AGENTS](../packages/chatgpt/AGENTS.md) |
+| OpenCode 适配 | `mol_*` 工具 + 侧栏 Mol* GUI 下的同一套语义 | 另起一套分子行为 | [OpenCode README](../packages/opencode/README_zh.md)、[AGENTS](../packages/opencode/AGENTS.md) |
 
 **稳定边界**：core 的输入永远是 `bytes + 显式 format`；适配器负责把「路径」或「raw data」变成这个输入。适配器可以不同，分子语义不能分叉。
 
@@ -189,5 +190,9 @@ App；两者共享长轮询场景与 claim/deliver 截图会合。每个 `mcp-ex
 - **ChatGPT/Codex 适配**：MCP App viewer、`mol_*` 工具、长轮询场景更新、
   截图会合、本地 marketplace 安装，以及文件树的 MCP extension file viewer
   均已实现；按扩展名授权与单活场景限制记录在包 README。
+- **OpenCode 适配**：侧栏 Mol* viewer、`mol_*` 工具、RPC 场景更新、截图会合、
+  选文件打开均已实现。需要 `@opencode/plugin` 2.2.0+（`./gui` 窗口 API，2.3.0
+  验证）。OpenCode 工具结果无内联图片，`mol_capture` 返回保存路径；文件树点击
+  不做拦截，请用 Ctrl+P 文件检索（见包 README）。
 
 下一步不是继续扩写本文，而是把新能力写进对应 package 的 README/AGENTS，并只在这里更新总体目标或分层的变化。

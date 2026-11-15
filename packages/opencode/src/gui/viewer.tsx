@@ -44,6 +44,7 @@ export function StructureViewer(props: {
   let boundSceneId: string | undefined
   let registeredSceneId: string | undefined
   let applied = 0
+  let disposed = false
   let queue: Promise<void> = Promise.resolve()
 
   const host = document.createElement('div')
@@ -60,14 +61,25 @@ export function StructureViewer(props: {
   const sync = (scene: SceneInfo): void => {
     queue = queue
       .then(async () => {
+        if (disposed) return
         if (viewer === undefined) {
           const mod = await loadCore()
-          viewer = await mod.createMolViewer({ container: host, theme: props.theme() })
+          if (disposed) return
+          const created = await mod.createMolViewer({ container: host, theme: props.theme() })
+          // A GUI hot-reload can dispose this component while core was loading.
+          if (disposed) {
+            created.dispose()
+            return
+          }
+          viewer = created
         }
-        viewer.setTheme(props.theme())
+        const current = viewer
+        if (current === undefined) return
+        current.setTheme(props.theme())
         if (scene.sceneId !== boundSceneId) {
           const fetched = await props.fetchScene(scene.sceneId)
-          await viewer.load({
+          if (disposed) return
+          await current.load({
             data: base64ToBytes(fetched.data),
             format: fetched.format as MolFormat,
             label: fetched.label,
@@ -76,11 +88,12 @@ export function StructureViewer(props: {
           boundSceneId = scene.sceneId
           applied = 0
         }
+        if (disposed) return
         register(scene.sceneId)
         if (scene.commands.length < applied) applied = 0
         const pending = scene.commands.slice(applied)
         if (pending.length > 0) {
-          const results = await viewer.apply(pending)
+          const results = await current.apply(pending)
           for (const result of results) {
             if (!result.ok) console.warn('[mol4agent]', result.message)
           }
@@ -100,6 +113,7 @@ export function StructureViewer(props: {
   })
 
   onCleanup(() => {
+    disposed = true
     if (registeredSceneId !== undefined) props.onViewer(registeredSceneId, undefined)
     viewer?.dispose()
     viewer = undefined

@@ -19,6 +19,17 @@ side panel that the agent operates with `mol_*` tools.
   `.bcif`, `.mol`, `.sdf`, `.sd`, `.mol2`, `.xyz`, `.gro`, and `.gz` variants
   (decoded server-side before core).
 
+![OpenCode desktop: the agent edits code while the side panel renders aspirin.sdf in the official Mol* UI](docs/opencode-viewer.jpg)
+
+## Open a structure (OpenCode)
+
+- **Agent**: `mol_open` (run `mol_info` first to pick chains/residues).
+- **Human**:
+  - **Ctrl+P file search** → type the file name → select the `.pdb`/`.cif`/... entry. It opens in the Mol* panel via the `LinkHandler`.
+  - `/mol_open <path>` slash command.
+  - **Open molecular structure** command (system file picker).
+- **Not the built-in file tree**: clicking a `.pdb` in the file tree opens the plain-text editor. OpenCode does not route file-tree clicks to plugins (a `FileViewer` registered for the `"text"` kind is ignored), so use **Ctrl+P** instead of clicking the tree.
+
 ## Architecture
 
 The package is an OpenCode plugin with three parts:
@@ -116,11 +127,18 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 - OpenCode tool results have no inline-image content type, so `mol_capture`
   returns the saved path (and a `file` reference) rather than attaching the PNG
   to the model context.
-- The file-tree `.pdb` click opens the built-in text editor. Open structures via
-  **Ctrl+P file search** (LinkHandler), `/mol_open <path>`, or the pick-file
-  command. A `FileViewer` for the `"text"` kind is ignored by the host (it only
-  renders kinds the file view does not render itself), so automatic file-tree
-  interception is not possible yet.
+- The built-in file tree cannot open a structure: clicking a `.pdb` there opens
+  the text editor. Use **Ctrl+P file search**, `/mol_open <path>`, or the
+  pick-file command instead. A `FileViewer` for the `"text"` kind is ignored by
+  the host (it only renders kinds the file view does not render itself).
+- Scene tools target the routed session's last `mol_open` unless you pass `tab`
+  (the path `mol_open` returned). Scenes are bucket-per-session; the panel shows
+  the routed session's scenes.
+- `mol_capture` needs the target viewer tab to mount: it reveals the tab first
+  and fails after 15 s if the viewer cannot be created (for example, the side
+  panel stays closed on a narrow screen).
 - `mol_interface` parses PDB-like ATOM records only; `mol_info` cannot summarize
   BCIF from raw bytes yet.
-- Files are capped at 64 MiB; WebGL 2 is required.
+- Files are capped at 64 MiB (including gzip-decompressed output); WebGL 2 is
+  required. A session keeps at most 12 open structure tabs (oldest non-active
+  evicted).
