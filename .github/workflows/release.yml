@@ -11,7 +11,6 @@ concurrency:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   release:
@@ -62,13 +61,13 @@ jobs:
 
       - name: Publish core
         working-directory: packages/core
-        run: pnpm publish --access public --provenance --no-git-checks
+        run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish DSH adapter
         working-directory: packages/deepseek-harness
-        run: pnpm publish --access public --provenance --no-git-checks
+        run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
