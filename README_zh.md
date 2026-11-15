@@ -134,6 +134,32 @@ codex plugin add mol4agent@mol4agent-local
 tab。工具参考与文件处理器细节见
 [ChatGPT 适配 README](packages/chatgpt/README_zh.md)。
 
+## 快速开始（OpenCode）
+
+需要 OpenCode 2.2+（`./gui` 插件 API；已在 2.3.0 验证）。安装到全局配置：
+
+```sh
+opencode plugin add @gcszhn/mol4agent-opencode
+```
+
+本地源码开发时，先构建，再把包目录加到全局 `opencode.json(c)`（`opencode
+plugin add` 只接受 npm/Git spec）：
+
+```sh
+pnpm --filter @gcszhn/mol4agent-core build
+pnpm --filter @gcszhn/mol4agent-opencode build
+# "plugins": ["/path/to/mol4agent/packages/opencode"]
+```
+
+用 **Ctrl+P**（`/open`）文件检索或「Open molecular structure」命令打开结构；
+内置文件树不会把 `.pdb` 点击路由给插件。然后让 agent：
+
+> 打开 fixtures/1atp.pdb，用 cartoon 和 chain-id 着色，高亮 ATP，聚焦并截图。
+
+每个结构标签在打开期间保留相机、样式和选择；不用的标签记得关闭（每个常驻
+viewer 占用一个 WebGL context）。工具与限制见
+[OpenCode 适配 README](packages/opencode/README_zh.md)。
+
 ## 开发
 
 ```sh

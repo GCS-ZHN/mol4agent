@@ -154,6 +154,35 @@ structure does not reload existing tabs. See the
 [ChatGPT adapter README](packages/chatgpt/README.md) for the tool reference and
 file-handler details.
 
+## Quick start (OpenCode)
+
+Requires OpenCode 2.2+ (the `./gui` plugin API; verified on 2.3.0). Install the
+adapter into the global configuration:
+
+```sh
+opencode plugin add @gcszhn/mol4agent-opencode
+```
+
+For a local checkout, build it and add the package directory to the global
+`opencode.json(c)` instead (`opencode plugin add` only accepts npm/Git specs):
+
+```sh
+pnpm --filter @gcszhn/mol4agent-core build
+pnpm --filter @gcszhn/mol4agent-opencode build
+# "plugins": ["/path/to/mol4agent/packages/opencode"]
+```
+
+Open a structure with **Ctrl+P** (`/open`) file search or the **Open molecular
+structure** command; the built-in file tree does not route `.pdb` clicks to
+plugins. Then ask the agent:
+
+> Open fixtures/1atp.pdb, use cartoon with chain-id coloring, highlight ATP,
+> focus it, and capture a screenshot.
+
+Each structure tab keeps its camera, style, and selection while it stays open;
+close unused tabs (each live viewer holds a WebGL context). See the
+[OpenCode adapter README](packages/opencode/README.md) for tools and limitations.
+
 ## Development
 
 ```sh
