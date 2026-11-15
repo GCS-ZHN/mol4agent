@@ -53,7 +53,31 @@ viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
 
 ## 快速开始（DSH Desktop）
 
-插件已安装到当前 `desktop` profile：
+### 安装 / 重装
+
+在本仓库根目录执行：
+
+```sh
+cd /path/to/mol4agent
+pnpm build
+dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
+```
+
+`dsh plugin` 会把参数转发给 `~/.dsh/profiles/<profile>` 下的 pnpm。还需要把
+`@gcszhn/mol4agent-deepseekharness` 放进该 profile `package.json` 的
+`dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理）；安装或更新
+Host bundle 后重启 DSH。
+
+npm 形式（0.1.0）：
+
+```sh
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
+```
+
+卸载：`dsh plugin --profile desktop remove @gcszhn/mol4agent-deepseekharness`，
+并从 `dsh.profile.bundles` 中移除。
+
+当前 `desktop` profile 已安装并启用：
 
 1. 在文件树里打开 `fixtures/1crn.pdb`（或 `fixtures/1atp.pdb`、`fixtures/aspirin.sdf`、`fixtures/1crn.cif`）。
    - 默认显示「结构预览」；预览器工具栏的「打开方式」可切回纯文本/代码。

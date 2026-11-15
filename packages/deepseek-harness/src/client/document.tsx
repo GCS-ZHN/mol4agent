@@ -228,8 +228,17 @@ export function MolBody(props: MolBodyProps): ReactNode {
     applyChain.current = applyChain.current
       .then(async () => {
         if (loaded.current.sceneKey !== scene.sceneKey) {
+          const firstScene = loaded.current.sceneKey === undefined
           loaded.current.sceneKey = scene.sceneKey
           loaded.current.applied = 0
+          // A new scene is a fresh open: reload the bytes so old measurements,
+          // selection components, and styles do not leak into the new scene.
+          // The first scene after a viewer mount is already loaded, so skip it.
+          if (!firstScene) {
+            await reload()
+            loaded.current.sceneKey = scene.sceneKey
+            loaded.current.applied = 0
+          }
         }
         for (let index = loaded.current.applied; index < scene.commands.length; index += 1) {
           const command = scene.commands[index]

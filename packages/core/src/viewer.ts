@@ -40,7 +40,6 @@ export interface MolViewerOptions {
   readonly container: HTMLElement
   readonly theme?: 'light' | 'dark'
   readonly background?: string
-  readonly onError?: (error: unknown) => void
 }
 
 export interface ViewerDiagnostics {
@@ -82,7 +81,8 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
   await waitForHostSize(host, 3000)
 
   let theme = options.theme ?? 'dark'
-  const background = options.background ?? (theme === 'dark' ? '#101418' : '#ffffff')
+  const themeBackground = (): string => (theme === 'dark' ? '#101418' : '#ffffff')
+  const background = options.background ?? themeBackground()
   const themeStyle = document.createElement('style')
   themeStyle.dataset.mol4agentTheme = theme
   themeStyle.textContent = theme === 'dark' ? darkCss : lightCss
@@ -195,9 +195,16 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
           : new TextDecoder('utf-8', { fatal: false }).decode(data.data)
       const dataObject = await plugin.builders.data.rawData({ data: payload, label })
       const trajectory = await plugin.builders.structure.parseTrajectory(dataObject, descriptor.parser)
+      const requestedPreset = loadOptions?.preset
+      const representationPreset = requestedPreset === undefined || requestedPreset === 'default'
+        ? undefined
+        : requestedPreset
       const preset = await plugin.builders.structure.hierarchy.applyPreset(
         trajectory,
-        (loadOptions?.preset ?? 'default') as never,
+        'default',
+        representationPreset === undefined
+          ? undefined
+          : { representationPreset: representationPreset as never },
       )
       const structure = (preset as { structure?: { cell?: { obj?: { data?: Structure } } } } | undefined)
         ?.structure?.cell?.obj?.data
@@ -220,9 +227,9 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
     },
 
     async execute(command) {
-      assertAlive()
       try {
-        return await executeCommand(plugin, command, summary !== undefined)
+        assertAlive()
+        return await executeCommand(plugin, command, summary !== undefined, theme)
       } catch (error) {
         if (error instanceof Mol4AgentError) {
           return { ok: false, op: command.op, code: error.code, message: error.message }
@@ -244,7 +251,7 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
       themeStyle.dataset.mol4agentTheme = next
       themeStyle.textContent = next === 'dark' ? darkCss : lightCss
       plugin.canvas3d?.setProps({
-        renderer: { backgroundColor: toColor(next === 'dark' ? '#101418' : '#ffffff') },
+        renderer: { backgroundColor: toColor(themeBackground()) },
       })
       plugin.canvas3d?.requestDraw()
     },
@@ -259,18 +266,29 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
       if (helper === undefined) throw new Mol4AgentError('CAPTURE_FAILED', 'viewport screenshot helper is unavailable')
       const width = captureOptions?.width ?? 1024
       const height = captureOptions?.height ?? 768
-      helper.behaviors.values.next({
-        ...helper.values,
-        resolution: { name: 'custom', params: { width, height } },
-        transparent: captureOptions?.transparent ?? false,
-      } as never)
-      if (captureOptions?.background !== undefined && plugin.canvas3d !== undefined) {
-        plugin.canvas3d.setProps({ renderer: { backgroundColor: toColor(captureOptions.background) } })
+      const previousBackground = plugin.canvas3d?.props.renderer.backgroundColor
+      try {
+        helper.behaviors.values.next({
+          ...helper.values,
+          resolution: { name: 'custom', params: { width, height } },
+          transparent: captureOptions?.transparent ?? false,
+        } as never)
+        if (captureOptions?.background !== undefined && plugin.canvas3d !== undefined) {
+          plugin.canvas3d.setProps({ renderer: { backgroundColor: toColor(captureOptions.background) } })
+        }
+        const uri = await helper.getImageDataUri()
+        const comma = uri.indexOf(',')
+        if (comma < 0) throw new Mol4AgentError('CAPTURE_FAILED', 'screenshot helper returned no data URI')
+        return decodeBase64(uri.slice(comma + 1))
+      } catch (reason) {
+        if (reason instanceof Mol4AgentError) throw reason
+        throw new Mol4AgentError('CAPTURE_FAILED', reason instanceof Error ? reason.message : String(reason))
+      } finally {
+        if (captureOptions?.background !== undefined && previousBackground !== undefined && plugin.canvas3d !== undefined) {
+          plugin.canvas3d.setProps({ renderer: { backgroundColor: previousBackground } })
+          plugin.canvas3d.requestDraw()
+        }
       }
-      const uri = await helper.getImageDataUri()
-      const comma = uri.indexOf(',')
-      if (comma < 0) throw new Mol4AgentError('CAPTURE_FAILED', 'screenshot helper returned no data URI')
-      return decodeBase64(uri.slice(comma + 1))
     },
 
     resize() {
@@ -299,6 +317,7 @@ async function executeCommand(
   plugin: PluginContext,
   command: MolCommand,
   hasStructure: boolean,
+  theme: 'light' | 'dark',
 ): Promise<CommandResult> {
   if (!hasStructure) {
     return { ok: false, op: command.op, code: 'NO_STRUCTURE', message: 'load a structure before sending viewer commands' }
@@ -454,7 +473,7 @@ async function executeCommand(
       if (plugin.canvas3d === undefined) {
         return { ok: false, op: command.op, code: 'INVALID_COMMAND', message: 'canvas is unavailable' }
       }
-      const color = command.color === 'theme' ? Color(0xffffff) : toColor(command.color)
+      const color = command.color === 'theme' ? toColor(theme === 'dark' ? '#101418' : '#ffffff') : toColor(command.color)
       plugin.canvas3d.setProps({ renderer: { backgroundColor: color } })
       plugin.canvas3d.requestDraw()
       return { ok: true, op: command.op, message: `background ${command.color}` }
@@ -472,7 +491,7 @@ async function executeCommand(
       const loci = schemas.map(schema => StructureElement.Schema.toLoci(structure, schema as never))
       const manager = plugin.managers.structure.measurement
       const needed = command.kind === 'distance' ? 2 : command.kind === 'angle' ? 3 : 4
-      if (loci.length < needed) return invalid(command.op, `${command.kind} needs at least ${needed} targets`)
+      if (loci.length !== needed) return invalid(command.op, `${command.kind} needs exactly ${needed} targets`)
       if (command.kind === 'distance') await manager.addDistance(loci[0]!, loci[1]!)
       else if (command.kind === 'angle') await manager.addAngle(loci[0]!, loci[1]!, loci[2]!)
       else await manager.addDihedral(loci[0]!, loci[1]!, loci[2]!, loci[3]!)

@@ -7,8 +7,8 @@ mol4agent 的 DeepSeek Harness（DSH）适配包：右侧栏分子文档预览�
 - **结构预览**：`.pdb`、`.ent`、`.pdbqt`、`.pqr`、`.cif`、`.mmcif`、`.mcif`、
   `.bcif`、`.mol`、`.sdf`、`.sd`、`.mol2`、`.xyz`、`.gro` 默认用 Mol* 官方
   UI 打开，而不是纯文本；预览器的「打开方式」仍可切回代码/纯文本。
-- **agent 工具**：`mol_info`、`mol_open`、`mol_style`、`mol_select`、
-  `mol_measure`、`mol_capture`。
+- **agent 工具**：`mol_info`、`mol_interface`、`mol_open`、`mol_style`、
+  `mol_select`、`mol_focus`、`mol_measure`、`mol_capture`。
 - **agent 驱动页面**：工具调用被折叠进可持久化的 session projection；打开的
   页面跟随它并应用命令。
 - **自动打开**：agent 指定新结构时，通过 session header 的 bridge 打开对应
@@ -66,7 +66,7 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | `mol_select` | `target`、`mode?`、`focus?` | 追加 `select`；`mode` 为 `select` 或 `highlight`。 |
 | `mol_focus` | `target?` | 追加 `focus`；不传 target 聚焦整个结构。 |
 | `mol_measure` | `kind`、`targets` | 追加 `measure`；距离 2 个目标，角度 3 个，二面角 4 个。 |
-| `mol_capture` | `width?`、`height?`、`transparent?` | 阻塞等待打开的页面回传 PNG（默认 1024×768）；当前模型支持图片时把图片作为附件返回，同时给出保存路径。 |
+| `mol_capture` | `width?`、`height?`、`transparent?` | 阻塞等待打开的页面回传 PNG（默认 1024×768）；当前模型支持图片时把图片作为附件返回，并在可用时给出 `savedPath`。 |
 
 `path` 是绝对路径，或相对 session 工作目录。文件上限 64 MiB。
 
@@ -133,7 +133,7 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 - 只有 `imageCapable` 为 true 时，图片才会作为工具结果附件；否则文本结果里
   只有保存路径。
 - `savedPath` 为 `<cwd>/.mol4agent/captures/mol4agent-<timestamp>-<id>.png`。
-- `diagnostics` 预留给浏览器回传的布局/层级诊断。
+- `diagnostics` 包含浏览器侧的 status/path/命令数量以及 Mol* 层级诊断。
 
 ### 工具调用到命令的映射
 
@@ -173,12 +173,16 @@ interface MolSessionState {
 }
 ```
 
-- 任意 `mol_*` 的 `tool/call` 都会折叠进 `scene`/`pending`，并递增 `revision`。
-- `tool/result` 清除对应的 `pending` 项并递增 `revision`。
+- 会改变场景的 `mol_*` 调用（open/style/select/focus/measure）会折叠进 `scene`
+  并递增 `revision`；只读工具（`mol_info`、`mol_interface`）和无场景/非法调用
+  保持状态不变。
+- `tool/result` 清除对应的 pending 截图项并递增 `revision`；其他结果保持状态
+  不变。
 - 相对路径基于 projection 初始化时捕获的 `cwd` 解析。
 - projection 可重放：只存路径和 JSON 命令，不存字节。
-- agent 重新打开文件时 `sceneKey` 变化；client 用它重新加载结构并重置已应用
-  命令的游标。
+- agent 重新打开文件时 `sceneKey` 变化；client 会重新加载结构（清掉旧
+  measurement/选择样式）并重置已应用命令的游标；viewer 刚 mount 后的第一个
+  scene 已经加载过，不重复读。
 
 client 通过 `props.useProjection('mol4agent')` 读取场景，并通过
 `remote.workspaceFiles.readBytes` 单独读文件字节，然后调用
@@ -278,8 +282,27 @@ bundle。
 
 ## 安装
 
-本包是 DSH bundle。当前 Desktop `desktop` profile 已通过 `plugin_manager` 安装，
-并启用为 `@gcszhn/mol4agent-deepseekharness`。
+本包是 DSH bundle。在本仓库根目录执行：
+
+```sh
+cd /path/to/mol4agent
+pnpm build
+dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
+```
+
+`dsh plugin` 会把参数转发给 `~/.dsh/profiles/<profile>` 下的 pnpm。还需要把
+`@gcszhn/mol4agent-deepseekharness` 放进该 profile `package.json` 的
+`dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理），然后重启
+DSH。
+
+npm 形式（0.1.0）：
+
+```sh
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
+```
+
+当前 Desktop `desktop` profile 已通过 `plugin_manager` 安装，并启用为
+`@gcszhn/mol4agent-deepseekharness`。
 
 - Host 变更：重新 build，然后**重启 DSH**（Host 启动时加载 `lib/host.js`）。
 - Client 变更：重新 build，然后**刷新页面**；不需要重启。
@@ -291,7 +314,7 @@ bundle。
 
 - BCIF 可以渲染，但 `mol_info` 目前还不能从 raw bytes 摘要。
 - 文件上限 64 MiB。
-- 3D 画布需要 WebGL。
+- 3D 画布需要 WebGL 2。
 - `mol_capture` 要求结构预览处于打开状态；20 秒超时，并会留下一条内部
   `mol4agent_capture` 命令记录。
 - `mol_style` 不传 `target` 时修改全局表示；传 `target` 时添加选择 component。
@@ -308,8 +331,8 @@ bundle。
 
 ## 文件
 
-- Host：`src/host/{index,projection,tools,capture,commands,prompt,paths}.ts`
-- Client：`src/client/{index,document,bridge}.tsx`、`src/client/{viewer-cache,locale,core-loader}.ts`
+- Host：`src/host/{index,projection,tools,capture,commands,prompt,paths,interface}.ts`
+- Client：`src/client/{index,document,bridge}.tsx`、`src/client/{viewer-cache,locale,core-loader,address}.ts`
 - 共享：`src/{formats,state,selector}.ts`
 - 包：`package.json`、`cordis.patch.yml`、`locale/{en,zh}.json`、`icon.svg`
 - 细节：[docs/DETAIL.md](docs/DETAIL.md)、[Core API](../core/README_zh.md)、

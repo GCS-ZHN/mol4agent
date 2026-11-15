@@ -4,9 +4,9 @@
  * Host: plain ESM; `@deepseek-ai/*` stays external and resolves from the DSH
  * installation (same peer-dependency pattern as other profile plugins).
  *
- * Browser: DSH's lazy-CJS module format. Each output is a
- * `window.__ModuleLoader__.load({ id, factory })` registration; the Mol* payload
- * is a separate `client.molstar.js` chunk fetched by `require.async`.
+ * Browser: DSH's lazy-CJS module format. The client is one
+ * `window.__ModuleLoader__.load({ id, factory })` registration containing core,
+ * Mol*, and the official UI CSS; no separate chunk.
  */
 import { build } from 'esbuild'
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'

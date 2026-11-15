@@ -20,6 +20,8 @@ import {
   type MolSessionState,
 } from '../state.ts'
 
+const MEASUREMENT_KINDS = new Set(['chain', 'residue', 'residues', 'comp', 'schema'])
+
 const stateSchema = z.custom<MolSessionState>(
   value => typeof value === 'object' && value !== null && 'revision' in value && 'pending' in value,
 )
@@ -110,10 +112,10 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
       const targets: StructureSelector[] = []
       for (const raw of rawTargets) {
         const target = selectorOf(raw)
-        if (target !== undefined) targets.push(target)
+        if (target !== undefined && MEASUREMENT_KINDS.has(target.kind)) targets.push(target)
       }
       const needed = kind === 'distance' ? 2 : kind === 'angle' ? 3 : 4
-      if (targets.length < needed) return state
+      if (targets.length !== needed) return state
       const command: MolCommand = { op: 'measure', kind, targets }
       return withCommands(state, [...state.scene.commands, command])
     }

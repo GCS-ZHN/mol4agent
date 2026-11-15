@@ -3,7 +3,7 @@
  *
  * Registers the molecular document preview (the right-sidebar "open with"
  * candidate), its body, and the session header bridge. All path handling and
- * file reading stay in this adapter; the Mol* chunk loads lazily.
+ * file reading stay in this adapter; Mol* is bundled into this client.
  *
  * @module @gcszhn/mol4agent-deepseekharness/client
  */
@@ -75,9 +75,10 @@ export function apply(ctx: Context): void {
         return result.value.data
       },
       deliverCapture: async (callId: string, png: Uint8Array, report: Record<string, unknown>): Promise<void> => {
+        const encodedReport = encodeURIComponent(JSON.stringify(report))
         const result = await ctx.remote.commands.execute(
           sessionId,
-          `/mol4agent_capture ${callId}`,
+          `/mol4agent_capture ${callId} ${encodedReport}`,
           [{ type: 'image', mediaType: 'image/png', data: encodeBase64(png) }],
           new AbortController().signal,
         )

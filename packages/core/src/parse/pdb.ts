@@ -12,6 +12,7 @@ export function summarizePdbLike(text: string, format: MolFormat, label?: string
   const builder = new SummaryBuilder()
   let model = 1
   let sawModel = false
+  const models = new Set<number>()
   for (const line of text.split('\n')) {
     const record = line.slice(0, 6).trim()
     if (record === 'MODEL') {
@@ -30,12 +31,13 @@ export function summarizePdbLike(text: string, format: MolFormat, label?: string
     const chainId = line.slice(21, 22).trim() || '_'
     const seqId = line.slice(22, 26).trim() || '?'
     const insCode = line.charAt(26).trim()
+    models.add(model)
     builder.atom(
       { record: record === 'ATOM' ? 'atom' : 'hetatm', compId, chainId, seqId: insCode === '' ? seqId : `${seqId}${insCode}` },
       model,
     )
   }
-  if (sawModel) builder.setModelCount(model)
+  if (sawModel) builder.setModelCount(models.size || 1)
   return builder.finish(format, label)
 }
 

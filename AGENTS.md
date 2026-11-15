@@ -43,8 +43,9 @@ are in its AGENTS playbook.
   harness page. A screenshot alone does not prove panel/layout behavior.
 - Documentation defaults to English with a synchronized `README_zh.md`. Update
   the relevant READMEs when behavior or APIs change.
-- npm packages contain **compiled JS and `.d.ts` only**, never `src/`, `AGENTS.md`,
-  or build scripts. Use the package `files` allowlist; `lib/` is build output and
+- npm packages contain compiled JS/`.d.ts` plus only the assets/config each
+  package allowlists (locale, docs, icon, patch); never `src/`, `AGENTS.md`, or
+  build scripts. Use the package `files` allowlist; `lib/` is build output and
   stays out of git.
 - Keep package changes scoped; read the package playbook, review the final diff,
   and commit separately.
