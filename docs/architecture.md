@@ -81,10 +81,10 @@ surface; adapter-specific APIs and limits stay in that adapter's README.
   scene. Its tab page id (for DSH: the absolute path) owns its commands, pending
   captures, camera, representations, measurements, and control-panel state.
   Switching tabs reattaches/preserves its viewer; it must not reload the file,
-  copy commands into another tab, or deliver a capture as another tab's. Only
-  host services such as the light/dark theme are shared. An adapter may cap
-  retained viewers (DSH: LRU 2) and must evict them without touching the active
-  tab.
+  remount the viewer, copy commands into another tab, or deliver a capture as
+  another tab's. Only host services such as the light/dark theme are shared. An
+  adapter may cap retained viewers (DSH: LRU 2) and must evict them without
+  touching the active tab.
 - **Human open and preview mode.** Structure preview is the default for a
   supported molecular file. The host's existing **Open with** affordance can
   switch that tab to plain text/code (binary-only formats such as BCIF have no
