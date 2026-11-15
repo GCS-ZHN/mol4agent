@@ -121,6 +121,7 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
     }
 
     case 'mol_capture': {
+      if (state.scene === null) return state
       const pending: MolPendingCapture = {
         callId,
         ...(typeof args.width === 'number' ? { width: args.width } : {}),
@@ -145,8 +146,9 @@ function openScene(state: MolSessionState, args: Record<string, unknown>, callId
   const path = isAbsolute(requested) ? requested : state.cwd === undefined ? requested : resolve(state.cwd, requested)
   const format = formatOfFile(path)
   if (format === undefined) return state
+  const target = args.select === undefined ? undefined : selectorOf(args.select)
+  if (args.select !== undefined && target === undefined) return state
   const commands: MolCommand[] = [{ op: 'represent', style: styleOf(args) }]
-  const target = selectorOf(args.select)
   if (target !== undefined) {
     commands.push({ op: 'select', target, mode: 'highlight', ...(args.focus === true ? { focus: true } : {}) })
   } else if (args.focus === true) {

@@ -37,8 +37,9 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-`molstar` 和 `react` 是 peer dependencies。DSH 适配包把 Mol* 打进单个
-client bundle；普通 web 应用可以直接使用本包。
+本包尚未发布到 npm；在 monorepo 内先用 workspace link，上面的命令适用于
+`0.1.0` 发布之后。`molstar` 和 `react` 是 peer dependencies。DSH 适配包把 Mol*
+打进单个 client bundle；普通 web 应用可以直接使用本包。
 
 构建与打包：
 
@@ -259,12 +260,12 @@ const summary = summarizeStructure({ data: pdbText, format: 'pdb', label: '1atp.
   modelCount: number
   chains: { id, kind, atoms, residues, compIds }[]
   ligands: { compId, count }[]
-  complete: boolean   // 字节无法完整摘要时为 false（例如 BCIF）
+  complete: boolean   // 仅 viewer 兜底摘要可能为 false；summarizeStructure 对 BCIF 抛错
 }
 ```
 
-BCIF 可以渲染，但目前不能从 raw bytes 摘要；会抛
-`SUMMARY_UNSUPPORTED`。
+BCIF 可以渲染，但目前不能从 raw bytes 摘要；`summarizeStructure` 会抛
+`SUMMARY_UNSUPPORTED`。viewer 的兜底摘要仍可能返回 `complete: false`。
 
 ## 截图
 

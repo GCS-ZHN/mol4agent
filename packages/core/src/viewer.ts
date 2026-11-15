@@ -14,6 +14,8 @@ import { DefaultPluginUISpec } from 'molstar/lib/mol-plugin-ui/spec'
 import { PluginConfig } from 'molstar/lib/mol-plugin/config'
 import type { PluginContext } from 'molstar/lib/mol-plugin/context'
 import { applyStructureInteractivity } from 'molstar/lib/extensions/plugin/interactivity'
+import { StateSelection, StateTransform } from 'molstar/lib/mol-state'
+import { MeasurementGroupTag } from 'molstar/lib/mol-plugin-state/manager/structure/measurement'
 import { StructureElement, type Structure } from 'molstar/lib/mol-model/structure'
 import { Color } from 'molstar/lib/mol-util/color'
 import lightCss from 'molstar/build/viewer/theme/light.css'
@@ -172,6 +174,21 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
 
     async load(data, loadOptions) {
       assertAlive()
+      // Measurements live in a root-level group that is not covered by the
+      // structure/trajectory refs removed below. Clear it explicitly so a new
+      // scene does not keep stale measurement lines/labels.
+      const measurementGroup = StateSelection.findTagInSubtree(
+        plugin.state.data.tree,
+        StateTransform.RootRef,
+        MeasurementGroupTag,
+      )
+      if (measurementGroup !== undefined) {
+        try {
+          await plugin.state.data.build().delete(measurementGroup).commit()
+        } catch (reason) {
+          console.warn('[mol4agent] could not clear previous measurements', reason)
+        }
+      }
       // Starting a new scene must not keep the previous structure's components
       // (and their selection representations) in the same Mol* state tree.
       const previous = plugin.managers.structure.hierarchy.current
