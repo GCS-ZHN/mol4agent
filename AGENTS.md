@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Repository-level routing and cross-cutting rules for future agent sessions.
-Read the package playbook before changing that package:
+Repository-level routing and cross-cutting constraints for future agent
+sessions. Read the package playbook before changing that package:
 
 - **Core** (`packages/core/`): [`packages/core/AGENTS.md`](packages/core/AGENTS.md)
   — protocol, Mol* viewer lifecycle, rendering, capture, packaging.
@@ -15,21 +15,28 @@ them here or in code comments:
 - `README.md` / `README_zh.md`
 - `packages/core/README.md` / `README_zh.md`
 - `packages/deepseek-harness/README.md` / `README_zh.md`
-- `docs/architecture.md` (Chinese design notes)
+- `docs/architecture.md` / `docs/architecture_zh.md` (architecture; English default)
 - `packages/deepseek-harness/docs/DETAIL.md`
 
-## Cross-cutting rules
+## Product goals
 
-- Treat the core/adapter boundary in the READMEs as immutable: core takes
-  **bytes + explicit format**; paths, suffix detection, IO, sessions, and UI
-  belong to the adapter. If a change needs those in core, it is in the wrong
-  package.
+The canonical cross-harness goals and acceptance criteria live in
+[docs/architecture.md](docs/architecture.md) §1.3. Read them before changing
+behavior; do not restate them here. Implementation requirements for each package
+are in its AGENTS playbook.
+
+## Cross-cutting constraints
+
+- Treat the core/adapter boundary in the READMEs as immutable. If a change needs
+  path detection, IO, or session state in core, it is in the wrong package.
 - Use the official Mol* UI (`createPluginUI` + `DefaultPluginUISpec`); do not
   reintroduce the headless viewer, the `Viewer` wrapper, or a custom toolbar.
-- Agent operations must go through `mol_*` tools. Shell/code is for calculations
+- Keep agent operations on `mol_*` tools. Shell/code is for calculations
   (interface geometry, H-bond candidates, builds), not for driving the viewer.
-- Verify changes with `pnpm typecheck`, the package build, real fixtures, and
-  the actual DSH page. A screenshot alone does not prove panel/layout behavior.
+- A new selector/command/tool is a cross-package change: update core semantics,
+  every adapter, the prompt, and the relevant READMEs in the same change.
+- Verify with `pnpm typecheck`, the package build, real fixtures, and the actual
+  harness page. A screenshot alone does not prove panel/layout behavior.
 - Documentation defaults to English with a synchronized `README_zh.md`. Update
   the relevant READMEs when behavior or APIs change.
 - npm packages contain **compiled JS and `.d.ts` only**, never `src/`, `AGENTS.md`,

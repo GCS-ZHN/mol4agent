@@ -313,6 +313,6 @@ bundle。
 - 共享：`src/{formats,state,selector}.ts`
 - 包：`package.json`、`cordis.patch.yml`、`locale/{en,zh}.json`、`icon.svg`
 - 细节：[docs/DETAIL.md](docs/DETAIL.md)、[Core API](../core/README_zh.md)、
-  [架构](../../docs/architecture.md)
+  [架构](../../docs/architecture_zh.md)
 
 English: [README.md](README.md)。

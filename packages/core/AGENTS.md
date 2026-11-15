@@ -2,7 +2,9 @@
 
 Read the [core README](README.md) for the public API and the root
 [`AGENTS.md`](../../AGENTS.md) for cross-cutting rules. This file records
-core-only invariants and traps.
+core-only invariants and traps. Core is the shared semantic source for the
+product goals in [`docs/architecture.md`](../../docs/architecture.md) §1.3;
+keep its protocol consistent for every adapter.
 
 ## Contracts
 
