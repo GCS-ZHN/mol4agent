@@ -21,7 +21,7 @@ interface PollResult {
 }
 
 const app = new App(
-  { name: 'mol4agent', version: '0.1.8' },
+  { name: 'mol4agent', version: '0.1.0' },
   { availableDisplayModes: ['inline', 'fullscreen'] },
   { autoResize: true },
 )

@@ -46,9 +46,11 @@ Codex's MCP extension file viewer.
 - Every tool result that the app may see must carry a **full** scene snapshot
   (`sceneId`, `revision`, label, format, cumulative commands). A newly mounted
   card must be able to rebuild the current picture without earlier tool results.
-- Agent-opened scenes load bytes through `mol4agent://structure/{sceneId}`;
-  file-viewer scenes use the host-provided `fileResourceUri`. Do not put base64
-  in tool results; it would leak into model context.
+- Agent-opened scenes load bytes through `mol4agent://structure/{sceneId}`.
+  File-viewer scenes resolve the tool-call path, republish the bytes on the same
+  `mol4agent://structure/{sceneId}` resource, and only fall back to the
+  host-provided `fileResourceUri`. Do not put base64 in tool results; it would
+  leak into model context.
 - Use a short timer (not `requestAnimationFrame`) before `viewer.capture()`;
   headless hosts can throttle rAF and hang the capture.
 

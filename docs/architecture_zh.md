@@ -160,8 +160,9 @@ sequenceDiagram
 具体 DSH 的 projection 事件、CaptureHub、documentPreviews 挂载等机制属于适配器细节，见 [DETAIL](../packages/deepseek-harness/docs/DETAIL.md)。
 ChatGPT/Codex 适配注册了 MCP extension file viewer：文件树在侧栏
 `mcp-extension` 标签页打开受支持的结构，`mol_open` 为 agent 打开同一个 MCP
-App；两者共享长轮询场景与 claim/deliver 截图会合。见
-[ChatGPT README](../packages/chatgpt/README_zh.md)。
+App；两者共享长轮询场景与 claim/deliver 截图会合。每个 `mcp-extension`
+标签页绑定自己的 scene id，因此侧栏预览与 agent 页面满足 §1.3.1 的 tab
+页面隔离要求。见 [ChatGPT README](../packages/chatgpt/README_zh.md)。
 
 ---
 

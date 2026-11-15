@@ -227,7 +227,9 @@ adapter details; see [DETAIL](../packages/deepseek-harness/docs/DETAIL.md).
 The ChatGPT/Codex adapter registers an MCP extension file viewer: the file tree
 opens supported structures in a side-panel `mcp-extension` tab, while `mol_open`
 opens the same MCP App for the agent; both share long-polled scene updates and a
-capture rendezvous. See the [ChatGPT README](../packages/chatgpt/README.md).
+capture rendezvous. Every `mcp-extension` tab binds to its own scene id, so
+sidebar previews and agent pages satisfy the §1.3.1 tab-page isolation rules.
+See the [ChatGPT README](../packages/chatgpt/README.md).
 
 ---
 

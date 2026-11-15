@@ -66,10 +66,12 @@ Codex exposes **MCP extension file viewers**. The plugin registers
 ```
 
 The host matches the selected file's suffix, opens an `mcp-extension` tab, and
-calls `mol_view_file` with `{ file: { name, resourceUri } }`. The app reads the
-host file resource through the MCP Apps bridge and renders it with core; the
-human can rotate/zoom the official Mol* UI while the agent operates the same
-scene through `mol_style` / `mol_select` / `mol_focus` / `mol_capture`.
+calls `mol_view_file` with `{ file: { name, resourceUri } }`. The server resolves
+the tool-call path, publishes the bytes on `mol4agent://structure/{sceneId}`,
+and falls back to the host file resource only when the path is unavailable. The
+app renders it with core; the human can rotate/zoom the official Mol* UI while
+the agent operates its scene through `mol_style` / `mol_select` / `mol_focus` /
+`mol_capture`.
 
 On the first `.pdb` open, Codex asks **“Use mol4agent to open .pdb files?”** and
 stores the answer in `preferred-file-viewers`. Choose **Yes** once; afterwards
@@ -84,7 +86,8 @@ The store keeps one **active agent scene** plus independent **file-viewer
 scenes**. `mol_open` creates an agent scene; `mol_view_file` creates a file
 scene. Each app instance binds to the scene it was opened for and polls by
 `sceneId`, so opening another structure never replaces or reloads an existing
-tab.
+tab. Switching one tab to text/code with **Open with** leaves the other tabs and
+their scenes untouched.
 
 - `mol_style` / `mol_select` / `mol_focus` / `mol_measure` mutate the active
   agent scene only; file-viewer tabs are unaffected.

@@ -59,9 +59,10 @@ Codex 支持 **MCP extension file viewer**。插件把 `mol_view_file` 注册为
 ```
 
 宿主按后缀匹配，打开 `mcp-extension` 标签页，并以
-`{ file: { name, resourceUri } }` 调用 `mol_view_file`。app 通过 MCP Apps 桥读取
-宿主文件资源，用 core 渲染；人可以旋转/缩放 Mol* 官方 UI，agent 通过
-`mol_style` / `mol_select` / `mol_focus` / `mol_capture` 操作同一场景。
+`{ file: { name, resourceUri } }` 调用 `mol_view_file`。server 解析工具调用里的
+文件路径，把字节发布到 `mol4agent://structure/{sceneId}`，只有路径不可用时才
+回退到宿主文件资源。app 用 core 渲染；人可以旋转/缩放 Mol* 官方 UI，agent 通过
+`mol_style` / `mol_select` / `mol_focus` / `mol_capture` 操作自己的场景。
 
 首次打开 `.pdb` 时 Codex 会问 **“Use mol4agent to open .pdb files?”**，并把答案
 存进 `preferred-file-viewers`。选一次 **Yes** 后，文件树默认打开结构预览。若没有
@@ -73,6 +74,7 @@ Codex 支持 **MCP extension file viewer**。插件把 `mol_view_file` 注册为
 store 保留一个**活跃 agent scene** 和多个独立的 **file-viewer scene**。
 `mol_open` 创建 agent scene，`mol_view_file` 创建 file scene。每个 app 实例绑定
 到自己打开时的 scene，并按 `sceneId` 轮询；再打开一个结构不会替换或重载已有 tab。
+用 **Open with** 把某个 tab 切到纯文本/代码，不影响其他 tab 及其场景。
 
 - `mol_style` / `mol_select` / `mol_focus` / `mol_measure` 只修改活跃 agent
   scene；文件树 tab 不受影响。

@@ -1,6 +1,6 @@
 {
   "name": "@gcszhn/mol4agent-chatgpt",
-  "version": "0.1.8",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "ChatGPT/Codex plugin: an MCP App molecular viewer with agent-operable mol_* tools.",
