@@ -17,6 +17,10 @@ into a 3D page that humans can preview and agents can operate directly.
 - **Cross-harness**: rendering and the command protocol live in
   `@gcszhn/mol4agent-core`; each harness gets a thin adapter package.
 
+![mol4agent in the ChatGPT/Codex side panel](docs/assets/chatgpt-codex.png)
+
+*ChatGPT/Codex: the agent annotates the PD-L1/PD-1 interface in a side-panel Mol* viewer.*
+
 ## Architecture
 
 ```mermaid

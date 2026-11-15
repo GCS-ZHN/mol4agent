@@ -9,6 +9,10 @@
 - **agent 主动打开**：指定文件后页面自动打开该结构。
 - **跨 harness**：渲染与命令协议在 `@gcszhn/mol4agent-core`，每个 harness 一个薄适配包。
 
+![ChatGPT/Codex 侧栏中的 mol4agent](docs/assets/chatgpt-codex.png)
+
+*ChatGPT/Codex：agent 在侧栏 Mol* 视图中标注 PD-L1/PD-1 界面。*
+
 ## 架构
 
 ```mermaid
