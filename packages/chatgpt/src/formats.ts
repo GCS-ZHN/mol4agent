@@ -10,6 +10,9 @@
  */
 import type { MolFormat } from '@gcszhn/mol4agent-core/protocol'
 
+/** Gzip suffix; the base suffix still selects the molecular format. */
+export const GZIP_SUFFIX = 'gz'
+
 /** Suffix → content format. Keys are lowercase, without the dot. */
 export const EXTENSION_FORMATS: Readonly<Record<string, MolFormat>> = {
   pdb: 'pdb',
@@ -28,6 +31,14 @@ export const EXTENSION_FORMATS: Readonly<Record<string, MolFormat>> = {
   gro: 'gro',
 }
 
+const BASE_EXTENSIONS = Object.keys(EXTENSION_FORMATS)
+
+/** Gzip variants claimed by the file viewer, e.g. `pdb.gz`. */
+export const GZIP_EXTENSIONS: readonly string[] = BASE_EXTENSIONS.map(extension => `${extension}.${GZIP_SUFFIX}`)
+
+/** Every suffix the file viewer claims, in display order. */
+export const PREVIEW_EXTENSIONS: readonly string[] = [...BASE_EXTENSIONS, ...GZIP_EXTENSIONS]
+
 /** Suffixes whose bytes are not text. */
 export const BINARY_EXTENSIONS: readonly string[] = ['bcif']
 
@@ -35,9 +46,24 @@ export const BINARY_EXTENSIONS: readonly string[] = ['bcif']
 export function formatOfFile(fileNameOrPath: string): MolFormat | undefined {
   const normalized = fileNameOrPath.replaceAll('\\', '/')
   const name = normalized.slice(normalized.lastIndexOf('/') + 1).toLowerCase()
-  const dot = name.lastIndexOf('.')
+  if (!name.endsWith(`.${GZIP_SUFFIX}`)) {
+    const dot = name.lastIndexOf('.')
+    return dot < 0 ? undefined : EXTENSION_FORMATS[name.slice(dot + 1)]
+  }
+  const base = name.slice(0, -(`.${GZIP_SUFFIX}`.length))
+  const dot = base.lastIndexOf('.')
   if (dot < 0) return undefined
-  return EXTENSION_FORMATS[name.slice(dot + 1)]
+  return EXTENSION_FORMATS[base.slice(dot + 1)]
+}
+
+/** Whether a path is explicitly gzip-encoded. */
+export function isGzipFile(fileNameOrPath: string): boolean {
+  return /\.gz$/iu.test(fileNameOrPath.replaceAll('\\', '/'))
+}
+
+/** Dot-prefixed suffixes for the MCP extension file-viewer entrypoint. */
+export function previewFileExtensions(): readonly string[] {
+  return PREVIEW_EXTENSIONS.map(extension => `.${extension}`)
 }
 
 /** Display name for a path, without decoding a URL. */

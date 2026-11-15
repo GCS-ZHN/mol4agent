@@ -1,0 +1,22 @@
+{
+  "name": "mol4agent-github",
+  "interface": {
+    "displayName": "mol4agent (GitHub)"
+  },
+  "plugins": [
+    {
+      "name": "mol4agent",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/GCS-ZHN/mol4agent.git",
+        "path": "plugins/mol4agent",
+        "ref": "plugin-dist"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Science"
+    }
+  ]
+}

@@ -11,7 +11,6 @@ concurrency:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   release:
@@ -40,10 +39,13 @@ jobs:
           pnpm --filter @gcszhn/mol4agent-core build
           pnpm --filter @gcszhn/mol4agent-core typecheck
           pnpm --filter @gcszhn/mol4agent-deepseekharness typecheck
+          pnpm --filter @gcszhn/mol4agent-chatgpt typecheck
           pnpm --filter @gcszhn/mol4agent-opencode typecheck
           pnpm --filter @gcszhn/mol4agent-core test
           pnpm --filter @gcszhn/mol4agent-deepseekharness test
           pnpm --filter @gcszhn/mol4agent-opencode test
+          pnpm --filter @gcszhn/mol4agent-chatgpt build
+          pnpm --filter @gcszhn/mol4agent-chatgpt test
           pnpm --filter @gcszhn/mol4agent-deepseekharness build
           pnpm --filter @gcszhn/mol4agent-opencode build
 
@@ -51,7 +53,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           test -n "$TAG" || { echo "tag must be vX.Y.Z"; exit 1; }
-          for pkg in packages/core packages/deepseek-harness packages/opencode; do
+          for pkg in packages/core packages/deepseek-harness packages/chatgpt packages/opencode; do
             VERSION="$(node -p "require('./$pkg/package.json').version")"
             if [ "$VERSION" != "$TAG" ]; then
               echo "$pkg version $VERSION != tag $GITHUB_REF_NAME"
@@ -60,21 +62,41 @@ jobs:
           done
           echo "versions match $GITHUB_REF_NAME"
 
+      - name: Publish Codex plugin-dist branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist/plugins/mol4agent
+          cp -R packages/chatgpt/lib dist/plugins/mol4agent/lib
+          cp -R packages/chatgpt/skills dist/plugins/mol4agent/skills
+          cp -R packages/chatgpt/.codex-plugin dist/plugins/mol4agent/.codex-plugin
+          cp packages/chatgpt/.mcp.json dist/plugins/mol4agent/.mcp.json
+          cp packages/chatgpt/icon.svg dist/plugins/mol4agent/icon.svg
+          cp packages/chatgpt/README.md dist/plugins/mol4agent/README.md
+          cp packages/chatgpt/README_zh.md dist/plugins/mol4agent/README_zh.md
+          cd dist
+          git init -b plugin-dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "plugin-dist: ${GITHUB_REF_NAME}"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" plugin-dist
+
       - name: Publish core
         working-directory: packages/core
-        run: pnpm publish --access public --provenance --no-git-checks
+        run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish DSH adapter
         working-directory: packages/deepseek-harness
-        run: pnpm publish --access public --provenance --no-git-checks
+        run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish OpenCode adapter
         working-directory: packages/opencode
-        run: pnpm publish --access public --provenance --no-git-checks
+        run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

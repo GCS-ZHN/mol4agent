@@ -12,6 +12,7 @@ const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const repoRoot = resolve(packageRoot, '../..')
 const fixture = join(repoRoot, 'fixtures/1crn.pdb')
 const aspirin = join(repoRoot, 'fixtures/aspirin.sdf')
+const gzipFixture = join(repoRoot, 'fixtures/formats/1crn.pdb.gz')
 const onePixelPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
 async function withClient(t, options = {}) {
@@ -69,6 +70,12 @@ test('lists the agent tools and the viewer resource', async t => {
       entrypoint => entrypoint.type === 'file' && entrypoint.extensions.includes('.pdb'),
     ),
     'mol_view_file must declare a .pdb file handler',
+  )
+  assert.ok(
+    viewFile._meta?.['openai/ui']?.entrypoints?.some(
+      entrypoint => entrypoint.type === 'file' && entrypoint.extensions.includes('.pdb.gz'),
+    ),
+    'mol_view_file must declare a .pdb.gz file handler',
   )
 
   const { resources } = await client.listResources()
@@ -213,6 +220,33 @@ test('opens an SDF and reports unsupported summaries gracefully', async t => {
   assert.match(resource.contents[0].text, /V2000/)
 })
 
+test('opens gzip structures and serves decoded bytes', async t => {
+  const { client } = await withClient(t)
+  const info = await client.callTool({ name: 'mol_info', arguments: { path: gzipFixture } })
+  assert.equal(info.isError, undefined)
+  assert.match(info.content[0].text, /1crn\.pdb\.gz/)
+  assert.match(info.content[0].text, /residues:/)
+
+  const opened = await client.callTool({ name: 'mol_open', arguments: { path: gzipFixture } })
+  assert.equal(opened.isError, undefined)
+  const scene = opened.structuredContent?.scene
+  assert.equal(scene.label, '1crn.pdb.gz')
+  assert.equal(scene.format, 'pdb')
+  assert.equal(scene.fileResourceUri, undefined)
+  assert.equal(scene.fileGzip, undefined)
+
+  const resource = await client.readResource({ uri: `mol4agent://structure/${scene.sceneId}` })
+  assert.match(resource.contents[0].text, /^HEADER/m)
+  assert.match(resource.contents[0].text, /ATOM  /)
+})
+
+test('rejects gzip payloads whose decoded size exceeds the limit', async t => {
+  const { client } = await withClient(t, { maxFileBytes: 12_000 })
+  const info = await client.callTool({ name: 'mol_info', arguments: { path: gzipFixture } })
+  assert.equal(info.isError, true)
+  assert.match(info.content[0].text, /cannot decompress/)
+})
+
 test('rejects malformed selectors and missing scenes', async t => {
   const { client } = await withClient(t)
   const noScene = await client.callTool({ name: 'mol_style', arguments: { type: 'cartoon' } })
@@ -263,6 +297,43 @@ test('file viewer creates a host-resource scene and a direct scene', async t => 
   assert.equal(metadataScene.structuredContent?.scene.source, 'file')
   const shared = await client.readResource({
     uri: `mol4agent://structure/${metadataScene.structuredContent.scene.sceneId}`,
+  })
+  assert.match(shared.contents[0].text, /ATOM  /)
+})
+
+test('file viewer decodes gzip blobs and marks raw host resources', async t => {
+  const { client } = await withClient(t)
+  const gzipBase64 = (await readFile(gzipFixture)).toString('base64')
+  const blobScene = await client.callTool({
+    name: 'mol_view_file',
+    arguments: { file: { name: '1crn.pdb.gz', blob: gzipBase64 } },
+  })
+  assert.equal(blobScene.isError, undefined)
+  assert.equal(blobScene.structuredContent?.scene.format, 'pdb')
+  assert.equal(blobScene.structuredContent?.scene.fileGzip, undefined)
+  const decoded = await client.readResource({
+    uri: `mol4agent://structure/${blobScene.structuredContent.scene.sceneId}`,
+  })
+  assert.match(decoded.contents[0].text, /^HEADER/m)
+
+  const hostScene = await client.callTool({
+    name: 'mol_view_file',
+    arguments: {
+      file: { name: '1crn.pdb.gz', resourceUri: 'codex-resource://gzip-file-viewer' },
+    },
+  })
+  assert.equal(hostScene.isError, undefined)
+  assert.equal(hostScene.structuredContent?.scene.fileResourceUri, 'codex-resource://gzip-file-viewer')
+  assert.equal(hostScene.structuredContent?.scene.fileGzip, true)
+
+  const directScene = await client.callTool({
+    name: 'mol_view_file',
+    arguments: { file: { name: gzipFixture } },
+  })
+  assert.equal(directScene.isError, undefined)
+  assert.equal(directScene.structuredContent?.scene.fileGzip, undefined)
+  const shared = await client.readResource({
+    uri: `mol4agent://structure/${directScene.structuredContent.scene.sceneId}`,
   })
   assert.match(shared.contents[0].text, /ATOM  /)
 })

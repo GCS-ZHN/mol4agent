@@ -10,7 +10,8 @@ import { isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { MolFormat } from '@gcszhn/mol4agent-core/protocol'
-import { EXTENSION_FORMATS, baseNameOf, formatOfFile } from './formats.ts'
+import { EXTENSION_FORMATS, baseNameOf, formatOfFile, isGzipFile } from './formats.ts'
+import { gunzipBytes } from './host/gzip.ts'
 
 /** One structure file this adapter can hand to the viewer. */
 export interface ResolvedMoleculeFile {
@@ -117,7 +118,15 @@ export async function resolveMoleculeFile(
   if (info.size > maxFileBytes) {
     throw new Error(`file is too large (${info.size} bytes; limit ${maxFileBytes})`)
   }
-  const bytes = new Uint8Array(await readFile(absolutePath, { signal }))
+  const raw = new Uint8Array(await readFile(absolutePath, { signal }))
+  let bytes: Uint8Array = raw
+  if (isGzipFile(absolutePath)) {
+    try {
+      bytes = gunzipBytes(raw, maxFileBytes)
+    } catch (reason) {
+      throw new Error(`cannot decompress ${absolutePath}: ${reason instanceof Error ? reason.message : String(reason)}`)
+    }
+  }
   return {
     absolutePath,
     format,

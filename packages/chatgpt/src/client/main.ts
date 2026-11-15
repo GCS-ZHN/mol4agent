@@ -12,6 +12,7 @@ import { createMolViewer, type MolViewer } from '@gcszhn/mol4agent-core'
 import type { MolFormat } from '@gcszhn/mol4agent-core/protocol'
 import type { SceneSnapshot, SceneSource } from '../scene.ts'
 import type { PendingCapture } from '../capture.ts'
+import { gunzipBytes } from './gzip.ts'
 
 interface PollResult {
   readonly scene: SceneSnapshot | null
@@ -19,6 +20,8 @@ interface PollResult {
   readonly timedOut: boolean
   readonly missing?: boolean
 }
+
+const MAX_STRUCTURE_BYTES = 64 * 1024 * 1024
 
 const app = new App(
   { name: 'mol4agent', version: '0.1.0' },
@@ -229,7 +232,11 @@ async function applyScene(scene: SceneSnapshot): Promise<boolean> {
         15_000,
         `timed out reading ${scene.label}`,
       )
-      const data = decodeStructure(resource)
+      let data = decodeStructure(resource)
+      if (scene.fileGzip === true) {
+        const raw = typeof data === 'string' ? new TextEncoder().encode(data) : data
+        data = await gunzipBytes(raw, MAX_STRUCTURE_BYTES)
+      }
       await currentViewer.load({ data, format: scene.format, label: scene.label })
       loadedSceneId = scene.sceneId
       appliedCommands = 0

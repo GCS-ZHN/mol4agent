@@ -7,10 +7,10 @@ in the conversation and lets the agent operate it with `mol_*` tools.
 
 - **Agent-opened 3D page**: `mol_open` renders a structure in a conversation
   card (expandable to the side panel) instead of returning a wall of PDB text.
-- **File-tree preview**: `.pdb` / `.cif` / `.sdf` / ... files open in the
-  **Structure preview** side-panel tab by default (after Codex's one-time
-  per-extension permission); **Open with** still offers the built-in
-  text/code viewer.
+- **File-tree preview**: `.pdb` / `.cif` / `.sdf` / ... files, including
+  `.pdb.gz` / `.cif.gz` / `.sdf.gz` variants, open in the **Structure preview**
+  side-panel tab by default (after Codex's one-time per-extension permission);
+  **Open with** still offers the built-in text/code viewer.
 - **Agent-operated page**: representation, color, selection/highlight, focus,
   measurement, and capture all run through tools while the human watches the
   same page change.
@@ -60,7 +60,7 @@ Codex exposes **MCP extension file viewers**. The plugin registers
 "openai/ui": {
   "entrypoints": [{
     "type": "file",
-    "extensions": [".pdb", ".cif", ".sdf", ".mol2", ".xyz", ".gro", "..."]
+    "extensions": [".pdb", ".cif", ".sdf", ".mol2", ".xyz", ".gro", ".pdb.gz", "..."]
   }]
 }
 ```
@@ -69,9 +69,10 @@ The host matches the selected file's suffix, opens an `mcp-extension` tab, and
 calls `mol_view_file` with `{ file: { name, resourceUri } }`. The server resolves
 the tool-call path, publishes the bytes on `mol4agent://structure/{sceneId}`,
 and falls back to the host file resource only when the path is unavailable. The
-app renders it with core; the human can rotate/zoom the official Mol* UI while
-the agent operates its scene through `mol_style` / `mol_select` / `mol_focus` /
-`mol_capture`.
+server decodes gzip inputs before core sees them; the app only decodes a raw
+gzip host-resource fallback with the browser `DecompressionStream`. The human
+can rotate/zoom the official Mol* UI while the agent operates its scene through
+`mol_style` / `mol_select` / `mol_focus` / `mol_capture`.
 
 On the first `.pdb` open, Codex asks **“Use mol4agent to open .pdb files?”** and
 stores the answer in `preferred-file-viewers`. Choose **Yes** once; afterwards
@@ -147,6 +148,23 @@ external CSP domains; the viewer and Mol* assets are inlined.
 
 ## Install
 
+### From the GitHub marketplace (recommended)
+
+Codex installs plugins from Git, not npm. This repository exposes
+`.agents/plugins/marketplace.json`; the `mol4agent` entry points at the
+generated `plugin-dist` branch, where the tag release workflow publishes the
+built `lib/` payload:
+
+```sh
+codex plugin marketplace add GCS-ZHN/mol4agent
+codex plugin add mol4agent@mol4agent-github
+```
+
+Start a new conversation (or restart the app if the plugin list does not
+refresh). The plugin contributes the `mol_*` tools and the viewer MCP App.
+
+### Local development install
+
 Build the package first:
 
 ```sh
@@ -162,9 +180,6 @@ node packages/chatgpt/scripts/install-local.mjs
 codex plugin marketplace add ~/.codex/mol4agent-marketplace
 codex plugin add mol4agent@mol4agent-local
 ```
-
-Then start a new conversation (or restart the app if the plugin list does not
-refresh). The plugin contributes the `mol_*` tools and the viewer MCP App.
 
 The install script copies the built plugin to a stable local marketplace and
 rewrites `.mcp.json` with absolute paths. The repository `.mcp.json` remains
@@ -188,7 +203,8 @@ portable.
   `serverTools`; the README notes this fallback for restricted hosts.
 - BCIF renders but `mol_info` cannot summarize it from raw bytes yet.
 - `mol_interface` only parses PDB-like ATOM records.
-- Files are capped at 64 MiB; WebGL is required.
+- Files are capped at 64 MiB, including the decompressed size of `.gz` inputs;
+  the browser fallback needs `DecompressionStream`, and WebGL is required.
 - No multi-model/trajectory switching UI; labels are supported by core but not
   exposed as a tool here.
 
@@ -205,17 +221,18 @@ pnpm --filter @gcszhn/mol4agent-chatgpt test
 - `lib/viewer.html` — one self-contained MCP App (no external chunks).
 - `lib/server.js` — stdio MCP server with dependencies bundled.
 
-`test` runs protocol-level MCP tests and a real headless-Chrome MCP Apps smoke
-test (skipped when Chrome is unavailable). The smoke test drives the official
-`AppBridge`, loads `fixtures/1atp.pdb`, requests a capture, and checks the PNG.
+`test` runs format/gzip unit tests, protocol-level MCP tests, and a real
+headless-Chrome MCP Apps smoke test (skipped when Chrome is unavailable). The
+smoke test drives the official `AppBridge`, loads `fixtures/1atp.pdb`, requests
+a capture, and checks the PNG.
 
 ## Files
 
-- Server: `src/{server,tools,scene,capture,paths,formats,selector,interface}.ts`
-- App: `src/client/{index.html,main.ts}`
+- Server: `src/{server,tools,scene,capture,paths,formats,selector,interface}.ts`, `src/host/gzip.ts`
+- App: `src/client/{index.html,main.ts,gzip.ts}`
 - Build: `scripts/build.mjs`
 - Install: `scripts/install-local.mjs`
-- Tests: `test/{server,ui}.test.mjs`, `test/host/*`
+- Tests: `test/{formats,gzip}.test.ts`, `test/{server,ui}.test.mjs`, `test/host/*`
 - Playbook: [AGENTS.md](AGENTS.md)
 
 Chinese translation: [README_zh.md](README_zh.md).

@@ -4,10 +4,14 @@
 
 让 agent harness 里的分子结构文件从「一大段纯文本」变成「可预览、可被 agent 直接操作的 3D 页面」。
 
-- **人工打开**：在 harness 的文件预览器里点开 `.pdb` / `.cif` / `.sdf` / `.mol2` / `.xyz` / `.gro`，右侧直接显示 Mol* 官方 3D 界面；「打开方式」里仍可切回纯文本/代码。
+- **人工打开**：在 harness 的文件预览器里点开 `.pdb` / `.cif` / `.sdf` / `.mol2` / `.xyz` / `.gro`（含 `.gz` 变体），右侧直接显示 Mol* 官方 3D 界面；「打开方式」里仍可切回纯文本/代码。
 - **agent 操作**：LLM 通过 `mol_*` 工具改表示、配色、高亮残基/配体、聚焦镜头、测量、截图，人只看着页面变化。
 - **agent 主动打开**：指定文件后页面自动打开该结构。
 - **跨 harness**：渲染与命令协议在 `@gcszhn/mol4agent-core`，每个 harness 一个薄适配包。
+
+![ChatGPT/Codex 侧栏中的 mol4agent](docs/assets/chatgpt-codex.png)
+
+*ChatGPT/Codex：agent 在侧栏 Mol* 视图中标注 PD-L1/PD-1 界面。*
 
 ## 架构
 
@@ -92,7 +96,29 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
 
 ## 快速开始（ChatGPT/Codex）
 
-构建并安装到本地 Codex marketplace：
+### 从 GitHub marketplace 安装
+
+Codex 读取仓库里的 `.agents/plugins/marketplace.json`。可安装的插件产物由
+tag release workflow 发布到自动生成的 `plugin-dist` 分支，因此这条安装路径
+不使用 npm，也不需要在本地构建：
+
+```sh
+codex plugin marketplace add GCS-ZHN/mol4agent
+codex plugin add mol4agent@mol4agent-github
+```
+
+新开会话（若插件列表不刷新则重启 app）后让 agent 执行：
+
+> 打开 fixtures/1atp.pdb，用卡通表示、chain-id 配色，高亮配体 ATP 并聚焦，
+> 然后截图。
+
+首次预览分子文件时，Codex 会询问是否用 mol4agent 打开该扩展名，选一次
+**Yes** 即可。**Open with** 仍可切回内置文本/代码预览，每个结构 tab 保持
+自己的 scene。
+
+### 本地开发安装
+
+构建插件，并通过本地 marketplace 安装构建产物：
 
 ```sh
 pnpm --filter @gcszhn/mol4agent-core build
@@ -101,11 +127,6 @@ node packages/chatgpt/scripts/install-local.mjs
 codex plugin marketplace add ~/.codex/mol4agent-marketplace
 codex plugin add mol4agent@mol4agent-local
 ```
-
-新开会话后让 agent 执行：
-
-> 打开 fixtures/1atp.pdb，用卡通表示、chain-id 配色，高亮配体 ATP 并聚焦，
-> 然后截图。
 
 也可以直接在文件树点 `fixtures/1atp.pdb`。首次打开会询问是否用 mol4agent
 打开 `.pdb`，选一次 **Yes** 后结构默认在侧栏打开；**Open with** 仍可切回

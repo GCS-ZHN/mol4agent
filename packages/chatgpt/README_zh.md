@@ -7,9 +7,9 @@ agent 通过 `mol_*` 工具直接操作它。
 
 - **agent 打开 3D 页面**：`mol_open` 在会话卡片（可展开到侧栏）里渲染结构，
   而不是把整份 PDB 文本塞回上下文。
-- **文件树预览**：`.pdb` / `.cif` / `.sdf` / ... 默认在侧栏的
-  **Structure preview** 标签页打开（Codex 首次会按扩展名询问一次）；
-  **Open with** 仍可切回内置文本/代码查看器。
+- **文件树预览**：`.pdb` / `.cif` / `.sdf` / ...（含 `.pdb.gz` / `.cif.gz` /
+  `.sdf.gz` 等 gzip 变体）默认在侧栏的 **Structure preview** 标签页打开
+  （Codex 首次会按扩展名询问一次）；**Open with** 仍可切回内置文本/代码查看器。
 - **agent 操作同一页面**：表示、配色、选择/高亮、聚焦、测量、截图都走工具，
   人看到的是同一页面的实时变化。
 - **截图回传**：`mol_capture` 阻塞等待打开页渲染视口，把 PNG 放回工具结果，
@@ -53,7 +53,7 @@ Codex 支持 **MCP extension file viewer**。插件把 `mol_view_file` 注册为
 "openai/ui": {
   "entrypoints": [{
     "type": "file",
-    "extensions": [".pdb", ".cif", ".sdf", ".mol2", ".xyz", ".gro", "..."]
+    "extensions": [".pdb", ".cif", ".sdf", ".mol2", ".xyz", ".gro", ".pdb.gz", "..."]
   }]
 }
 ```
@@ -61,8 +61,10 @@ Codex 支持 **MCP extension file viewer**。插件把 `mol_view_file` 注册为
 宿主按后缀匹配，打开 `mcp-extension` 标签页，并以
 `{ file: { name, resourceUri } }` 调用 `mol_view_file`。server 解析工具调用里的
 文件路径，把字节发布到 `mol4agent://structure/{sceneId}`，只有路径不可用时才
-回退到宿主文件资源。app 用 core 渲染；人可以旋转/缩放 Mol* 官方 UI，agent 通过
-`mol_style` / `mol_select` / `mol_focus` / `mol_capture` 操作自己的场景。
+回退到宿主文件资源。gzip 输入由 server 先解压，core 只看到解码后的字节；只有
+回退到宿主原始资源时，app 才用浏览器 `DecompressionStream` 解压。人可以
+旋转/缩放 Mol* 官方 UI，agent 通过 `mol_style` / `mol_select` / `mol_focus` /
+`mol_capture` 操作自己的场景。
 
 首次打开 `.pdb` 时 Codex 会问 **“Use mol4agent to open .pdb files?”**，并把答案
 存进 `preferred-file-viewers`。选一次 **Yes** 后，文件树默认打开结构预览。若没有
@@ -132,6 +134,22 @@ Mol* 资源全部内联。
 
 ## 安装
 
+### 从 GitHub marketplace 安装（推荐）
+
+Codex 通过 Git 安装插件，不使用 npm。仓库根目录的
+`.agents/plugins/marketplace.json` 把 `mol4agent` 指向自动生成的
+`plugin-dist` 分支，tag release workflow 会在该分支发布构建好的 `lib/` 产物：
+
+```sh
+codex plugin marketplace add GCS-ZHN/mol4agent
+codex plugin add mol4agent@mol4agent-github
+```
+
+然后新开一个会话（若插件列表不刷新则重启 app）。插件会提供 `mol_*` 工具和
+viewer MCP App。
+
+### 本地开发安装
+
 先构建：
 
 ```sh
@@ -147,9 +165,6 @@ node packages/chatgpt/scripts/install-local.mjs
 codex plugin marketplace add ~/.codex/mol4agent-marketplace
 codex plugin add mol4agent@mol4agent-local
 ```
-
-然后新开一个会话（若插件列表不刷新则重启 app）。插件会提供 `mol_*` 工具和
-viewer MCP App。
 
 安装脚本把构建产物复制到稳定的本地 marketplace，并把 `.mcp.json` 改写为绝对
 路径；仓库里的 `.mcp.json` 保持可移植。
@@ -171,7 +186,8 @@ viewer MCP App。
   受限宿主只能显示静态场景。
 - BCIF 可渲染，但 `mol_info` 暂不能从原始字节汇总。
 - `mol_interface` 只解析 PDB-like ATOM。
-- 文件上限 64 MiB；需要 WebGL。
+- 文件上限 64 MiB，`.gz` 解压后同样受 64 MiB 限制；宿主资源回退需要
+  `DecompressionStream`，渲染需要 WebGL。
 - 没有多模型/轨迹切换 UI；core 支持 label，但这里没有暴露 label 工具。
 
 ## 开发
@@ -187,17 +203,17 @@ pnpm --filter @gcszhn/mol4agent-chatgpt test
 - `lib/viewer.html` —— 单个自包含 MCP App（无外部 chunk）。
 - `lib/server.js` —— 依赖已打包的 stdio MCP server。
 
-`test` 包含协议级 MCP 测试和真实 headless Chrome + MCP Apps 冒烟测试
-（无 Chrome 时跳过）。冒烟测试用官方 `AppBridge` 加载 `fixtures/1atp.pdb`，
-请求截图并校验 PNG。
+`test` 包含格式/gzip 单元测试、协议级 MCP 测试和真实 headless Chrome +
+MCP Apps 冒烟测试（无 Chrome 时跳过）。冒烟测试用官方 `AppBridge` 加载
+`fixtures/1atp.pdb`，请求截图并校验 PNG。
 
 ## 文件
 
-- Server：`src/{server,tools,scene,capture,paths,formats,selector,interface}.ts`
-- App：`src/client/{index.html,main.ts}`
+- Server：`src/{server,tools,scene,capture,paths,formats,selector,interface}.ts`、`src/host/gzip.ts`
+- App：`src/client/{index.html,main.ts,gzip.ts}`
 - 构建：`scripts/build.mjs`
 - 安装：`scripts/install-local.mjs`
-- 测试：`test/{server,ui}.test.mjs`、`test/host/*`
+- 测试：`test/{formats,gzip}.test.ts`、`test/{server,ui}.test.mjs`、`test/host/*`
 - 实施约束：[AGENTS.md](AGENTS.md)
 
 英文版：[README.md](README.md)。

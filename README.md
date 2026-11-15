@@ -6,8 +6,9 @@ Turn molecular structure files in an agent harness from "a wall of plain text"
 into a 3D page that humans can preview and agents can operate directly.
 
 - **Human preview**: open a `.pdb` / `.cif` / `.sdf` / `.mol2` / `.xyz` / `.gro`
-  file in the harness file previewer and get Mol*'s official 3D UI instead of
-  text. The previewer's **Open with** menu still offers plain text/code.
+  file, including `.gz` variants, in the harness file previewer and get Mol*'s
+  official 3D UI instead of text. The previewer's **Open with** menu still
+  offers plain text/code.
 - **Agent operation**: the LLM uses `mol_*` tools to change representations,
   colors, highlight residues/ligands, focus the camera, measure, and capture
   screenshots while the human watches the page change.
@@ -15,6 +16,10 @@ into a 3D page that humans can preview and agents can operate directly.
   automatically.
 - **Cross-harness**: rendering and the command protocol live in
   `@gcszhn/mol4agent-core`; each harness gets a thin adapter package.
+
+![mol4agent in the ChatGPT/Codex side panel](docs/assets/chatgpt-codex.png)
+
+*ChatGPT/Codex: the agent annotates the PD-L1/PD-1 interface in a side-panel Mol* viewer.*
 
 ## Architecture
 
@@ -107,7 +112,31 @@ change (`lib/client.js`) only needs a page refresh.
 
 ## Quick start (ChatGPT/Codex)
 
-Build and install the plugin into a local Codex marketplace:
+### Install from the GitHub marketplace
+
+Codex reads the marketplace manifest in `.agents/plugins/marketplace.json`.
+The installable plugin payload is published to the generated `plugin-dist`
+branch by the tag release workflow, so this path does not use npm and does not
+require a local build:
+
+```sh
+codex plugin marketplace add GCS-ZHN/mol4agent
+codex plugin add mol4agent@mol4agent-github
+```
+
+Start a new conversation (or restart the app if the plugin list does not
+refresh) and ask:
+
+> Open fixtures/1atp.pdb, use cartoon with chain-id coloring, highlight ATP,
+> focus it, and capture a screenshot.
+
+The first preview of a molecular file asks whether to use mol4agent for that
+extension; choose **Yes** once. **Open with** still offers the built-in
+text/code viewer, and every structure tab keeps its own scene.
+
+### Local development install
+
+Build the plugin and register the built copy through a local marketplace:
 
 ```sh
 pnpm --filter @gcszhn/mol4agent-core build
@@ -116,11 +145,6 @@ node packages/chatgpt/scripts/install-local.mjs
 codex plugin marketplace add ~/.codex/mol4agent-marketplace
 codex plugin add mol4agent@mol4agent-local
 ```
-
-Start a new conversation and ask:
-
-> Open fixtures/1atp.pdb, use cartoon with chain-id coloring, highlight ATP,
-> focus it, and capture a screenshot.
 
 You can also click `fixtures/1atp.pdb` in the file tree. The first open asks
 whether to use mol4agent for `.pdb` files; choose **Yes** once, and the structure
