@@ -15,6 +15,7 @@
     "docs",
     "icon.svg",
     "cordis.patch.yml",
+    "README.md",
     "README_zh.md"
   ],
   "scripts": {
@@ -74,5 +75,10 @@
         "@deepseek-ai/dsh-client-ui-sidebar-right"
       ]
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GCS-ZHN/mol4agent.git",
+    "directory": "packages/deepseek-harness"
   }
 }

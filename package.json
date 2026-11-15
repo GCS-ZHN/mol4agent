@@ -12,5 +12,9 @@
     "build": "pnpm -r build",
     "build:dsh": "pnpm --filter @gcszhn/mol4agent-core build && pnpm --filter @gcszhn/mol4agent-deepseekharness build",
     "build:core": "pnpm --filter @gcszhn/mol4agent-core build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GCS-ZHN/mol4agent.git"
   }
 }

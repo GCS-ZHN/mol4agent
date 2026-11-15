@@ -1,0 +1,88 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and build
+        run: |
+          pnpm typecheck
+          pnpm build
+          pnpm -r test --if-present
+
+      - name: Verify package versions match tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          test -n "$TAG" || { echo "tag must be vX.Y.Z"; exit 1; }
+          for pkg in packages/core packages/deepseek-harness; do
+            VERSION="$(node -p "require('./$pkg/package.json').version")"
+            if [ "$VERSION" != "$TAG" ]; then
+              echo "$pkg version $VERSION != tag $GITHUB_REF_NAME"
+              exit 1
+            fi
+          done
+          echo "versions match $GITHUB_REF_NAME"
+
+      - name: Publish core
+        working-directory: packages/core
+        run: pnpm publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish DSH adapter
+        working-directory: packages/deepseek-harness
+        run: pnpm publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Build release notes
+        run: |
+          PREV_TAG="$(git tag --sort=-v:refname | grep -v -F -x "$GITHUB_REF_NAME" | head -n 1 || true)"
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="$PREV_TAG..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          {
+            echo "## Changes"
+            echo
+            echo '```'
+            git log --oneline --no-merges "$RANGE"
+            echo '```'
+          } > release-notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          generate_release_notes: true

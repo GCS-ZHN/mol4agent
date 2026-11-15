@@ -29,6 +29,7 @@
   },
   "files": [
     "lib",
+    "README.md",
     "README_zh.md"
   ],
   "scripts": {
@@ -50,5 +51,10 @@
     "molstar": "5.13.1",
     "react": "18.3.1",
     "typescript": "^5.7.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GCS-ZHN/mol4agent.git",
+    "directory": "packages/core"
   }
 }
