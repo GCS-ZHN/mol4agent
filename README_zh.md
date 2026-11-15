@@ -91,9 +91,9 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
 
 ### 从 GitHub marketplace 安装
 
-Codex 读取仓库里的 `.agents/plugins/marketplace.json`。可安装的插件产物由 CI
-发布到自动生成的 `plugin-dist` 分支，因此这条安装路径不使用 npm，也不需要在
-本地构建：
+Codex 读取仓库里的 `.agents/plugins/marketplace.json`。可安装的插件产物由
+tag release workflow 发布到自动生成的 `plugin-dist` 分支，因此这条安装路径
+不使用 npm，也不需要在本地构建：
 
 ```sh
 codex plugin marketplace add GCS-ZHN/mol4agent

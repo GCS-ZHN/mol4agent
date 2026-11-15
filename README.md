@@ -109,7 +109,8 @@ change (`lib/client.js`) only needs a page refresh.
 
 Codex reads the marketplace manifest in `.agents/plugins/marketplace.json`.
 The installable plugin payload is published to the generated `plugin-dist`
-branch by CI, so this path does not use npm and does not require a local build:
+branch by the tag release workflow, so this path does not use npm and does not
+require a local build:
 
 ```sh
 codex plugin marketplace add GCS-ZHN/mol4agent

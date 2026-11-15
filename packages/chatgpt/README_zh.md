@@ -138,7 +138,7 @@ Mol* 资源全部内联。
 
 Codex 通过 Git 安装插件，不使用 npm。仓库根目录的
 `.agents/plugins/marketplace.json` 把 `mol4agent` 指向自动生成的
-`plugin-dist` 分支，CI 会在该分支发布构建好的 `lib/` 产物：
+`plugin-dist` 分支，tag release workflow 会在该分支发布构建好的 `lib/` 产物：
 
 ```sh
 codex plugin marketplace add GCS-ZHN/mol4agent
