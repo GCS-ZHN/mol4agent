@@ -18,8 +18,9 @@ side panel that the agent operates with `mol_*` tools.
   the window unloads).
 
 > **Tip**: every open structure keeps a live Mol* viewer (WebGL context and
-> memory) alive across tab/session switches. Open only the structures you need,
-> and close the structure tabs when you are done.
+> memory) alive across tab/session switches. The adapter keeps at most 12 live
+> viewers and releases the oldest hidden one when the cap is exceeded. Open only
+> the structures you need, and close the structure tabs when you are done.
 
 - **Same molecular semantics as DSH/ChatGPT**: this adapter passes the same
   `MolFormat`, selectors, commands, and capture semantics to

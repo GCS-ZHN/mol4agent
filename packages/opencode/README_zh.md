@@ -14,8 +14,8 @@
   会销毁对应 viewer（已关闭会话的 viewer 在窗口卸载时清理）。
 
 > **温馨提示**：每个打开的结构都会保留一个常驻的 Mol* viewer（占用 WebGL
-> context 和内存），切换标签/会话也不会释放。请只打开需要的结构，用完记得关闭
-> 结构标签。
+> context 和内存），切换标签/会话也不会释放。适配器最多保留 12 个常驻 viewer，
+> 超出时会释放最久未使用的隐藏 viewer。请只打开需要的结构，用完记得关闭结构标签。
 
 - **与 DSH/ChatGPT 语义一致**：本适配器把相同的 `MolFormat`、selector、命令
   与截图语义传给 `@gcszhn/mol4agent-core`。

@@ -75,3 +75,21 @@ export function captureDecision(captureSessionID: string, currentSessionID: stri
   if (captureSessionID !== currentSessionID) return 'leave-pending'
   return viewerReady ? 'deliver' : 'fail'
 }
+
+/** Stored tabs whose scene is gone after the session's scene list loaded. */
+export function missingPaths(
+  open: readonly string[],
+  known: readonly string[],
+  loaded: boolean,
+): string[] {
+  if (!loaded) return []
+  const present = new Set(known)
+  return open.filter(path => !present.has(path))
+}
+
+/** Oldest non-active slot keys to evict so `keys` fits in `max` entries. */
+export function oldestEvictions(keys: readonly string[], keep: string, max: number): string[] {
+  const overflow = keys.length - max
+  if (overflow <= 0) return []
+  return keys.filter(key => key !== keep).slice(0, overflow)
+}

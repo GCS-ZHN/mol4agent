@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { captureDecision, mergeScenes, routeSceneEvent, selectScene } from '../src/gui/routing.ts'
+import { captureDecision, mergeScenes, missingPaths, oldestEvictions, routeSceneEvent, selectScene } from '../src/gui/routing.ts'
 
 const SCENES = [
   { path: '/a.pdb', sceneId: 'scene-a', label: 'a.pdb' },
@@ -52,4 +52,17 @@ test('capture delivery never crosses sessions', () => {
 test('capture fails only when the routed session has no viewer', () => {
   assert.equal(captureDecision('A', 'A', false), 'fail')
   assert.equal(captureDecision('A', 'A', true), 'deliver')
+})
+
+test('stored tabs are only marked missing after the scene list loads', () => {
+  assert.deepEqual(missingPaths(['/a.pdb', '/gone.pdb'], ['/a.pdb'], false), [])
+  assert.deepEqual(missingPaths(['/a.pdb', '/gone.pdb'], ['/a.pdb'], true), ['/gone.pdb'])
+  assert.deepEqual(missingPaths([], [], true), [])
+})
+
+test('LRU evictions skip the active slot', () => {
+  assert.deepEqual(oldestEvictions(['a', 'b', 'c'], 'c', 3), [])
+  assert.deepEqual(oldestEvictions(['a', 'b', 'c', 'd'], 'd', 3), ['a'])
+  assert.deepEqual(oldestEvictions(['a', 'b', 'c', 'd', 'e'], 'e', 3), ['a', 'b'])
+  assert.deepEqual(oldestEvictions(['a', 'b', 'c'], 'a', 2), ['b'])
 })

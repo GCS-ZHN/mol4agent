@@ -20,6 +20,7 @@ import { createComponent, createEffect, createRoot, onCleanup, type JSX } from '
 import type { MountedSession } from '@opencode/plugin/gui'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
 import { StructureViewer, type FetchedScene, type SceneInfo } from './viewer.tsx'
+import { oldestEvictions } from './routing.ts'
 
 interface Slot {
   readonly host: HTMLDivElement
@@ -27,6 +28,9 @@ interface Slot {
 }
 
 const keyOf = (sessionKey: string, path: string): string => `${sessionKey}\n${path}`
+
+/** Bound live Mol* viewers (WebGL contexts and memory), not just structure tabs. */
+const MAX_LIVE_VIEWERS = 12
 
 export interface StructurePoolOptions {
   readonly scene: (sessionID: string, path: string) => SceneInfo | undefined
@@ -71,7 +75,12 @@ export class StructurePool {
   show(sessionKey: string, sessionID: string, path: string): void {
     if (this.disposed || path === '') return
     const key = keyOf(sessionKey, path)
-    if (!this.slots.has(key)) {
+    const existing = this.slots.get(key)
+    if (existing !== undefined) {
+      // Touch the LRU: delete + set moves it to the newest position.
+      this.slots.delete(key)
+      this.slots.set(key, existing)
+    } else {
       const host = document.createElement('div')
       host.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
       const dispose = createRoot((disposeRoot) => {
@@ -88,6 +97,7 @@ export class StructurePool {
       ;(this.attachedRoot ?? this.detached).appendChild(host)
     }
     for (const [candidate, slot] of this.slots) slot.host.style.display = candidate === key ? 'block' : 'none'
+    for (const stale of oldestEvictions([...this.slots.keys()], key, MAX_LIVE_VIEWERS)) this.disposeKey(stale)
   }
 
   /** A structure tab closed: destroy its viewer. */
@@ -122,8 +132,10 @@ export function StructureGroup(props: {
 }): JSX.Element {
   const root = document.createElement('div')
   root.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;'
-  props.pool.attach(root)
   createEffect(() => {
+    // Idempotent: a host render may be swapped, and the slots must land in the
+    // live root before the active one is shown.
+    props.pool.attach(root)
     const session = props.session()
     props.pool.show(session.key, session.id, props.tab())
   })

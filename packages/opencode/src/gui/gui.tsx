@@ -23,7 +23,7 @@ import { createStore, reconcile } from 'solid-js/store'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
 import { bytesToBase64 } from '../base64.ts'
 import { Mol4Agent } from '../rpc.ts'
-import { captureDecision, mergeScenes, routeSceneEvent, selectScene } from './routing.ts'
+import { captureDecision, mergeScenes, missingPaths, routeSceneEvent, selectScene } from './routing.ts'
 import { StructureGroup, StructurePool } from './structure-group.ts'
 import { type FetchedScene, type SceneInfo } from './viewer.tsx'
 
@@ -60,8 +60,10 @@ export default Plugin.define({
     const [scenes, setScenes] = createStore<Record<string, Record<string, SceneInfo>>>({})
     /** Active tab path per session, for the menu item. */
     const [active, setActive] = createStore<Record<string, string>>({})
+    /** Sessions whose scene list has loaded; before that, stored tabs stay listed. */
+    const [loadedSessions, setLoadedSessions] = createStore<Record<string, boolean>>({})
     /** Tab objects per session and path, reused so strip updates do not rebuild triggers. */
-    const tabs = new Map<string, { readonly id: string; readonly title: string; readonly group: string }>()
+    const tabs = new Map<string, { readonly id: string; readonly title: string; readonly group: string; readonly missing: boolean }>()
 
     /** Live viewers keyed by sceneId, for capture delivery. */
     const viewers = new Map<string, MolViewer>()
@@ -107,11 +109,16 @@ export default Plugin.define({
       return name === '' ? path : name
     }
 
-    const tabFor = (sessionID: string, path: string, title: string): { id: string; title: string; group: string } => {
+    const tabFor = (
+      sessionID: string,
+      path: string,
+      title: string,
+      missing: boolean,
+    ): { id: string; title: string; group: string; missing: boolean } => {
       const key = `${sessionID}\n${path}`
       const cached = tabs.get(key)
-      if (cached !== undefined && cached.title === title) return cached
-      const next = { id: path, title, group: 'structure' }
+      if (cached !== undefined && cached.title === title && cached.missing === missing) return cached
+      const next = { id: path, title, group: 'structure', missing }
       tabs.set(key, next)
       return next
     }
@@ -133,6 +140,7 @@ export default Plugin.define({
         // switch back does not rebuild their viewers.
         setScenes(sessionID, reconcile(mergeScenes(list.scenes)))
         setActive(sessionID, list.active)
+        setLoadedSessions(sessionID, true)
       } catch (reason) {
         if (token === refreshToken) console.warn('[mol4agent] could not list scenes', reason)
       }
@@ -146,6 +154,28 @@ export default Plugin.define({
         await new Promise(resolve => setTimeout(resolve, 100))
       }
       return undefined
+    }
+
+    /** A hidden/detached slot must be laid out and resized before capturing. */
+    const waitForViewerLayout = async (viewer: MolViewer, ms: number): Promise<boolean> => {
+      const deadline = Date.now() + ms
+      while (Date.now() < deadline) {
+        const host = viewer.diagnostics().host
+        if (host.clientWidth >= 32 && host.clientHeight >= 32) {
+          viewer.resize()
+          // Let the resize draw land before the screenshot helper renders.
+          await new Promise<void>(resolve => {
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+            } else {
+              setTimeout(resolve, 32)
+            }
+          })
+          return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      return false
     }
 
     const deliver = async (capture: CaptureEvent): Promise<void> => {
@@ -184,6 +214,16 @@ export default Plugin.define({
         return
       }
       if (viewer === undefined) return
+      if (!(await waitForViewerLayout(viewer, 5000))) {
+        if (capture.sessionID !== currentSessionID()) return
+        await rpc.failCapture({
+          captureId: capture.captureId,
+          message:
+            'the structure viewer tab has no layout size; open the side panel and retry mol_capture',
+        })
+        return
+      }
+      if (capture.sessionID !== currentSessionID()) return
       const since = registeredAt.get(capture.sceneId)
       const settle = since === undefined ? 0 : FIRST_FRAME_SETTLE_MS - (Date.now() - since)
       if (settle > 0) await new Promise(resolve => setTimeout(resolve, settle))
@@ -265,12 +305,18 @@ export default Plugin.define({
         // Keep listing stored tabs even before the scene list arrives: an empty
         // list would make the host drop tabs and rebuild their viewers.
         const byPath = scenes[input.session.id] ?? {}
+        const loaded = loadedSessions[input.session.id] === true
         const keep = new Set(input.open)
         const prefix = `${input.session.id}\n`
         for (const key of tabs.keys()) {
           if (key.startsWith(prefix) && !keep.has(key.slice(prefix.length))) tabs.delete(key)
         }
-        return input.open.map(id => tabFor(input.session.id, id, byPath[id]?.label ?? labelOf(id)))
+        // Once the server's list is known, a stored path without a scene is
+        // stale (LRU eviction or a server restart). Mark it and release its
+        // viewer instead of showing old pixels that no tool can operate.
+        const stale = new Set(missingPaths(input.open, Object.keys(byPath), loaded))
+        for (const path of stale) pool.dispose(input.session.key, path)
+        return input.open.map(id => tabFor(input.session.id, id, byPath[id]?.label ?? labelOf(id), stale.has(id)))
       },
       render: (props) => createComponent(StructureGroup, {
         tab: () => props.tab.id,
