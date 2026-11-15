@@ -34,6 +34,11 @@ Codex's MCP extension file viewer.
   contain `entrypoints: [{ type: "file", extensions: [...] }]`, plus
   `_meta.ui.resourceUri` and `openai/outputTemplate`. The host calls it with
   `{ file: { name, resourceUri } }`; keep that contract instead of `path`.
+- Gzip is adapter transport: recognize the `.gz` variant, decode on the server
+  before storing scene bytes, cap the decompressed size with `maxFileBytes`,
+  and list the gzip suffixes in the file-viewer entrypoint. Only a raw
+  host-resource fallback is decoded again by the app (`DecompressionStream`);
+  scene snapshots mark it with `fileGzip`.
 
 ## MCP App UI
 
