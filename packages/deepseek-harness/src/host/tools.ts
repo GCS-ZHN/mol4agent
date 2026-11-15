@@ -83,7 +83,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
         items: { type: 'string' },
         description: 'Chain ids on the second side, e.g. ["B","D"].',
       },
-      cutoff: { type: 'number', description: 'Distance cutoff in angstroms. Defaults to 8.' },
+      cutoff: { type: 'number', description: 'Distance cutoff in angstroms (0 < cutoff <= 30). Defaults to 8.' },
     },
     output: {
       schema: { type: 'string' },

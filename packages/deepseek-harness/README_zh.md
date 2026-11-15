@@ -61,7 +61,7 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | 工具 | 参数 | 行为 |
 |---|---|---|
 | `mol_info` | `path` | 摘要链、残基、原子、配体。不打开 viewer，也不改变场景。 |
-| `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 在 PDB-like 文件中找两个链组之间的界面残基（默认 8 Å），返回可用于 `mol_style`/`mol_focus` 的区间。 |
+| `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 在 PDB-like 文件中找两个链组之间的界面残基（默认 8 Å，0 < cutoff ≤ 30），返回可用于 `mol_style`/`mol_focus` 的区间。 |
 | `mol_open` | `path`、`type?`、`color?`、`select?`、`focus?` | 建立新的活动场景；发出 `represent`，可选 `select`/`focus`。通过 bridge 打开/显示预览。 |
 | `mol_style` | `type?`、`color?`、`target?`、`colorParams?` | 追加 `represent`。不传 `target` 替换整个场景表示；传 `target` 只给该选择添加表示。`colorParams` 可传 `{"value": 16711680}` 表示 uniform 红色。 |
 | `mol_select` | `target`、`mode?`、`focus?` | 追加 `select`；`mode` 为 `select` 或 `highlight`。 |
@@ -176,7 +176,8 @@ interface MolSessionState {
 
 - 会改变场景的 `mol_*` 调用（open/style/select/focus/measure）会折叠进 `scene`
   并递增 `revision`；有场景时 `mol_capture` 会添加 pending 并递增 `revision`。
-  只读工具（`mol_info`、`mol_interface`）和无场景/非法调用保持状态不变。
+  只读工具（`mol_info`、`mol_interface`）和非法 selector/format 参数保持状态
+  不变；文件读取失败时仍可能先切换 scene，随后 Host 工具报错。
 - `tool/result` 清除对应的 pending 截图项并递增 `revision`；其他结果保持状态
   不变。
 - 相对路径基于 projection 初始化时捕获的 `cwd` 解析。
@@ -316,8 +317,8 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
 - BCIF 可以渲染，但 `mol_info` 目前还不能从 raw bytes 摘要。
 - 文件上限 64 MiB。
 - 3D 画布需要 WebGL 2。
-- `mol_capture` 要求结构预览处于打开状态；20 秒超时，并会留下一条内部
-  `mol4agent_capture` 命令记录。
+- `mol_capture` 要求结构预览处于打开状态；20 秒超时。**超时不会**产生命令
+  记录；只有成功回传时才留下一条内部 `mol4agent_capture` 命令记录。
 - `mol_style` 不传 `target` 时修改全局表示；传 `target` 时添加选择 component。
   标签（label）还没有暴露成工具。
 - `mol_interface` 目前只解析 PDB-like ATOM 记录（`pdb`/`pdbqt`/`pqr`）；
