@@ -350,6 +350,6 @@ sequenceDiagram
 - DSH 适配包把 core 打进单个 client bundle；见
   [`packages/deepseek-harness`](../deepseek-harness)。
 
-总体架构见 [`docs/architecture.md`](../../docs/architecture.md)；具体实现见本包
+总体架构见 [`docs/architecture_zh.md`](../../docs/architecture_zh.md)；具体实现见本包
 README/AGENTS，DSH agent 接口见
 [`packages/deepseek-harness/README_zh.md`](../deepseek-harness/README_zh.md)。

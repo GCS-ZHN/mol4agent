@@ -15,7 +15,7 @@ them here or in code comments:
 - `README.md` / `README_zh.md`
 - `packages/core/README.md` / `README_zh.md`
 - `packages/deepseek-harness/README.md` / `README_zh.md`
-- `docs/architecture.md` (Chinese design notes)
+- `docs/architecture.md` / `docs/architecture_zh.md` (architecture; English default)
 - `packages/deepseek-harness/docs/DETAIL.md`
 
 ## Product goals

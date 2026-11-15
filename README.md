@@ -97,9 +97,9 @@ pnpm build       # core -> lib JS/d.ts, then DSH host/client
   commands, selectors, summaries, capture, React binding.
 - [DSH agent interface](packages/deepseek-harness/README.md): `mol_*` tools,
   session projection, document preview, screenshot loop.
-- [Architecture design](docs/architecture.md): product goals, layers, the
-  cross-harness contract, and high-level flows. (Chinese design notes; package
-  details live in the package docs.)
+- [Architecture design](docs/architecture.md) / [中文](docs/architecture_zh.md): product
+  goals, layers, the cross-harness contract, and high-level flows. Package
+  details live in the package docs.
 - [DSH adapter details](packages/deepseek-harness/docs/DETAIL.md): tool behavior,
   selector examples, limitations.
 
