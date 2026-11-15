@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Repository-level routing and cross-cutting rules for future agent sessions.
-Read the package playbook before changing that package:
+Repository-level routing and product-level constraints for future agent
+sessions. Read the package playbook before changing that package:
 
 - **Core** (`packages/core/`): [`packages/core/AGENTS.md`](packages/core/AGENTS.md)
   — protocol, Mol* viewer lifecycle, rendering, capture, packaging.
@@ -18,18 +18,45 @@ them here or in code comments:
 - `docs/architecture.md` (Chinese design notes)
 - `packages/deepseek-harness/docs/DETAIL.md`
 
-## Cross-cutting rules
+## Functional goals (all harnesses)
 
-- Treat the core/adapter boundary in the READMEs as immutable: core takes
-  **bytes + explicit format**; paths, suffix detection, IO, sessions, and UI
-  belong to the adapter. If a change needs those in core, it is in the wrong
-  package.
+These are product acceptance goals, not package-specific implementation notes.
+Specific implementation requirements live in the package playbooks.
+
+1. **Structure preview is first-class.** Opening a supported molecular file in
+   the harness previewer shows the official Mol* 3D UI by default, not plain
+   text. The host's normal "open with" affordance still offers text/code.
+2. **The agent operates the same page the human sees.** Opening, styling,
+   selecting/highlighting, focusing, measuring, and capturing go through the
+   adapter's agent tools. The human watches the page change; page-level code
+   injection is not an agent interface.
+3. **Agent-initiated open.** Naming a structure for an operation reveals or
+   opens its preview without a separate manual click.
+4. **Harness parity.** Every adapter exposes the same core semantics for
+   `MolFormat`, selectors, commands, style targets, and capture. DSH and the
+   future ChatGPT/Codex adapter may differ in transport, auth, and preview API,
+   not in molecular behavior. Adapter-specific behavior belongs in that
+   adapter's playbook/README and must not leak into core.
+5. **Predictable UX.** Use the official Mol* UI and controls; follow the host
+   light/dark theme; start with the official control panel set closed; preserve
+   viewer state across document tabs; return captured PNGs (or an explicit saved
+   path) through the tool result.
+6. **Robust boundaries.** Core consumes bytes plus an explicit format; adapters
+   own paths, suffix mapping, authorization, IO, sessions, and UI. Errors are
+   structured and model-actionable; never dump a whole structure file as text.
+
+## Cross-cutting constraints
+
+- Treat the core/adapter boundary in the READMEs as immutable. If a change needs
+  path detection, IO, or session state in core, it is in the wrong package.
 - Use the official Mol* UI (`createPluginUI` + `DefaultPluginUISpec`); do not
   reintroduce the headless viewer, the `Viewer` wrapper, or a custom toolbar.
-- Agent operations must go through `mol_*` tools. Shell/code is for calculations
+- Keep agent operations on `mol_*` tools. Shell/code is for calculations
   (interface geometry, H-bond candidates, builds), not for driving the viewer.
-- Verify changes with `pnpm typecheck`, the package build, real fixtures, and
-  the actual DSH page. A screenshot alone does not prove panel/layout behavior.
+- A new selector/command/tool is a cross-package change: update core semantics,
+  every adapter, the prompt, and the relevant READMEs in the same change.
+- Verify with `pnpm typecheck`, the package build, real fixtures, and the actual
+  harness page. A screenshot alone does not prove panel/layout behavior.
 - Documentation defaults to English with a synchronized `README_zh.md`. Update
   the relevant READMEs when behavior or APIs change.
 - npm packages contain **compiled JS and `.d.ts` only**, never `src/`, `AGENTS.md`,
