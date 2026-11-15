@@ -2,9 +2,10 @@
 
 Read the [DSH README](README.md) for the tool/API reference and the root
 [`AGENTS.md`](../../AGENTS.md) for cross-cutting rules. This file records
-adapter-only invariants and traps. This adapter must satisfy the root
-functional goals; document any unavoidable adapter-specific limitation in the
-README rather than changing core semantics.
+adapter-only invariants and traps. This adapter must satisfy the product goals
+in [`docs/architecture.md`](../../docs/architecture.md) §1.3; document any
+unavoidable adapter-specific limitation in the README rather than changing core
+semantics.
 
 ## Host/client split
 

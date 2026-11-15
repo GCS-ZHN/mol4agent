@@ -42,9 +42,35 @@
 - 在 Host 端做无头 WebGL 渲染（截图一律在浏览器端完成）。
 - 体积/表面分析（后续可用 Mol* 内置能力或 Python 侧车）。
 
+### 1.3 跨 harness 功能目标（唯一来源）
+
+R1–R5 是验收基线；任何一个 harness 适配器都必须满足，而不是只让 DSH 可用。具体实现可以因传输、鉴权、预览 API 不同而不同，但**分子行为必须一致**：
+
+1. **结构预览是一等公民**：在 harness 预览器里打开受支持的分子文件，默认进入 Mol* 官方 3D UI；宿主原有的「打开方式」仍可切回纯文本/代码。
+2. **agent 操作人看到的同一页面**：打开、改表示/配色、选择/高亮、聚焦、测量、截图都走适配器的 agent 工具；人在旁边看页面变化，不以页面级代码注入作为 agent 接口。
+3. **agent 主动打开**：agent 指定结构后，预览自动显示/打开，不需要人再点一次。
+4. **harness 一致性**：所有适配器共享同一套 `MolFormat`、选择器、命令、选择集着色和 capture 语义。DSH 与未来的 ChatGPT/Codex 适配器只在传输、鉴权、预览接口上不同；适配器特有行为必须写进该适配器的 README/AGENTS，不得泄漏进 core。
+5. **可预期的 UX**：使用 Mol* 官方 UI/controls；跟随宿主 light/dark；官方控制面板组默认关闭；切换文档 tab 保留 viewer 状态；截图通过工具结果返回 PNG，或明确给出保存路径。
+6. **可靠边界**：core 只接收 bytes + 显式 format；路径、后缀识别、鉴权、IO、session、UI 属于适配器。错误要结构化、模型可行动；不要把整份结构文件当纯文本输出。
+
+新增 selector/command/tool 是跨包变更：core 语义、所有适配器、prompt 和对应 README 必须在同一次变更里同步。
+
+### 1.4 文档分工
+
+| 文档 | 只负责 |
+|---|---|
+| `README.md` / `README_zh.md`、各包 README | 用法、API、工具参考、快速开始 |
+| `docs/architecture.md`（本节及后文） | 产品目标、验收标准、跨 harness 语义、架构决策 |
+| `AGENTS.md`（根） | agent 工作路由、跨包约束；不重复产品目标细节 |
+| `packages/*/AGENTS.md` | 该包的实现要求、生命周期/构建陷阱 |
+| `packages/deepseek-harness/docs/DETAIL.md` | DSH 适配器的行为细节与限制 |
+
+功能目标以本节为唯一规范来源；README 只描述怎么用，不重复定义目标。实现要求写进对应包的 AGENTS。
+
 ---
 
 ## 2. 事实核查（实现依据）
+
 
 ### 2.1 DSH 的文档预览扩展点（R1 的落点）
 

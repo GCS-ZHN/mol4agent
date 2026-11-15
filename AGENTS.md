@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repository-level routing and product-level constraints for future agent
+Repository-level routing and cross-cutting constraints for future agent
 sessions. Read the package playbook before changing that package:
 
 - **Core** (`packages/core/`): [`packages/core/AGENTS.md`](packages/core/AGENTS.md)
@@ -18,32 +18,12 @@ them here or in code comments:
 - `docs/architecture.md` (Chinese design notes)
 - `packages/deepseek-harness/docs/DETAIL.md`
 
-## Functional goals (all harnesses)
+## Product goals
 
-These are product acceptance goals, not package-specific implementation notes.
-Specific implementation requirements live in the package playbooks.
-
-1. **Structure preview is first-class.** Opening a supported molecular file in
-   the harness previewer shows the official Mol* 3D UI by default, not plain
-   text. The host's normal "open with" affordance still offers text/code.
-2. **The agent operates the same page the human sees.** Opening, styling,
-   selecting/highlighting, focusing, measuring, and capturing go through the
-   adapter's agent tools. The human watches the page change; page-level code
-   injection is not an agent interface.
-3. **Agent-initiated open.** Naming a structure for an operation reveals or
-   opens its preview without a separate manual click.
-4. **Harness parity.** Every adapter exposes the same core semantics for
-   `MolFormat`, selectors, commands, style targets, and capture. DSH and the
-   future ChatGPT/Codex adapter may differ in transport, auth, and preview API,
-   not in molecular behavior. Adapter-specific behavior belongs in that
-   adapter's playbook/README and must not leak into core.
-5. **Predictable UX.** Use the official Mol* UI and controls; follow the host
-   light/dark theme; start with the official control panel set closed; preserve
-   viewer state across document tabs; return captured PNGs (or an explicit saved
-   path) through the tool result.
-6. **Robust boundaries.** Core consumes bytes plus an explicit format; adapters
-   own paths, suffix mapping, authorization, IO, sessions, and UI. Errors are
-   structured and model-actionable; never dump a whole structure file as text.
+The canonical cross-harness goals and acceptance criteria live in
+[docs/architecture.md](docs/architecture.md) §1.3. Read them before changing
+behavior; do not restate them here. Implementation requirements for each package
+are in its AGENTS playbook.
 
 ## Cross-cutting constraints
 
