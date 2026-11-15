@@ -269,9 +269,10 @@ See the [ChatGPT README](../packages/chatgpt/README.md).
   extension file viewer for the file tree are implemented. The per-extension
   permission and one-active-scene limits are in its README.
 - **OpenCode adapter**: side-panel Mol* viewer, `mol_*` tools, RPC scene
-  updates, screenshot rendezvous, and pick-file open are implemented. OpenCode
-  tool results have no inline image, so `mol_capture` returns the saved path;
-  the file-tree `.pdb` click is not yet intercepted (see its README).
+  updates, screenshot rendezvous, and pick-file open are implemented. It needs
+  `@opencode/plugin` 2.2.0+ (the `./gui` window API; verified on 2.3.0). OpenCode
+  tool results have no inline image, so `mol_capture` returns the saved path; the
+  file-tree `.pdb` click is not yet intercepted (see its README).
 
 The next step is not to grow this document further. Put new capabilities in the
 relevant package README/AGENTS, and update this document only when overall goals

@@ -36,6 +36,18 @@ The package is an OpenCode plugin with three parts:
 Core receives only `{ data, format, label }` plus JSON commands; paths, suffix
 detection, IO, sessions, and UI all stay in this adapter.
 
+## Compatibility
+
+Requires **OpenCode 2.2.0 or newer** — the `@opencode/plugin/gui` window API
+(`./gui`, `./gui/file`, `./gui/vite`, panel/RPC registration) was introduced in
+`@opencode/plugin` 2.2.0. Built and verified on **2.3.0**; the package declares a
+`@opencode/plugin` peer dependency of `>=2.2.0 <3.0.0`.
+
+OpenCode v1 cannot run this adapter: v1 is a terminal UI with no GUI plugin
+layer, no custom RPC, and no DOM/WebGL for Mol*. Its server/TUI plugins cannot
+render an interactive 3D page or return a rendered screenshot, so only the
+text-only `mol_info` / `mol_interface` tools could be ported.
+
 ## Tools
 
 | Tool | Behavior |

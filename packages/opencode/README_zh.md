@@ -30,6 +30,16 @@
 core 只接收 `{ data, format, label }` 加 JSON 命令；路径、后缀识别、IO、session
 与 UI 全部留在本适配器内。
 
+## 兼容性
+
+需要 **OpenCode 2.2.0 或更新**——`@opencode/plugin/gui` 的窗口 API（`./gui`、
+`./gui/file`、`./gui/vite`、panel/RPC 注册）是 `@opencode/plugin` 2.2.0 才引入的。
+构建和验证基于 **2.3.0**；本包声明 `@opencode/plugin` peer 依赖 `>=2.2.0 <3.0.0`。
+
+OpenCode v1 无法运行本适配器：v1 是终端 UI，没有 GUI 插件层、没有自定义 RPC、
+也没有 DOM/WebGL 供 Mol* 使用。它的 server/TUI 插件无法渲染可交互 3D 页面或返回
+渲染好的截图，因此只能移植纯文本的 `mol_info` / `mol_interface` 工具。
+
 ## 工具
 
 | 工具 | 行为 |

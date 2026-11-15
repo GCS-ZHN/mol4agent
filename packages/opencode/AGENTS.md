@@ -7,6 +7,15 @@ product goals in [`docs/architecture.md`](../../docs/architecture.md) §1.3;
 document any unavoidable adapter-specific limitation in the README rather than
 changing core semantics.
 
+## Compatibility
+
+- Requires `@opencode/plugin` **`>=2.2.0 <3.0.0`** — the `./gui` window API
+  (`./gui`, `./gui/file`, `./gui/vite`, Panel/RPC registration) landed in 2.2.0.
+  Built and verified on 2.3.0. Do not claim support for older versions.
+- OpenCode v1 has no GUI plugin layer, no custom RPC, and no DOM/WebGL, so this
+  adapter cannot run there; only the text-only `mol_info`/`mol_interface` tools
+  could be ported. It is a v2.2+ GUI-plugin artifact.
+
 ## Server / GUI split
 
 - The **server part** (`src/server.ts`) is the only place that sees paths,

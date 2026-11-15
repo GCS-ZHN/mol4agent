@@ -52,7 +52,7 @@ viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
 | [`@gcszhn/mol4agent-core`](packages/core) | 与 harness 无关的 Mol* 渲染引擎、命令协议、选择器、字节摘要、PNG 截图 | 已实现；用真实 1CRN/1ATP/aspirin 验证 |
 | [`@gcszhn/mol4agent-deepseekharness`](packages/deepseek-harness) | DSH 适配：右侧文档预览、session projection、`mol_*` 工具、截图回传 | 已实现并安装到 Desktop profile |
 | [`@gcszhn/mol4agent-chatgpt`](packages/chatgpt) | ChatGPT/Codex 适配：MCP App viewer、`mol_*` 工具、长轮询场景更新、截图回传 | 已实现；本地 marketplace 安装，协议测试与真实 MCP Apps 冒烟测试通过 |
-| [`@gcszhn/mol4agent-opencode`](packages/opencode) | OpenCode 2 适配：侧栏 Mol* viewer、`mol_*` 工具、RPC 场景更新、截图回传 | 已实现；在 OpenCode 桌面端完成 server + GUI 端到端验证 |
+| [`@gcszhn/mol4agent-opencode`](packages/opencode) | OpenCode 2.2+ 适配：侧栏 Mol* viewer、`mol_*` 工具、RPC 场景更新、截图回传 | 已实现；在 OpenCode 桌面端（2.3.0）完成 server + GUI 端到端验证 |
 
 ## 快速开始（DSH Desktop）
 
