@@ -8,11 +8,13 @@
  * @module @gcszhn/mol4agent-opencode/gui
  */
 import { Plugin, Panel, Command, MenuItem } from '@opencode/plugin/gui'
-import { createSignal } from 'solid-js'
+import { FileViewer } from '@opencode/plugin/gui/file'
+import { createComponent, createSignal } from 'solid-js'
 import { createStore } from 'solid-js/store'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
 import { bytesToBase64 } from '../base64.ts'
 import { Mol4Agent } from '../rpc.ts'
+import { createMolecularFileViewer } from './file-viewer.tsx'
 import { StructureViewer, type FetchedScene, type SceneInfo } from './viewer.tsx'
 
 const EXTENSIONS = ['pdb', 'ent', 'pdbqt', 'pqr', 'cif', 'mmcif', 'mcif', 'bcif', 'mol', 'sdf', 'sd', 'mol2', 'xyz', 'gro']
@@ -111,20 +113,21 @@ export default Plugin.define({
         .map(scene => ({ id: scene.path, title: scene.label })),
       render: (props) => {
         const path = props.tab.id
-        const scene = (): SceneInfo | undefined => scenes[path]
-        return (
-          <StructureViewer
-            scene={scene}
-            fetchScene={async (sceneId) => (await rpc.fetchScene({ sceneId })) as unknown as FetchedScene}
-            theme={() => ctx.appearance.mode()}
-            onViewer={(sceneId, viewer) => {
-              if (viewer !== undefined) viewers.set(sceneId, viewer)
-              else viewers.delete(sceneId)
-            }}
-          />
-        )
+        return createComponent(StructureViewer, {
+          scene: (): SceneInfo | undefined => scenes[path],
+          fetchScene: async (sceneId: string) => (await rpc.fetchScene({ sceneId })) as unknown as FetchedScene,
+          theme: () => ctx.appearance.mode(),
+          onViewer: (sceneId: string, viewer: MolViewer | undefined) => {
+            if (viewer !== undefined) viewers.set(sceneId, viewer)
+            else viewers.delete(sceneId)
+          },
+        })
       },
     })
+
+    // Render a structure instead of plain text when the file view would show a
+    // molecular file (OpenCode classifies .pdb/.cif/... as `"text"`).
+    ctx.add(FileViewer, createMolecularFileViewer(() => ctx.appearance.mode()))
 
     ctx.add(MenuItem, () => {
       const session = ctx.sessions.current()

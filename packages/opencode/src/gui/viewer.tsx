@@ -1,17 +1,18 @@
 /**
  * The Solid component that mounts core's official Mol* viewer into a panel tab.
  *
- * It lazily imports `@gcszhn/mol4agent-core` (and with it Mol* + React) so the
- * heavy WebGL stack is only evaluated in the window that actually renders a
- * structure, never in the Electron main process that also evaluates the GUI
- * bundle's module scope.
+ * Built without JSX and with a single lazy `loadCore()` call: the GUI bundle is
+ * compiled by esbuild (which keeps core's chunk lazy), so Solid JSX cannot be
+ * compiled here (Solid 1.9 has no standalone `jsx` runtime), and inlining core
+ * eagerly would run Mol*'s Markdown dependency in the Electron main process.
  *
  * @module @gcszhn/mol4agent-opencode/viewer
  */
-import { createEffect, onCleanup } from 'solid-js'
+import { createEffect, onCleanup, type JSX } from 'solid-js'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
 import type { MolCommand, MolFormat } from '@gcszhn/mol4agent-core/protocol'
 import { base64ToBytes } from '../base64.ts'
+import { loadCore } from './core-loader.ts'
 
 /** Lightweight scene description, matching the RPC `listScenes` output item. */
 export interface SceneInfo {
@@ -38,13 +39,15 @@ export function StructureViewer(props: {
   readonly fetchScene: (sceneId: string) => Promise<FetchedScene>
   readonly theme: () => 'light' | 'dark'
   readonly onViewer: (sceneId: string, viewer: MolViewer | undefined) => void
-}) {
-  let host: HTMLDivElement | undefined
+}): JSX.Element {
   let viewer: MolViewer | undefined
   let boundSceneId: string | undefined
   let registeredSceneId: string | undefined
   let applied = 0
   let queue: Promise<void> = Promise.resolve()
+
+  const host = document.createElement('div')
+  host.style.cssText = 'width:100%;height:100%;min-height:320px;position:relative;overflow:hidden;'
 
   const register = (sceneId: string): void => {
     if (registeredSceneId !== undefined && registeredSceneId !== sceneId) {
@@ -58,8 +61,8 @@ export function StructureViewer(props: {
     queue = queue
       .then(async () => {
         if (viewer === undefined) {
-          const mod = await import('@gcszhn/mol4agent-core')
-          viewer = await mod.createMolViewer({ container: host as HTMLDivElement, theme: props.theme() })
+          const mod = await loadCore()
+          viewer = await mod.createMolViewer({ container: host, theme: props.theme() })
         }
         viewer.setTheme(props.theme())
         if (scene.sceneId !== boundSceneId) {
@@ -102,10 +105,5 @@ export function StructureViewer(props: {
     viewer = undefined
   })
 
-  return (
-    <div
-      ref={(el) => { host = el }}
-      style={{ width: '100%', height: '100%', 'min-height': '320px', position: 'relative', overflow: 'hidden' }}
-    />
-  )
+  return host
 }

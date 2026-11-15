@@ -1,10 +1,17 @@
 /**
- * Build the plugin's server and RPC artifacts. The GUI bundle
- * (`dist/gui.cjs`) is built by Vite through `vite.config.ts`; the package
- * `build` script runs both.
+ * Build the OpenCode plugin's artifacts:
  *
  * - dist/index.js — server part (ESM, core bundled, `@opencode/*`/`node:*` external)
+ * - dist/gui.cjs  — GUI part (single CommonJS file; core + Mol* + React bundled,
+ *                   Solid/effect/@opencode/electron/node external, CSS as text)
  * - dist/rpc.js   — the typed RPC contract for external consumers
+ *
+ * The GUI is built with esbuild, not Vite: Vite's `inlineDynamicImports` inlines
+ * the lazy `import("@gcszhn/mol4agent-core")` eagerly, and Mol*'s Markdown
+ * dependency runs `document.createElement` at module scope, crashing the
+ * Electron main process. esbuild keeps the dynamic import lazy. Since Solid 1.9
+ * has no standalone JSX runtime, the GUI source uses `createComponent` and
+ * imperative DOM instead of JSX.
  *
  * Written through temp files + atomic renames so a live reload never reads a
  * half-written bundle.
@@ -41,6 +48,29 @@ const server = await build({
 })
 await writeAtomic(join(outDir, 'index.js'), server.outputFiles[0].contents)
 
+const gui = await build({
+  entryPoints: [join(root, 'src/gui/gui.tsx')],
+  bundle: true,
+  write: false,
+  format: 'cjs',
+  platform: 'browser',
+  target: ['es2022'],
+  conditions: ['browser'],
+  mainFields: ['browser', 'module', 'main'],
+  alias: {
+    react: join(root, 'node_modules/react'),
+    'react-dom': join(root, 'node_modules/react-dom'),
+  },
+  loader: { '.css': 'text' },
+  define: { 'process.env.NODE_ENV': '"production"' },
+  external: ['@opencode/*', 'solid-js', 'solid-js/web', 'solid-js/store', 'effect', 'effect/*', 'electron', 'node:*'],
+  minify: true,
+  legalComments: 'none',
+  logLevel: 'warning',
+  banner: { js: BANNER },
+})
+await writeAtomic(join(outDir, 'gui.cjs'), gui.outputFiles[0].contents)
+
 const rpc = await build({
   entryPoints: [join(root, 'src/rpc.ts')],
   bundle: true,
@@ -52,6 +82,7 @@ const rpc = await build({
 })
 await writeAtomic(join(outDir, 'rpc.js'), rpc.outputFiles[0].contents)
 
-console.log(`built @gcszhn/mol4agent-opencode (server)
+console.log(`built @gcszhn/mol4agent-opencode
   index.js: ${(server.outputFiles[0].contents.length / 1024).toFixed(1)} KiB
+  gui.cjs:  ${(gui.outputFiles[0].contents.length / 1024 / 1024).toFixed(2)} MiB
   rpc.js:   ${(rpc.outputFiles[0].contents.length / 1024).toFixed(1)} KiB`)
