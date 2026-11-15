@@ -354,6 +354,7 @@ sequenceDiagram
 - The DSH adapter bundles core into one client script; see
   [`packages/deepseek-harness`](../deepseek-harness).
 
-See [`docs/architecture.md`](../../docs/architecture.md) for the full design and
-[`packages/deepseek-harness/README.md`](../deepseek-harness/README.md) for the DSH
-agent interface.
+See [`docs/architecture.md`](../../docs/architecture.md) for the overall
+architecture; implementation details live in this package's README/AGENTS and
+in [`packages/deepseek-harness/README.md`](../deepseek-harness/README.md) for
+DSH.

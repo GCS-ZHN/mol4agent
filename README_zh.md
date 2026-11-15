@@ -79,7 +79,7 @@ pnpm build       # core -> lib JS/d.ts，然后 DSH host/client
 
 - [Core API](packages/core/README_zh.md)：`createMolViewer`、`StructureData`、命令、选择器、摘要、截图、React 绑定。
 - [DSH agent 接口](packages/deepseek-harness/README_zh.md)：`mol_*` 工具、session projection、文档预览、截图回传。
-- [架构方案](docs/architecture.md)：需求、DSH/Mol* 事实核查、分层、截图链路、里程碑。
+- [总体架构](docs/architecture.md)：产品目标、分层、跨 harness 契约和高层流程；具体实现见各包文档。
 - [DSH 适配细节](packages/deepseek-harness/docs/DETAIL.md)：工具行为、选择器示例、限制。
 
 English: [README.md](README.md), [core](packages/core/README.md),
