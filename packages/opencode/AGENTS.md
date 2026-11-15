@@ -99,8 +99,9 @@ keep the old instance (`??=`), so restart the server after such a change.
   `StructureViewer` per `session key + path`: switching tabs shows/hides slots,
   and a render unmount (session switch) detaches them to a hidden in-DOM
   container instead of disposing them. Dispose a slot only from `Panel.close`
-  (structure tab) or `pool.retain(sessions.list())` (session tab closed); never
-  on deselect.
+  (structure tab) or on plugin/window teardown. Do not prune on
+  `sessions.list()`: a route change can drop a session whose tab is still open,
+  and pruning would destroy viewers on every switch.
 - The GUI bundle is built with **esbuild**, not Vite. Vite's
   `inlineDynamicImports` inlines the lazy `import("@gcszhn/mol4agent-core")`
   eagerly, so Mol*'s Markdown dependency runs `document.createElement("i")` at

@@ -82,7 +82,7 @@ export default Plugin.define({
       }
     }
 
-    /** Viewers outlive a panel render (session switch) and die with their tab/session. */
+    /** Viewers outlive a panel render and the session switch that unmounts it. */
     const pool = new StructurePool({
       scene: (sessionID: string, path: string) => selectScene(scenes, sessionID, path),
       fetchScene: async (sceneId: string, sessionID: string) =>
@@ -226,17 +226,6 @@ export default Plugin.define({
         }
         await claimPending(sessionID, session)
       })()
-    })
-
-    // Keep viewers for open sessions only: closing a session tab destroys its
-    // viewers; routing away from a session must not. `layout.ready()` is false
-    // before the app interface mounts, when `sessions.list()` is still empty.
-    createEffect(() => {
-      if (!ctx.layout.ready()) return
-      const alive = new Set(ctx.sessions.list().map(session => session.key))
-      const current = ctx.sessions.current()
-      if (current !== undefined) alive.add(current.key)
-      pool.retain(alive)
     })
 
     const offScene = rpc.events.on('scene', (event) => {

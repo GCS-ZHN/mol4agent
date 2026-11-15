@@ -13,7 +13,9 @@ side panel that the agent operates with `mol_*` tools.
   `.mol4agent/captures/`.
 - **Tabs keep state**: each structure has its own viewer tab; switching tabs
   keeps its camera, style, and selection. Viewers also survive switching session
-  tabs and are disposed only when their structure tab or session tab closes.
+  tabs; opening the same session again shows the previous state. Closing a
+  structure tab disposes its viewer (closed-session viewers are cleaned up when
+  the window unloads).
 - **Same molecular semantics as DSH/ChatGPT**: this adapter passes the same
   `MolFormat`, selectors, commands, and capture semantics to
   `@gcszhn/mol4agent-core`.

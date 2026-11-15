@@ -9,8 +9,10 @@
  * - attaches the slots to whichever `Panel.render` is mounted;
  * - detaches them to a hidden, in-DOM container when that render unmounts (a
  *   session switch must not destroy viewers);
- * - disposes a slot only when its structure tab closes (`Panel.close`) or its
- *   session tab closes (the setup prunes sessions no longer in `sessions.list`).
+ * - disposes a slot when its structure tab closes (`Panel.close`) or when the
+ *   plugin/window unloads. `sessions.list()` is not a reliable close signal:
+ *   a route change can drop the previous session while its tab is still open,
+ *   so pruning on it would destroy viewers on every switch.
  *
  * @module @gcszhn/mol4agent-opencode/structure-group
  */
@@ -25,8 +27,6 @@ interface Slot {
 }
 
 const keyOf = (sessionKey: string, path: string): string => `${sessionKey}\n${path}`
-
-const sessionKeyOf = (slotKey: string): string => slotKey.slice(0, slotKey.indexOf('\n'))
 
 export interface StructurePoolOptions {
   readonly scene: (sessionID: string, path: string) => SceneInfo | undefined
@@ -93,21 +93,6 @@ export class StructurePool {
   /** A structure tab closed: destroy its viewer. */
   dispose(sessionKey: string, path: string): void {
     this.disposeKey(keyOf(sessionKey, path))
-  }
-
-  /** A session tab closed: destroy every viewer of that session. */
-  disposeSession(sessionKey: string): void {
-    const prefix = `${sessionKey}\n`
-    for (const key of [...this.slots.keys()]) {
-      if (key.startsWith(prefix)) this.disposeKey(key)
-    }
-  }
-
-  /** Drop slots whose session is no longer open. */
-  retain(sessionKeys: ReadonlySet<string>): void {
-    for (const key of [...this.slots.keys()]) {
-      if (!sessionKeys.has(sessionKeyOf(key))) this.disposeKey(key)
-    }
   }
 
   /** Plugin teardown: destroy every viewer and the hidden container. */
