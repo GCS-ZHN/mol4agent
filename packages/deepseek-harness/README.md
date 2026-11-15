@@ -5,7 +5,7 @@
 DeepSeek Harness (DSH) adapter for mol4agent: a right-sidebar molecular document
 preview that an agent can operate.
 
-- **Structure preview**: `.pdb`, `.ent`, `.pdbqt`, `.pqr`, `.cif`, `.mmcif`,
+- **Structure**: `.pdb`, `.ent`, `.pdbqt`, `.pqr`, `.cif`, `.mmcif`,
   `.mcif`, `.bcif`, `.mol`, `.sdf`, `.sd`, `.mol2`, `.xyz`, `.gro` open in
   Mol*'s official UI instead of plain text. The previewer's **Open with** menu
   still offers code/plain text (`bcif` has no plain-text fallback because its
@@ -138,7 +138,8 @@ range.
 ```
 
 - The image is attached to the tool result only when `imageCapable` is true;
-  otherwise the text result contains the saved path.
+  otherwise the text result reports the attachment and, when available, the saved
+  path.
 - `savedPath` is `<cwd>/.mol4agent/captures/mol4agent-<timestamp>-<id>.png`.
 - `diagnostics` carries the browser-side status/path/command counts and Mol* hierarchy diagnostics.
 
@@ -181,7 +182,8 @@ interface MolSessionState {
 ```
 
 - `tool/call` for a scene-changing `mol_*` tool (open/style/select/focus/measure)
-  is folded into `scene` and bumps `revision`; read-only tools (`mol_info`,
+  is folded into `scene` and bumps `revision`; `mol_capture` adds a pending entry
+  and bumps `revision` when a scene exists. Read-only tools (`mol_info`,
   `mol_interface`) and invalid/absent-scene calls leave state unchanged.
 - `tool/result` clears a matching pending capture and bumps `revision`; other
   results leave state unchanged.
@@ -308,7 +310,7 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 (the DSH Plugin manager does this when installing/enabling a bundle), then
 restart DSH.
 
-npm form (0.1.0):
+npm form (0.1.0, after publishing):
 
 ```sh
 dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0

@@ -76,7 +76,7 @@ also be listed in `dsh.profile.bundles` in that profile's `package.json`; the
 DSH Plugin manager does this when it installs/enables a bundle. Restart DSH after
 installing or updating the Host bundle.
 
-npm form (0.1.0):
+npm form (0.1.0, after publishing):
 
 ```sh
 dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
@@ -89,7 +89,7 @@ The current `desktop` profile already has it installed and enabled:
 
 1. Open `fixtures/1crn.pdb` (or `fixtures/1atp.pdb`, `fixtures/aspirin.sdf`,
    `fixtures/1crn.cif`) from the file tree.
-   - The default renderer is **Structure preview**; the previewer's **Open with**
+   - The default renderer is **Structure**; the previewer's **Open with**
      menu can switch back to plain text/code.
 2. Ask the agent:
    > Open fixtures/1atp.pdb, use cartoon representation and chain-id coloring,

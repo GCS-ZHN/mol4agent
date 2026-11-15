@@ -37,8 +37,10 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-`molstar` and `react` are peer dependencies. The DSH adapter bundles Mol* into a
-single client script; a plain web app can use the package directly.
+The package is not published to npm yet; from this monorepo use the workspace
+link. The command above applies once `0.1.0` is published. `molstar` and `react`
+are peer dependencies. The DSH adapter bundles Mol* into a single client script;
+a plain web app can use the package directly.
 
 Build and pack:
 
@@ -262,12 +264,13 @@ const summary = summarizeStructure({ data: pdbText, format: 'pdb', label: '1atp.
   modelCount: number
   chains: { id, kind, atoms, residues, compIds }[]
   ligands: { compId, count }[]
-  complete: boolean   // false when bytes cannot be fully summarized (e.g. BCIF)
+  complete: boolean   // false only for a viewer fallback summary; summarizeStructure throws for BCIF
 }
 ```
 
-BCIF can be rendered but not summarized from raw bytes yet; it throws
-`SUMMARY_UNSUPPORTED`.
+BCIF can be rendered but not summarized from raw bytes yet; `summarizeStructure`
+throws `SUMMARY_UNSUPPORTED`. A post-load viewer fallback may still expose
+`complete: false`.
 
 ## Capture
 

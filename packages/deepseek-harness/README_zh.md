@@ -6,7 +6,8 @@ mol4agent 的 DeepSeek Harness（DSH）适配包：右侧栏分子文档预览�
 
 - **结构预览**：`.pdb`、`.ent`、`.pdbqt`、`.pqr`、`.cif`、`.mmcif`、`.mcif`、
   `.bcif`、`.mol`、`.sdf`、`.sd`、`.mol2`、`.xyz`、`.gro` 默认用 Mol* 官方
-  UI 打开，而不是纯文本；预览器的「打开方式」仍可切回代码/纯文本。
+  UI 打开，而不是纯文本；预览器的「打开方式」仍可切回代码/纯文本（`bcif`
+  是二进制，没有纯文本回退）。
 - **agent 工具**：`mol_info`、`mol_interface`、`mol_open`、`mol_style`、
   `mol_select`、`mol_focus`、`mol_measure`、`mol_capture`。
 - **agent 驱动页面**：工具调用被折叠进可持久化的 session projection；打开的
@@ -130,8 +131,8 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 }
 ```
 
-- 只有 `imageCapable` 为 true 时，图片才会作为工具结果附件；否则文本结果里
-  只有保存路径。
+- 只有 `imageCapable` 为 true 时，图片才会作为工具结果附件；否则文本结果会
+  说明附件已生成，并在可用时给出保存路径。
 - `savedPath` 为 `<cwd>/.mol4agent/captures/mol4agent-<timestamp>-<id>.png`。
 - `diagnostics` 包含浏览器侧的 status/path/命令数量以及 Mol* 层级诊断。
 
@@ -174,8 +175,8 @@ interface MolSessionState {
 ```
 
 - 会改变场景的 `mol_*` 调用（open/style/select/focus/measure）会折叠进 `scene`
-  并递增 `revision`；只读工具（`mol_info`、`mol_interface`）和无场景/非法调用
-  保持状态不变。
+  并递增 `revision`；有场景时 `mol_capture` 会添加 pending 并递增 `revision`。
+  只读工具（`mol_info`、`mol_interface`）和无场景/非法调用保持状态不变。
 - `tool/result` 清除对应的 pending 截图项并递增 `revision`；其他结果保持状态
   不变。
 - 相对路径基于 projection 初始化时捕获的 `cwd` 解析。
@@ -295,7 +296,7 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 `dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理），然后重启
 DSH。
 
-npm 形式（0.1.0）：
+npm 形式（0.1.0，发布后）：
 
 ```sh
 dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
