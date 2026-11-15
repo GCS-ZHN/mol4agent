@@ -77,7 +77,8 @@ opencode plugin add @gcszhn/mol4agent-opencode
 
 `plugin add` 会安装包并写入**全局** `opencode.json(c)`，桌面端会在每个窗口加载
 其 GUI 部分。可用 `@0.1.0` 固定版本；用 `opencode plugin list` 确认（桌面端
-**Settings > Extensions > Plugins** 也可查看）。
+**Settings > Extensions > Plugins** 也可查看）。npm 包由 release tag 发布；首次
+发布前请先用下面的本地源码方式。
 
 ### 从本地源码安装
 
@@ -105,10 +106,11 @@ server 部分按当前 location 加载；GUI 部分由桌面端加载。GUI 重�
 
 ```sh
 pnpm --filter @gcszhn/mol4agent-opencode typecheck
+pnpm --filter @gcszhn/mol4agent-opencode test
 pnpm --filter @gcszhn/mol4agent-opencode build
 ```
 
-`build` 产出：
+`test` 会先构建 core，再运行 Node 测试；`build` 产出：
 
 - `dist/index.js` — server 部分（ESM；core 打包，`@opencode/*`/`node:*` external）。
 - `dist/gui.cjs` — GUI 部分（单 CommonJS 文件；core + Mol* + React 打包）。
@@ -121,10 +123,13 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 - **内置文件树不能打开结构**：在文件树里点 `.pdb` 会打开文本编辑器。请用
   **Ctrl+P 文件检索**（即 `/open`）或选文件命令。注册 `"text"` kind 的
   `FileViewer` 会被宿主忽略（它只渲染 file view 自己不渲染的 kind）。
-- Scene 工具默认作用于当前 session 上次 `mol_open` 的结构；传 `tab`（`mol_open`
-  返回的路径）可指定某个已打开结构。场景按 session 分桶；面板只显示当前 session。
+- Scene 工具默认作用于**工具调用所在 session** 上次 `mol_open` 的结构；传 `tab`
+  （`mol_open` 返回的路径）可指定某个已打开结构。场景按 session 分桶；面板跟随
+  当前路由的 session（切换标签页时会自动刷新）。
 - `mol_capture` 需要目标 viewer 标签挂载：它会先激活该标签，若 15 秒内仍无法创建
   viewer（例如窄屏时侧栏未打开）则失败。
+- GUI 首次挂载时，面板只列出当前 session 已存储的标签；若活动结构的标签不在
+  标签栏里，用 **Molecular viewer** 菜单项重新显示。
 - `mol_interface` 只解析 PDB 类 ATOM 记录；`mol_info` 尚不能从原始字节摘要 BCIF。
 - 文件上限 64 MiB（含 gzip 解压后）；需要 WebGL 2。每个 session 最多保留 12 个打开的
   结构标签（淘汰最旧的非活动标签）。

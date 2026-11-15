@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import type { StructureSummary } from '@gcszhn/mol4agent-core/protocol'
 import { findInterfaceResidues } from '../src/interface.ts'
 import {
@@ -11,11 +12,12 @@ import {
   formatInterface,
   styleOf,
   summarizeSafely,
+  tabOf,
   validateSelectorAgainst,
 } from '../src/tools.ts'
 
 const CRN = new Uint8Array(readFileSync(new URL('../../../fixtures/1crn.pdb', import.meta.url)))
-const CRN_PATH = new URL('../../../fixtures/1crn.pdb', import.meta.url).pathname
+const CRN_PATH = fileURLToPath(new URL('../../../fixtures/1crn.pdb', import.meta.url))
 const ASPIRIN = new Uint8Array(readFileSync(new URL('../../../fixtures/aspirin.sdf', import.meta.url)))
 
 test('styleOf defaults to cartoon / chain-id', () => {
@@ -97,6 +99,14 @@ test('summarizeSafely returns undefined instead of throwing', () => {
 
 test('escapeAttribute escapes markup characters', () => {
   assert.equal(escapeAttribute('a&b"c<d'), 'a&amp;b&quot;c&lt;d')
+})
+
+test('tabOf reads and trims an optional tab path', () => {
+  assert.equal(tabOf(undefined), undefined)
+  assert.equal(tabOf({}), undefined)
+  assert.equal(tabOf({ tab: '   ' }), undefined)
+  assert.equal(tabOf({ tab: 42 }), undefined)
+  assert.equal(tabOf({ tab: '  /x/a.pdb ' }), '/x/a.pdb')
 })
 
 test('formatInterface summarizes ranges and embeds JSON', () => {

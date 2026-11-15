@@ -89,7 +89,6 @@ export function StructureViewer(props: {
           applied = 0
         }
         if (disposed) return
-        register(scene.sceneId)
         if (scene.commands.length < applied) applied = 0
         const pending = scene.commands.slice(applied)
         if (pending.length > 0) {
@@ -99,17 +98,31 @@ export function StructureViewer(props: {
           }
           applied = scene.commands.length
         }
+        // Register only after the initial commands are applied: `mol_capture`
+        // waits for this entry, and capturing before a style/select command
+        // lands would deliver the wrong picture.
+        if (!disposed) register(scene.sceneId)
       })
       .catch(reason => console.warn('[mol4agent]', reason))
   }
 
   createEffect(() => {
     const scene = props.scene()
-    if (scene !== undefined) sync(scene)
+    if (scene === undefined) return
+    // `reconcile` may update these fields in place, so read what `sync`
+    // depends on to keep the effect subscribed to command appends and reloads.
+    void scene.sceneId
+    void scene.revision
+    void scene.commands.length
+    sync(scene)
   })
 
   createEffect(() => {
-    viewer?.setTheme(props.theme())
+    // Read the theme first: `viewer?.` short-circuits the whole call while the
+    // viewer is still loading, which would skip the dependency and stop the
+    // effect from re-running when the host switches light/dark.
+    const theme = props.theme()
+    viewer?.setTheme(theme)
   })
 
   onCleanup(() => {

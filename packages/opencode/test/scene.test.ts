@@ -69,3 +69,19 @@ test('evicts oldest non-active tab above the cap', () => {
   assert.ok(store.list('ses').scenes.length <= 12)
   assert.equal(store.list('ses').active, '/s19.pdb')
 })
+
+test('fetch is scoped to the owning session', () => {
+  const store = new SceneStore()
+  const a = open(store, 'A', '/a.pdb')
+  assert.ok(store.fetch(a.sceneId, 'A') !== undefined)
+  assert.equal(store.fetch(a.sceneId, 'B'), undefined)
+  // Without a session argument the lookup stays session-agnostic.
+  assert.ok(store.fetch(a.sceneId) !== undefined)
+})
+
+test('fetch returns undefined for an evicted scene', () => {
+  const store = new SceneStore()
+  const first = open(store, 'ses', '/s0.pdb')
+  for (let index = 1; index < 20; index += 1) open(store, 'ses', `/s${index}.pdb`)
+  assert.equal(store.fetch(first.sceneId), undefined)
+})

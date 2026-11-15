@@ -47,3 +47,13 @@ test('fail rejects a waiting capture', async () => {
   assert.equal(hub.fail(pending.captureId, 'boom'), true)
   await assert.rejects(wait, /boom/u)
 })
+
+test('wait times out and removes the pending capture', async () => {
+  const hub = new CaptureHub()
+  const pending = hub.enqueue({ sessionID: 'A', scene: SCENE, width: 10, height: 10, transparent: false, saveDir: '/tmp' })
+  await assert.rejects(
+    hub.wait(pending.captureId, 10, new AbortController().signal),
+    /did not deliver a screenshot in time/u,
+  )
+  assert.equal(hub.saveDirOf(pending.captureId), undefined)
+})

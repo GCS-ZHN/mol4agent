@@ -135,7 +135,7 @@ file-handler details.
 ```sh
 pnpm install
 pnpm typecheck   # builds core first, then typechecks every package
-pnpm build       # every package: core, DSH host/client, ChatGPT server/app
+pnpm build       # every package: core, DSH host/client, ChatGPT server/app, OpenCode server/GUI/RPC
 ```
 
 `build` produces:

@@ -118,7 +118,7 @@ tab。工具参考与文件处理器细节见
 ```sh
 pnpm install
 pnpm typecheck   # 先构建 core，再对所有包做 typecheck
-pnpm build       # 所有包：core、DSH host/client、ChatGPT server/app
+pnpm build       # 所有包：core、DSH host/client、ChatGPT server/app、OpenCode server/GUI/RPC
 ```
 
 `build` 产出：

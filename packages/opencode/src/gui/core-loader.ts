@@ -1,11 +1,12 @@
 /**
  * A single lazy loader for `@gcszhn/mol4agent-core`.
  *
- * The agent panel dynamic-imports core. A second `import()` site would make
- * the bundler inline core's (large) dependency graph — Mol* and a Markdown
- * pipeline — eagerly, and the Markdown entity decoder runs
- * `document.createElement` at module scope, which crashes the Electron main
- * process as the GUI bundle loads. One shared loader keeps core's chunk lazy.
+ * Core (with Mol* and a Markdown pipeline) must stay out of the eager GUI
+ * bundle: the Markdown entity decoder runs `document.createElement` at module
+ * scope, which crashes the Electron main process when the GUI loads there.
+ * Keep one shared dynamic `import()` site; a second entry point, or a bundler
+ * that cannot split the chunk, can pull core's dependency graph in eagerly.
+ * The esbuild GUI build keeps this chunk lazy.
  *
  * @module @gcszhn/mol4agent-opencode/core-loader
  */

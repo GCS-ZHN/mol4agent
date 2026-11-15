@@ -69,11 +69,15 @@ build (`store.snapshot is not a function`).
   server bundles its own copy and the GUI bundles another; they match by `id`.
   Do not rely on object identity.
 - `events.emit` broadcasts; `events.on`/`events.subscribe` are live-only. The
-  GUI must do an initial `listScenes({ sessionID })` on mount, plus a
-  `pendingCaptures({ sessionID })` claim, not only follow events.
-- `scene` and `capture` payloads carry `sessionID` (a `capture` also carries
-  `path` so the GUI can reveal the right tab without a scene lookup). The GUI
-  ignores payloads for another session.
+  GUI must run `listScenes({ sessionID })` on mount **and whenever the routed
+  session changes** (`createEffect` on `ctx.sessions.current()`), plus claim
+  `pendingCaptures({ sessionID })` at the same points — not only follow events.
+- `scene` and `capture` payloads carry `sessionID`. A `scene` event from
+  `mol_open`/`openPath` also carries `path` and `open: true`; the GUI opens that
+  tab, and queues it when another session is routed (then opens it on switch).
+  `capture` carries `path` so the GUI can reveal the right tab without a scene
+  lookup. Ignore payloads for another session; do not deliver their captures in
+  the current one.
 - Event payloads are objects (`event.data`). Method inputs are JSON Schema, so
   handlers receive `unknown`; cast and validate defensively. Keep the
   `pendingCaptures` output schema in sync with what the server returns.
@@ -138,3 +142,7 @@ build (`store.snapshot is not a function`).
   `~/Library/Application Support/ai.opencode.desktop/logs/<run>/renderer.log`
   for the GUI console, and `~/.local/share/opencode/log/opencode.log` for the
   server.
+- GUI matrix (manual): switch between two sessions with open scenes, toggle
+  light/dark after opening a structure, mount on an existing scene, request a
+  capture while switching sessions, and style/capture two tabs independently.
+  Check the panel strip and the PNGs.

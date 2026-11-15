@@ -18,7 +18,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test": "pnpm --filter @gcszhn/mol4agent-core build && node --experimental-strip-types --test test/*.test.ts",
     "prepack": "npm run build"
   },
   "engines": {

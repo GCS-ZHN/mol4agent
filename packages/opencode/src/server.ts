@@ -31,6 +31,7 @@ import {
   formatInterface,
   styleOf,
   summarizeSafely,
+  tabOf,
   validateSelectorAgainst,
 } from './tools.ts'
 
@@ -51,17 +52,11 @@ const CAPTURE_TIMEOUT_MS = readPositiveInt('MOL4AGENT_CAPTURE_TIMEOUT_MS', 45_00
  * The key carries a schema version: hot-reloading a changed store shape must use
  * a new key, otherwise `??=` keeps the stale instance from the previous build.
  */
-const STORE_SCHEMA = 'v2'
+const STORE_SCHEMA = 'v3'
 const globalKey = `__mol4agent_opencode_${STORE_SCHEMA}__`
 const g = globalThis as unknown as Record<string, unknown>
 const store = (g[`${globalKey}store`] ??= new SceneStore()) as SceneStore
 const captures = (g[`${globalKey}captures`] ??= new CaptureHub()) as CaptureHub
-
-/** Read the optional `tab` argument (an absolute path) from a tool call. */
-function tabOf(input: unknown): string | undefined {
-  const value = (input as { tab?: unknown }).tab
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
-}
 
 export default Plugin.define({
   id: 'mol4agent-opencode',
@@ -96,8 +91,8 @@ export default Plugin.define({
         return store.list(sessionID ?? '')
       },
       async fetchScene(input) {
-        const { sceneId } = input as { sceneId: string }
-        const data = store.fetch(sceneId)
+        const { sceneId, sessionID } = input as { sceneId: string; sessionID?: string }
+        const data = store.fetch(sceneId, sessionID)
         if (data === undefined) throw new Error(`structure scene ${sceneId} is no longer available`)
         return data
       },
@@ -113,7 +108,7 @@ export default Plugin.define({
             bytes: file.bytes,
             commands: [{ op: 'represent', style: { type: 'cartoon', color: 'chain-id' } }],
           })
-          emitScene(sessionID ?? '')
+          emitScene(sessionID ?? '', scene.path)
           return { ok: true, path: file.absolutePath, tab: scene.path }
         } catch (reason) {
           return { ok: false, error: reason instanceof Error ? reason.message : String(reason) }
@@ -163,8 +158,11 @@ export default Plugin.define({
       },
     })
 
-    const emitScene = (sessionID: string): void => {
-      void registration.events.emit('scene', { sessionID })
+    const emitScene = (sessionID: string, openedPath?: string): void => {
+      void registration.events.emit('scene', {
+        sessionID,
+        ...(openedPath === undefined ? {} : { path: openedPath, open: true }),
+      })
     }
     const emitCapture = (capture: {
       sessionID: string
@@ -283,7 +281,7 @@ export default Plugin.define({
             bytes: file.bytes,
             commands,
           })
-          emitScene(context.sessionID)
+          emitScene(context.sessionID, scene.path)
           return {
             content:
               `${describeFile(file)}\n\nOpened ${file.label} in the mol4agent viewer (tab: ${scene.path}). `

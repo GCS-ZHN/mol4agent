@@ -93,7 +93,9 @@ opencode plugin add @gcszhn/mol4agent-opencode
 `plugin add` installs the package and writes it to the **global**
 `opencode.json(c)`, so the desktop app loads its GUI part in every window.
 Pin an exact version with `@0.1.0`, and confirm with `opencode plugin list`
-(or **Settings > Extensions > Plugins** in the desktop app).
+(or **Settings > Extensions > Plugins** in the desktop app). The npm package is
+published from release tags; before the first tagged release, use the local
+checkout path below.
 
 ### From a local checkout
 
@@ -126,10 +128,11 @@ desktop app. GUI rebuilds reload in every window without a restart
 
 ```sh
 pnpm --filter @gcszhn/mol4agent-opencode typecheck
+pnpm --filter @gcszhn/mol4agent-opencode test
 pnpm --filter @gcszhn/mol4agent-opencode build
 ```
 
-`build` produces:
+`test` builds core first, then runs the Node test runner; `build` produces:
 
 - `dist/index.js` — server part (ESM; core bundled, `@opencode/*`/`node:*` external).
 - `dist/gui.cjs` — GUI part (one CommonJS file; core + Mol* + React bundled).
@@ -144,12 +147,15 @@ pnpm --filter @gcszhn/mol4agent-opencode build
   the text editor. Use **Ctrl+P file search** (`/open`) or the pick-file command
   instead. A `FileViewer` for the `"text"` kind is ignored by the host (it only
   renders kinds the file view does not render itself).
-- Scene tools target the routed session's last `mol_open` unless you pass `tab`
-  (the path `mol_open` returned). Scenes are bucket-per-session; the panel shows
-  the routed session's scenes.
+- Scene tools target the **tool call's** session last `mol_open` unless you pass
+  `tab` (the path `mol_open` returned). Scenes are bucket-per-session; the panel
+  follows the routed session (and refreshes when you switch tabs).
 - `mol_capture` needs the target viewer tab to mount: it reveals the tab first
   and fails after 15 s if the viewer cannot be created (for example, the side
   panel stays closed on a narrow screen).
+- On a fresh GUI mount the panel lists the routed session's stored tabs; if the
+  active structure's tab is not in the strip, use the **Molecular viewer** menu
+  item to reveal it.
 - `mol_interface` parses PDB-like ATOM records only; `mol_info` cannot summarize
   BCIF from raw bytes yet.
 - Files are capped at 64 MiB (including gzip-decompressed output); WebGL 2 is

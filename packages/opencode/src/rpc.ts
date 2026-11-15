@@ -49,7 +49,7 @@ export const Mol4Agent = Rpc.define({
     fetchScene: {
       input: {
         type: 'object',
-        properties: { sceneId: { type: 'string' } },
+        properties: { sceneId: { type: 'string' }, sessionID: { type: 'string' } },
         required: ['sceneId'],
         additionalProperties: false,
       },
@@ -144,7 +144,11 @@ export const Mol4Agent = Rpc.define({
     scene: {
       schema: {
         type: 'object',
-        properties: { sessionID: { type: 'string' } },
+        properties: {
+          sessionID: { type: 'string' },
+          path: { type: 'string' },
+          open: { type: 'boolean' },
+        },
         required: ['sessionID'],
         additionalProperties: false,
       },

@@ -31,6 +31,7 @@ export interface SceneSnapshot {
 /** One open structure plus its bytes and cumulative command log. */
 export interface SceneRecord {
   readonly sceneId: string
+  readonly sessionID: string
   readonly path: string
   readonly label: string
   readonly format: MolFormat
@@ -77,6 +78,7 @@ export class SceneStore {
     const summary = safeSummary(input.bytes, input.format)
     const record: SceneRecord = {
       sceneId: randomUUID(),
+      sessionID,
       path: input.path,
       label: input.label,
       format: input.format,
@@ -139,9 +141,15 @@ export class SceneStore {
   }
 
   /** Bytes + metadata for one scene, base64-encoded for the RPC wire. */
-  fetch(sceneId: string): { sceneId: string; format: MolFormat; label: string; binary: boolean; data: string } | undefined {
+  fetch(
+    sceneId: string,
+    sessionID?: string,
+  ): { sceneId: string; format: MolFormat; label: string; binary: boolean; data: string } | undefined {
     const record = this.byId.get(sceneId)
     if (record === undefined) return undefined
+    // `sceneId` is a UUID, but validate it against the caller's bucket anyway:
+    // a stale GUI state must not read another session's bytes.
+    if (sessionID !== undefined && record.sessionID !== sessionID) return undefined
     return {
       sceneId: record.sceneId,
       format: record.format,

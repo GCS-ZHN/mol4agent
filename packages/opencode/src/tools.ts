@@ -74,6 +74,12 @@ export const STYLE_SCHEMA = {
 
 export const MEASUREMENT_KINDS = new Set(['chain', 'residue', 'residues', 'comp', 'schema'])
 
+/** Read the optional `tab` argument (an absolute path) from a tool call. */
+export function tabOf(input: unknown): string | undefined {
+  const value = (input as { tab?: unknown } | null | undefined)?.tab
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
 /** Build a StyleSpec from the optional type/color/colorParams fields. */
 export function styleOf(args: {
   readonly type?: StyleSpec['type']
