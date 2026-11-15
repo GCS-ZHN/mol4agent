@@ -74,7 +74,7 @@ flowchart TB
 |---|---|---|---|
 | core | 官方 Mol* UI viewer、命令/选择器语义、字节摘要、PNG capture | 路径、后缀、IO、session、harness UI | [core README](../packages/core/README_zh.md)、[core AGENTS](../packages/core/AGENTS.md) |
 | harness adapter | 格式识别、读字节、预览挂载、agent 工具、状态投影、截图回传、宿主 UI 生命周期 | Mol* 内部实现、core 协议语义 | [DSH README](../packages/deepseek-harness/README_zh.md)、[DETAIL](../packages/deepseek-harness/docs/DETAIL.md)、[DSH AGENTS](../packages/deepseek-harness/AGENTS.md) |
-| 未来 ChatGPT/Codex | 其预览/传输接口下的同一套语义 | 另起一套分子行为 | 未来包文档 |
+| ChatGPT/Codex 适配 | MCP 工具 + MCP App UI 下的同一套语义 | 另起一套分子行为 | [ChatGPT README](../packages/chatgpt/README_zh.md)、[AGENTS](../packages/chatgpt/AGENTS.md) |
 
 **稳定边界**：core 的输入永远是 `bytes + 显式 format`；适配器负责把「路径」或「raw data」变成这个输入。适配器可以不同，分子语义不能分叉。
 
@@ -148,6 +148,10 @@ sequenceDiagram
 ```
 
 具体 DSH 的 projection 事件、CaptureHub、documentPreviews 挂载等机制属于适配器细节，见 [DETAIL](../packages/deepseek-harness/docs/DETAIL.md)。
+ChatGPT/Codex 适配注册了 MCP extension file viewer：文件树在侧栏
+`mcp-extension` 标签页打开受支持的结构，`mol_open` 为 agent 打开同一个 MCP
+App；两者共享长轮询场景与 claim/deliver 截图会合。见
+[ChatGPT README](../packages/chatgpt/README_zh.md)。
 
 ---
 
@@ -171,6 +175,8 @@ sequenceDiagram
 
 - **core**：协议、Mol* 官方 UI viewer、选择器、摘要、per-selection 样式、PNG capture 已实现。
 - **DSH adapter**：文档预览、agent 工具、session projection、截图回传、面板/主题/tab 生命周期已实现。
-- **ChatGPT/Codex**：未来适配器，复用 core 语义，只实现其传输/预览接口。
+- **ChatGPT/Codex 适配**：MCP App viewer、`mol_*` 工具、长轮询场景更新、
+  截图会合、本地 marketplace 安装，以及文件树的 MCP extension file viewer
+  均已实现；按扩展名授权与单活场景限制记录在包 README。
 
 下一步不是继续扩写本文，而是把新能力写进对应 package 的 README/AGENTS，并只在这里更新总体目标或分层的变化。

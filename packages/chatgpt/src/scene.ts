@@ -8,7 +8,8 @@
  * @module @gcszhn/mol4agent-chatgpt/scene
  */
 import { randomUUID } from 'node:crypto'
-import type { MolCommand, MolFormat } from '@gcszhn/mol4agent-core/protocol'
+import type { MolCommand, MolFormat, StructureSummary } from '@gcszhn/mol4agent-core/protocol'
+import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
 
 /** JSON-safe scene description sent to the app and stored in tool results. */
 export interface SceneSnapshot {
@@ -16,6 +17,8 @@ export interface SceneSnapshot {
   readonly revision: number
   readonly label: string
   readonly format: MolFormat
+  /** Host resource URI for a file viewer; absent for agent-opened scenes. */
+  readonly fileResourceUri?: string
   readonly commands: readonly MolCommand[]
 }
 
@@ -26,8 +29,11 @@ export interface SceneRecord {
   readonly label: string
   readonly format: MolFormat
   readonly bytes: Uint8Array
+  readonly fileResourceUri?: string
   readonly commands: readonly MolCommand[]
   readonly revision: number
+  /** Parsed once on open; used for early selector validation. */
+  readonly summary?: StructureSummary
 }
 
 interface Waiter {
@@ -57,16 +63,20 @@ export class SceneStore {
     readonly label: string
     readonly format: MolFormat
     readonly bytes: Uint8Array
+    readonly fileResourceUri?: string
     readonly commands: readonly MolCommand[]
   }): SceneSnapshot {
+    const summary = safeSummary(input.bytes, input.format)
     const record: SceneRecord = {
       sceneId: randomUUID(),
       path: input.path,
       label: input.label,
       format: input.format,
       bytes: input.bytes,
+      ...(input.fileResourceUri === undefined ? {} : { fileResourceUri: input.fileResourceUri }),
       commands: input.commands,
       revision: 1,
+      ...(summary === undefined ? {} : { summary }),
     }
     this.currentScene = record
     this.byId.set(record.sceneId, record)
@@ -152,6 +162,15 @@ function snapshotOf(record: SceneRecord): SceneSnapshot {
     revision: record.revision,
     label: record.label,
     format: record.format,
+    ...(record.fileResourceUri === undefined ? {} : { fileResourceUri: record.fileResourceUri }),
     commands: record.commands,
+  }
+}
+
+function safeSummary(bytes: Uint8Array, format: MolFormat): StructureSummary | undefined {
+  try {
+    return summarizeStructure({ data: bytes, format })
+  } catch {
+    return undefined
   }
 }

@@ -9,6 +9,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { ResourceTemplate, type McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server'
@@ -18,14 +19,20 @@ import {
   REPRESENTATION_TYPES,
   type MolCommand,
   type StyleSpec,
+  type StructureSelector,
   type StructureSummary,
 } from '@gcszhn/mol4agent-core/protocol'
 import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
 import { CaptureHub } from './capture.ts'
-import { isBinaryFormat } from './formats.ts'
+import { baseNameOf, formatOfFile, isBinaryFormat } from './formats.ts'
 import { findInterfaceResidues, type InterfaceResult } from './interface.ts'
-import { resolveMoleculeFile, workspaceRoot, type ResolvedMoleculeFile } from './paths.ts'
-import { SceneStore, type SceneSnapshot } from './scene.ts'
+import {
+  inspectWorkspace,
+  resolveMoleculeFile,
+  workspaceRoot,
+  type ResolvedMoleculeFile,
+} from './paths.ts'
+import { SceneStore, type SceneRecord, type SceneSnapshot } from './scene.ts'
 import { normalizeSelector } from './selector.ts'
 
 /** UI resource served by this MCP server. */
@@ -102,7 +109,13 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     VIEWER_URI,
     {
       description: 'Interactive Mol* structure viewer used by the mol_* tools.',
-      _meta: { ui: { prefersBorder: true } },
+      _meta: {
+        ui: { prefersBorder: true },
+        'openai/ui': {
+          availableDisplayModes: ['inline', 'fullscreen'],
+          preferredDisplayMode: 'fullscreen',
+        },
+      },
     },
     async () => ({
       contents: [{
@@ -118,6 +131,10 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
               frameDomains: [],
               baseUriDomains: [],
             },
+          },
+          'openai/ui': {
+            availableDisplayModes: ['inline', 'fullscreen'],
+            preferredDisplayMode: 'fullscreen',
           },
         },
       }],
@@ -169,6 +186,37 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     return textResult(`${describeFile(file)}\n\nUse mol_open to display it in the viewer.`)
   })
 
+  server.registerTool('mol_workspace', {
+    title: 'Inspect the mol4agent workspace',
+    description: 'Report how mol4agent resolved the workspace root, including cwd, MCP roots, and relevant '
+      + 'path environment variables. Use it when a relative structure path unexpectedly fails.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async (_args, extra) => {
+    const info = await inspectWorkspace(server, extra.signal)
+    const env = [
+      'PWD',
+      'INIT_CWD',
+      'OLDPWD',
+      'CODEX_CWD',
+      'CODEX_WORKSPACE',
+      'CODEX_PROJECT_ROOT',
+      'MOL4AGENT_CWD',
+    ].flatMap(name => {
+      const value = process.env[name]
+      return value === undefined || value === '' ? [] : [{ name, value }]
+    })
+    const payload = {
+      ...info,
+      env,
+      clientCapabilities: server.server.getClientCapabilities(),
+    }
+    return {
+      content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+      structuredContent: payload as unknown as Record<string, unknown>,
+    }
+  })
+
   server.registerTool('mol_interface', {
     title: 'Find interface residues',
     description: 'Find interface residues between two chain groups within a distance cutoff '
@@ -210,14 +258,20 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
         .describe('Focus the camera on the selection (or the whole structure when no selection is given).'),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    _meta: { ui: { resourceUri: VIEWER_URI } },
+    _meta: {
+      ui: { resourceUri: VIEWER_URI },
+      'openai/outputTemplate': VIEWER_URI,
+    },
   }, async (args, extra) => {
     const file = await resolveMoleculeFile(server, args.path, options.maxFileBytes, extra.signal)
     const commands: MolCommand[] = [{ op: 'represent', style: styleOf(args) }]
-    if (args.select !== undefined) {
+    const target = args.select === undefined ? undefined : normalizeSelector(args.select)
+    if (target !== undefined) {
+      const summary = summarizeSafely(file.bytes, file.format)
+      if (summary !== undefined) validateSelectorAgainst(summary, file.bytes, file.format, target)
       commands.push({
         op: 'select',
-        target: normalizeSelector(args.select),
+        target,
         mode: 'highlight',
         ...(args.focus === true ? { focus: true } : {}),
       })
@@ -249,10 +303,12 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async (args) => {
+    const target = args.target === undefined ? undefined : normalizeSelector(args.target)
+    if (target !== undefined) validateTargets(store, [target])
     const command: MolCommand = {
       op: 'represent',
       style: styleOf(args),
-      ...(args.target === undefined ? {} : { target: normalizeSelector(args.target) }),
+      ...(target === undefined ? {} : { target }),
     }
     const scene = requireScene(store, 'style')
     const next = store.push(command)
@@ -272,6 +328,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
   }, async (args) => {
     const scene = requireScene(store, 'select')
     const target = normalizeSelector(args.target)
+    validateTargets(store, [target])
     const next = store.push({
       op: 'select',
       target,
@@ -295,6 +352,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
   }, async (args) => {
     const scene = requireScene(store, 'focus')
     const target = args.target === undefined ? undefined : normalizeSelector(args.target)
+    if (target !== undefined) validateTargets(store, [target])
     const next = store.push({ op: 'focus', ...(target === undefined ? {} : { target }) })
     return textResult(
       target === undefined ? 'Focused the whole structure.' : `Focused ${describeSelector(target)}.`,
@@ -318,10 +376,12 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     if (args.targets.length !== needed) {
       throw new Error(`${args.kind} needs exactly ${needed} targets; got ${args.targets.length}`)
     }
+    const targets = args.targets.map(target => normalizeSelector(target))
+    validateTargets(store, targets)
     const next = store.push({
       op: 'measure',
       kind: args.kind,
-      targets: args.targets.map(target => normalizeSelector(target)),
+      targets,
     })
     return textResult(`Added a ${args.kind} measurement.`, { scene: next ?? scene })
   })
@@ -365,6 +425,54 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
         ...(delivery.diagnostics === undefined ? {} : { diagnostics: delivery.diagnostics }),
       },
     }
+  })
+
+  registerAppTool(server, 'mol_view_file', {
+    title: 'Structure preview',
+    description: 'Internal file-viewer entrypoint: open a file selected in the chat file tree in the ' 					+ 'mol4agent viewer. The host passes a file object with its name and resource URI.',
+    inputSchema: {
+      file: z.object({
+        name: z.string().min(1),
+        resourceUri: z.string().optional(),
+      }).passthrough(),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    _meta: {
+      ui: {
+        resourceUri: VIEWER_URI,
+        visibility: ['app'],
+      },
+      'openai/outputTemplate': VIEWER_URI,
+      'openai/ui': {
+        entrypoints: [{
+          type: 'file',
+          extensions: ['.pdb', '.ent', '.pdbqt', '.pqr', '.cif', '.mmcif', '.mcif', '.bcif',
+            '.mol', '.sdf', '.sd', '.mol2', '.xyz', '.gro'],
+        }],
+      },
+    },
+  }, async (args, extra) => {
+    const file = args.file
+    const format = formatOfFile(file.name)
+    if (format === undefined) throw new Error(`unsupported molecular file type: ${file.name}`)
+    const canReadDirectly = file.resourceUri === undefined || file.resourceUri.startsWith('file://')
+      || typeof file.text === 'string' || typeof file.blob === 'string'
+    const resolved = canReadDirectly
+      ? await resolveViewedFile(server, file, options.maxFileBytes, extra.signal)
+      : undefined
+    const scene = store.open({
+      path: resolved?.absolutePath ?? file.name,
+      label: resolved?.label ?? baseNameOf(file.name),
+      format,
+      bytes: resolved?.bytes ?? new Uint8Array(),
+      ...(file.resourceUri === undefined ? {} : { fileResourceUri: file.resourceUri }),
+      commands: [{ op: 'represent', style: { type: 'cartoon', color: 'chain-id' } }],
+    })
+    return textResult(
+      `${resolved === undefined ? `Opened ${baseNameOf(file.name)}` : describeFile(resolved)}`
+      + '\n\nOpened in the mol4agent file viewer.',
+      { scene },
+    )
   })
 
   // ---- App-only tools -----------------------------------------------------
@@ -469,6 +577,163 @@ function requireScene(store: SceneStore, action: string): SceneSnapshot {
   const scene = store.snapshot()
   if (scene === null) throw new Error(`open a structure with mol_open before trying to ${action} it`)
   return scene
+}
+
+function validateTargets(store: SceneStore, selectors: readonly StructureSelector[]): void {
+  const scene = store.snapshot()
+  if (scene === null) return
+  const record = store.record(scene.sceneId)
+  if (record?.summary === undefined) return
+  for (const selector of selectors) {
+    validateSelectorAgainst(record.summary, record.bytes, record.format, selector)
+  }
+}
+
+function validateSelectorAgainst(
+  summary: StructureSummary,
+  bytes: Uint8Array,
+  format: SceneRecord['format'],
+  selector: StructureSelector,
+): void {
+  if (!summary.complete) return
+  const chains = summary.chains.map(chain => chain.id)
+  const chainList = chains.length === 0 ? '(none)' : chains.join(', ')
+  switch (selector.kind) {
+    case 'chain':
+      if (!chains.includes(selector.chain)) {
+        throw new Error(`chain "${selector.chain}" does not exist; available chains: ${chainList}`)
+      }
+      return
+    case 'comp': {
+      const components = [...new Set([
+        ...summary.chains.flatMap(chain => chain.compIds),
+        ...summary.ligands.map(ligand => ligand.compId),
+      ])]
+      if (!components.includes(selector.compId)) {
+        throw new Error(
+          `component "${selector.compId}" does not exist; available components: `
+          + `${components.length === 0 ? '(none)' : components.join(', ')}`,
+        )
+      }
+      return
+    }
+    case 'residue':
+    case 'residues': {
+      if (selector.chain !== undefined && !chains.includes(selector.chain)) {
+        throw new Error(`chain "${selector.chain}" does not exist; available chains: ${chainList}`)
+      }
+      if (selector.kind === 'residue') {
+        validateResidueRange(bytes, format, selector.chain, selector.index, selector.index)
+      } else {
+        validateResidueRange(bytes, format, selector.chain, selector.start, selector.end)
+      }
+      return
+    }
+    case 'all':
+    case 'polymer':
+    case 'protein':
+    case 'nucleic':
+    case 'ligand':
+    case 'water':
+    case 'ion':
+    case 'schema':
+      return
+  }
+}
+
+function validateResidueRange(
+  bytes: Uint8Array,
+  format: SceneRecord['format'],
+  chain: string | undefined,
+  start: number,
+  end: number,
+): void {
+  const extent = residueExtent(bytes, format, chain)
+  if (extent === undefined) return
+  const label = chain === undefined ? 'structure' : `chain ${chain}`
+  if (end < extent.min || start > extent.max) {
+    throw new Error(
+      `residues ${String(start)}-${String(end)} do not intersect ${label} `
+      + `(parsed residue range ${String(extent.min)}-${String(extent.max)})`,
+    )
+  }
+}
+
+function residueExtent(
+  bytes: Uint8Array,
+  format: SceneRecord['format'],
+  chain: string | undefined,
+): { readonly min: number; readonly max: number } | undefined {
+  if (format !== 'pdb' && format !== 'pdbqt' && format !== 'pqr') return undefined
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+  for (const line of text.split(/\r?\n/u)) {
+    if (!line.startsWith('ATOM  ') && !line.startsWith('HETATM')) continue
+    if (chain !== undefined && (line[21] ?? '') !== chain) continue
+    const index = Number.parseInt(line.slice(22, 26).trim(), 10)
+    if (!Number.isFinite(index)) continue
+    if (index < min) min = index
+    if (index > max) max = index
+  }
+  return Number.isFinite(min) ? { min, max } : undefined
+}
+
+function summarizeSafely(bytes: Uint8Array, format: SceneRecord['format']): StructureSummary | undefined {
+  try {
+    return summarizeStructure({ data: bytes, format })
+  } catch {
+    return undefined
+  }
+}
+
+async function resolveViewedFile(
+  server: McpServer,
+  file: {
+    readonly name: string
+    readonly resourceUri?: string
+    readonly text?: string
+    readonly blob?: string
+  },
+  maxFileBytes: number,
+  signal: AbortSignal,
+): Promise<ResolvedMoleculeFile> {
+  const format = formatOfFile(file.name)
+  if (format !== undefined) {
+    const bytes = typeof file.blob === 'string'
+      ? new Uint8Array(Buffer.from(file.blob, 'base64'))
+      : typeof file.text === 'string'
+        ? new TextEncoder().encode(file.text)
+        : undefined
+    if (bytes !== undefined) {
+      if (bytes.byteLength > maxFileBytes) throw new Error(`file is too large (${bytes.byteLength} bytes)`)
+      return {
+        absolutePath: file.name,
+        format,
+        label: baseNameOf(file.name),
+        bytes,
+      }
+    }
+  }
+
+  const candidates = new Set<string>()
+  candidates.add(file.name)
+  if (file.resourceUri?.startsWith('file://')) {
+    try {
+      candidates.add(fileURLToPath(file.resourceUri))
+    } catch {
+      // The host resource URI is not a plain file URI; try the name only.
+    }
+  }
+  let lastError: unknown
+  for (const candidate of candidates) {
+    try {
+      return await resolveMoleculeFile(server, candidate, maxFileBytes, signal)
+    } catch (reason) {
+      lastError = reason
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError))
 }
 
 function styleOf(args: {

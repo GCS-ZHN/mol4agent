@@ -99,7 +99,7 @@ flowchart TB
 |---|---|---|---|
 | core | Official Mol* UI viewer, command/selector semantics, byte summaries, PNG capture | Paths, suffixes, IO, sessions, harness UI | [core README](../packages/core/README.md), [core AGENTS](../packages/core/AGENTS.md) |
 | harness adapter | Format detection, byte reads, preview mounting, agent tools, state projection, screenshot delivery, host UI lifecycle | Mol* internals, core protocol semantics | [DSH README](../packages/deepseek-harness/README.md), [DETAIL](../packages/deepseek-harness/docs/DETAIL.md), [DSH AGENTS](../packages/deepseek-harness/AGENTS.md) |
-| future ChatGPT/Codex | The same semantics behind its preview/transport APIs | A second molecular behavior | Future package docs |
+| ChatGPT/Codex adapter | The same semantics behind MCP tools and an MCP App UI | A second molecular behavior | [ChatGPT README](../packages/chatgpt/README.md), [AGENTS](../packages/chatgpt/AGENTS.md) |
 
 **Stable boundary**: core input is always `bytes + explicit format`. Adapters turn
 a path or raw data into that input. Adapters may differ; molecular semantics may
@@ -191,6 +191,10 @@ sequenceDiagram
 
 DSH-specific projection events, CaptureHub, and documentPreviews mounting are
 adapter details; see [DETAIL](../packages/deepseek-harness/docs/DETAIL.md).
+The ChatGPT/Codex adapter registers an MCP extension file viewer: the file tree
+opens supported structures in a side-panel `mcp-extension` tab, while `mol_open`
+opens the same MCP App for the agent; both share long-polled scene updates and a
+capture rendezvous. See the [ChatGPT README](../packages/chatgpt/README.md).
 
 ---
 
@@ -224,8 +228,10 @@ adapter details; see [DETAIL](../packages/deepseek-harness/docs/DETAIL.md).
   per-selection styling, and PNG capture are implemented.
 - **DSH adapter**: document preview, agent tools, session projection, screenshot
   delivery, and panel/theme/tab lifecycle are implemented.
-- **ChatGPT/Codex**: future adapter, reusing core semantics and implementing only
-  its transport/preview APIs.
+- **ChatGPT/Codex adapter**: MCP App viewer, `mol_*` tools, long-poll scene
+  updates, screenshot rendezvous, local marketplace install, and the MCP
+  extension file viewer for the file tree are implemented. The per-extension
+  permission and one-active-scene limits are in its README.
 
 The next step is not to grow this document further. Put new capabilities in the
 relevant package README/AGENTS, and update this document only when overall goals

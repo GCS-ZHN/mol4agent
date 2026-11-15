@@ -22,7 +22,7 @@ into a 3D page that humans can preview and agents can operate directly.
 flowchart TB
   subgraph Harnesses["Agent harnesses"]
     DSH["@gcszhn/mol4agent-deepseekharness<br/>DSH adapter"]
-    OA["future ChatGPT/Codex adapter"]
+    OA["@gcszhn/mol4agent-chatgpt<br/>ChatGPT/Codex adapter"]
   end
 
   subgraph Core["@gcszhn/mol4agent-core"]
@@ -32,7 +32,7 @@ flowchart TB
   end
 
   DSH -->|"path → bytes + MolFormat"| Proto
-  OA -->|"raw bytes + MolFormat"| Proto
+  OA -->|"path → bytes + MolFormat"| Proto
   Proto --> Viewer
   Proto --> Parse
   Viewer --> Capture["PNG capture"]
@@ -46,7 +46,8 @@ viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
 ```
 
 - DSH gets a path from its preview API and reads bytes with its own APIs;
-- ChatGPT/Codex preview surfaces hand raw data;
+- ChatGPT/Codex gets a path from `mol_*` tool calls and reads bytes in the MCP
+  server; the MCP App receives only bytes plus format;
 - suffix detection (`.pdb -> pdb`), authorization, filesystem access, sessions,
   and UI all live in the adapter;
 - core contains no path logic and imports no harness package.
@@ -57,7 +58,7 @@ viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
 |---|---|---|
 | [`@gcszhn/mol4agent-core`](packages/core) | Harness-neutral Mol* engine, command protocol, selectors, byte summaries, PNG capture | Implemented; verified with real 1CRN/1ATP/aspirin |
 | [`@gcszhn/mol4agent-deepseekharness`](packages/deepseek-harness) | DSH adapter: right-sidebar document preview, session projection, `mol_*` tools, screenshot delivery | Implemented and installed in the Desktop profile |
-| `@gcszhn/mol4agent-chatgpt` | Future ChatGPT/Codex adapter | Not started |
+| [`@gcszhn/mol4agent-chatgpt`](packages/chatgpt) | ChatGPT/Codex adapter: MCP App viewer, `mol_*` tools, long-poll scene updates, screenshot round trip | Implemented; local marketplace install, protocol tests, and a real MCP Apps smoke test |
 
 ## Quick start (DSH Desktop)
 
@@ -77,12 +78,35 @@ The plugin is installed in the current `desktop` profile:
 **Rollout**: a Host-side change (`lib/host.js`) needs a DSH restart; a client-side
 change (`lib/client.js`) only needs a page refresh.
 
+## Quick start (ChatGPT/Codex)
+
+Build and install the plugin into a local Codex marketplace:
+
+```sh
+pnpm --filter @gcszhn/mol4agent-core build
+pnpm --filter @gcszhn/mol4agent-chatgpt build
+node packages/chatgpt/scripts/install-local.mjs
+codex plugin marketplace add ~/.codex/mol4agent-marketplace
+codex plugin add mol4agent@mol4agent-local
+```
+
+Start a new conversation and ask:
+
+> Open fixtures/1atp.pdb, use cartoon with chain-id coloring, highlight ATP,
+> focus it, and capture a screenshot.
+
+You can also click `fixtures/1atp.pdb` in the file tree. The first open asks
+whether to use mol4agent for `.pdb` files; choose **Yes** once, and the structure
+opens in the side panel by default. **Open with** still offers the built-in
+text/code viewer. See the [ChatGPT adapter README](packages/chatgpt/README.md)
+for the tool reference and file-handler details.
+
 ## Development
 
 ```sh
 pnpm install
 pnpm typecheck   # builds core first, then typechecks every package
-pnpm build       # core -> lib JS/d.ts, then DSH host/client
+pnpm build       # every package: core, DSH host/client, ChatGPT server/app
 ```
 
 `build` produces:
@@ -97,6 +121,9 @@ pnpm build       # core -> lib JS/d.ts, then DSH host/client
   commands, selectors, summaries, capture, React binding.
 - [DSH agent interface](packages/deepseek-harness/README.md): `mol_*` tools,
   session projection, document preview, screenshot loop.
+- [ChatGPT/Codex adapter](packages/chatgpt/README.md): MCP App, file-tree
+  structure preview, `mol_*` tools, long-poll scene updates, capture rendezvous,
+  local install.
 - [Architecture design](docs/architecture.md) / [中文](docs/architecture_zh.md): product
   goals, layers, the cross-harness contract, and high-level flows. Package
   details live in the package docs.

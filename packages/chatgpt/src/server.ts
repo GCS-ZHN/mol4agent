@@ -14,7 +14,7 @@ import { CaptureHub } from './capture.ts'
 import { SceneStore } from './scene.ts'
 import { registerMolTools } from './tools.ts'
 
-export const VERSION = '0.1.0'
+export const VERSION = '0.1.4'
 
 const INSTRUCTIONS = `mol4agent provides an interactive 3D molecular viewer.
 
@@ -43,7 +43,7 @@ export async function createServer(options?: {
     captures: new CaptureHub(),
     viewerHtml,
     maxFileBytes: options?.maxFileBytes ?? 64 * 1024 * 1024,
-    captureTimeoutMs: options?.captureTimeoutMs ?? readPositiveInt('MOL4AGENT_CAPTURE_TIMEOUT_MS', 25_000),
+    captureTimeoutMs: options?.captureTimeoutMs ?? readPositiveInt('MOL4AGENT_CAPTURE_TIMEOUT_MS', 45_000),
     captureWidth: readPositiveInt('MOL4AGENT_CAPTURE_WIDTH', 1024),
     captureHeight: readPositiveInt('MOL4AGENT_CAPTURE_HEIGHT', 768),
   })

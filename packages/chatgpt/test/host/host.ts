@@ -97,10 +97,11 @@ bridge.oncalltool = async (params: CallToolRequest['params']): Promise<CallToolR
       if (typeof args?.data !== 'string') return errorResult('missing capture data')
       captureDelivered = true
       try {
+        const contentRatio = await measureContent(args.data)
         const response = await fetch('/capture', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ data: args.data, width: args.width, height: args.height }),
+          body: JSON.stringify({ data: args.data, width: args.width, height: args.height, contentRatio }),
         })
         const info = await response.json()
         captureElement.src = `data:image/png;base64,${args.data}`
@@ -143,6 +144,32 @@ function errorResult(message: string): CallToolResult {
   failures += 1
   resultElement.textContent = JSON.stringify({ ok: false, message })
   return { isError: true, content: [{ type: 'text', text: message }] }
+}
+
+async function measureContent(data: string): Promise<number> {
+  const image = new Image()
+  image.src = `data:image/png;base64,${data}`
+  await image.decode()
+  const canvas = document.createElement('canvas')
+  canvas.width = 64
+  canvas.height = 48
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (context === null) return 1
+  context.drawImage(image, 0, 0, 64, 48)
+  const pixels = context.getImageData(0, 0, 64, 48).data
+  const r0 = pixels[0] ?? 0
+  const g0 = pixels[1] ?? 0
+  const b0 = pixels[2] ?? 0
+  const a0 = pixels[3] ?? 0
+  let different = 0
+  for (let index = 0; index < pixels.length; index += 4) {
+    const delta = Math.abs((pixels[index] ?? 0) - r0)
+      + Math.abs((pixels[index + 1] ?? 0) - g0)
+      + Math.abs((pixels[index + 2] ?? 0) - b0)
+      + Math.abs((pixels[index + 3] ?? 0) - a0)
+    if (delta > 24) different += 1
+  }
+  return different / (64 * 48)
 }
 
 await bridge.connect(new PostMessageTransport(iframe.contentWindow ?? undefined, iframe.contentWindow ?? window))

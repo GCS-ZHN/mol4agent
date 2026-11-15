@@ -41,6 +41,7 @@ test('lists the agent tools and the viewer resource', async t => {
   const names = tools.map(tool => tool.name)
   for (const expected of [
     'mol_info',
+    'mol_workspace',
     'mol_interface',
     'mol_open',
     'mol_style',
@@ -61,6 +62,15 @@ test('lists the agent tools and the viewer resource', async t => {
   const poll = tools.find(tool => tool.name === 'mol_viewer_poll')
   assert.deepEqual(poll?._meta?.ui?.visibility, ['app'])
 
+  const viewFile = tools.find(tool => tool.name === 'mol_view_file')
+  assert.ok(viewFile)
+  assert.ok(
+    viewFile._meta?.['openai/ui']?.entrypoints?.some(
+      entrypoint => entrypoint.type === 'file' && entrypoint.extensions.includes('.pdb'),
+    ),
+    'mol_view_file must declare a .pdb file handler',
+  )
+
   const { resources } = await client.listResources()
   assert.ok(resources.some(resource => resource.uri === 'ui://mol4agent/viewer.html'))
 })
@@ -73,6 +83,14 @@ test('summarizes a PDB and renders its chains', async t => {
   assert.match(text, /1crn\.pdb/)
   assert.match(text, /chains:/)
   assert.match(text, /residues:/)
+})
+
+test('reports how the workspace root was resolved', async t => {
+  const { client } = await withClient(t)
+  const result = await client.callTool({ name: 'mol_workspace', arguments: {} })
+  assert.equal(result.isError, undefined)
+  assert.equal(typeof result.structuredContent?.root, 'string')
+  assert.ok(['env', 'roots', 'cwd'].includes(result.structuredContent?.source))
 })
 
 test('opens a scene, reads its bytes, and appends commands', async t => {
@@ -129,6 +147,50 @@ test('opens a scene, reads its bytes, and appends commands', async t => {
   })
 })
 
+test('rejects selectors that cannot match the structure', async t => {
+  const { client } = await withClient(t)
+  const opened = await client.callTool({ name: 'mol_open', arguments: { path: fixture } })
+  assert.equal(opened.isError, undefined)
+
+  const badChain = await client.callTool({
+    name: 'mol_style',
+    arguments: { type: 'cartoon', target: { kind: 'chain', chain: 'Z' } },
+  })
+  assert.equal(badChain.isError, true)
+  assert.match(badChain.content[0].text, /chain "Z" does not exist/)
+
+  const badComp = await client.callTool({
+    name: 'mol_select',
+    arguments: { target: { kind: 'comp', compId: 'NOPE' } },
+  })
+  assert.equal(badComp.isError, true)
+  assert.match(badComp.content[0].text, /component "NOPE" does not exist/)
+
+  const badResidueChain = await client.callTool({
+    name: 'mol_style',
+    arguments: {
+      type: 'cartoon',
+      target: { kind: 'residues', chain: 'Z', start: 28, end: 54 },
+    },
+  })
+  assert.equal(badResidueChain.isError, true)
+  assert.match(badResidueChain.content[0].text, /chain "Z" does not exist/)
+
+  const badRange = await client.callTool({
+    name: 'mol_select',
+    arguments: { target: { kind: 'residues', chain: 'A', start: 900, end: 910 } },
+  })
+  assert.equal(badRange.isError, true)
+  assert.match(badRange.content[0].text, /do not intersect chain A/)
+
+  const badOpen = await client.callTool({
+    name: 'mol_open',
+    arguments: { path: fixture, select: { kind: 'chain', chain: 'Z' } },
+  })
+  assert.equal(badOpen.isError, true)
+  assert.match(badOpen.content[0].text, /chain "Z" does not exist/)
+})
+
 test('opens an SDF and reports unsupported summaries gracefully', async t => {
   const { client } = await withClient(t)
   const opened = await client.callTool({ name: 'mol_open', arguments: { path: aspirin } })
@@ -153,6 +215,28 @@ test('rejects malformed selectors and missing scenes', async t => {
     arguments: { target: { kind: 'residues', chain: 'A', start: 'nope', end: 5 } },
   })
   assert.equal(bad.isError, true)
+})
+
+test('file viewer creates a host-resource scene and a direct scene', async t => {
+  const { client } = await withClient(t)
+  const hostScene = await client.callTool({
+    name: 'mol_view_file',
+    arguments: {
+      file: { name: '1crn.pdb', resourceUri: 'codex-resource://test-file-viewer' },
+    },
+  })
+  assert.equal(hostScene.isError, undefined)
+  assert.equal(hostScene.structuredContent?.scene.format, 'pdb')
+  assert.equal(hostScene.structuredContent?.scene.fileResourceUri, 'codex-resource://test-file-viewer')
+  assert.equal(hostScene.structuredContent?.scene.commands[0].op, 'represent')
+
+  const directScene = await client.callTool({
+    name: 'mol_view_file',
+    arguments: { file: { name: fixture } },
+  })
+  assert.equal(directScene.isError, undefined)
+  assert.equal(directScene.structuredContent?.scene.label, '1crn.pdb')
+  assert.equal(directScene.structuredContent?.scene.fileResourceUri, undefined)
 })
 
 test('rendezvous: capture claim and PNG delivery', async t => {

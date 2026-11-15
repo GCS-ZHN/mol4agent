@@ -25,6 +25,56 @@ const ROOT_TTL_MS = 30_000
 
 let cachedRoot: { readonly value: string; readonly at: number } | null = null
 
+/** How the workspace root was chosen, plus the raw signals used. */
+export interface WorkspaceInfo {
+  readonly root: string
+  readonly source: 'env' | 'roots' | 'cwd'
+  readonly cwd: string
+  readonly roots: readonly string[]
+  readonly rootError?: string
+}
+
+/** Inspect the workspace signals without using the short-lived cache. */
+export async function inspectWorkspace(server: McpServer, signal: AbortSignal): Promise<WorkspaceInfo> {
+  const fromEnv = process.env.MOL4AGENT_CWD?.trim()
+  const roots: string[] = []
+  let rootError: string | undefined
+  try {
+    const result = await server.server.listRoots(undefined, { signal })
+    for (const root of result.roots) {
+      if (root.uri.startsWith('file://')) roots.push(fileURLToPath(root.uri))
+    }
+  } catch (reason) {
+    rootError = reason instanceof Error ? reason.message : String(reason)
+  }
+  if (fromEnv !== undefined && fromEnv !== '') {
+    return {
+      root: fromEnv,
+      source: 'env',
+      cwd: process.cwd(),
+      roots,
+      ...(rootError === undefined ? {} : { rootError }),
+    }
+  }
+  const firstRoot = roots[0]
+  if (firstRoot !== undefined) {
+    return {
+      root: firstRoot,
+      source: 'roots',
+      cwd: process.cwd(),
+      roots,
+      ...(rootError === undefined ? {} : { rootError }),
+    }
+  }
+  return {
+    root: process.cwd(),
+    source: 'cwd',
+    cwd: process.cwd(),
+    roots,
+    ...(rootError === undefined ? {} : { rootError }),
+  }
+}
+
 /**
  * Resolve the conversation workspace.
  *
@@ -35,20 +85,9 @@ export async function workspaceRoot(server: McpServer, signal: AbortSignal): Pro
   const fromEnv = process.env.MOL4AGENT_CWD?.trim()
   if (fromEnv !== undefined && fromEnv !== '') return fromEnv
   if (cachedRoot !== null && Date.now() - cachedRoot.at < ROOT_TTL_MS) return cachedRoot.value
-  try {
-    const result = await server.server.listRoots(undefined, { signal })
-    for (const root of result.roots) {
-      if (!root.uri.startsWith('file://')) continue
-      const path = fileURLToPath(root.uri)
-      cachedRoot = { value: path, at: Date.now() }
-      return path
-    }
-  } catch {
-    // Roots are optional; the process cwd is the next best answer.
-  }
-  const fallback = process.cwd()
-  cachedRoot = { value: fallback, at: Date.now() }
-  return fallback
+  const info = await inspectWorkspace(server, signal)
+  cachedRoot = { value: info.root, at: Date.now() }
+  return info.root
 }
 
 /**

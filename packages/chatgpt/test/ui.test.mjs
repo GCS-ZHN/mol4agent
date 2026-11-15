@@ -69,10 +69,15 @@ test('viewer renders and delivers a PNG in a real MCP Apps host', { timeout: 120
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
           const png = Buffer.from(body.data, 'base64')
-          captured = { png, width: body.width, height: body.height }
+          captured = { png, width: body.width, height: body.height, contentRatio: body.contentRatio }
           void writeFile(capturePath, png).then(() => {
             response.writeHead(200, { 'content-type': 'application/json' })
-            response.end(JSON.stringify({ bytes: png.byteLength, width: body.width, height: body.height }))
+            response.end(JSON.stringify({
+              bytes: png.byteLength,
+              width: body.width,
+              height: body.height,
+              contentRatio: body.contentRatio,
+            }))
           })
         } catch (reason) {
           response.writeHead(400, { 'content-type': 'application/json' })
@@ -160,9 +165,13 @@ test('viewer renders and delivers a PNG in a real MCP Apps host', { timeout: 120
     .join('\n')
   await writeFile(join(artifactDir, 'chrome.log'), interesting)
   assert.ok(captured !== null, `the app never delivered a capture\n--- log ---\n${interesting.slice(-6000)}`)
-  assert.ok(captured.png.byteLength > 5_000, `capture is suspiciously small: ${String(captured.png.byteLength)} bytes`)
+  assert.ok(captured.png.byteLength > 20_000, `capture is suspiciously small: ${String(captured.png.byteLength)} bytes`)
   assert.equal(captured.width, 800)
   assert.equal(captured.height, 600)
+  assert.ok(
+    captured.contentRatio > 0.005,
+    `capture looks blank (non-background ratio ${String(captured.contentRatio)})`,
+  )
   assert.deepEqual([...captured.png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   assert.ok(await exists(pagePath), 'chrome did not write the host page screenshot')
   assert.ok((await stat(pagePath)).size > 10_000, 'host page screenshot is suspiciously small')

@@ -20,8 +20,8 @@ interface PollResult {
 }
 
 const app = new App(
-  { name: 'mol4agent', version: '0.1.0' },
-  {},
+  { name: 'mol4agent', version: '0.1.4' },
+  { availableDisplayModes: ['inline', 'fullscreen'] },
   { autoResize: true },
 )
 
@@ -86,7 +86,19 @@ async function main(): Promise<void> {
   }
   applyHostContext(app.getHostContext())
   setHostHints()
+  void openSidePanel()
   void pollLoop()
+}
+
+async function openSidePanel(): Promise<void> {
+  const context = app.getHostContext()
+  if (context?.displayMode === 'fullscreen') return
+  try {
+    const result = await app.requestDisplayMode({ mode: 'fullscreen' })
+    setDisplayMode(result.mode)
+  } catch {
+    // The host may require a user gesture; the Expand button remains available.
+  }
 }
 
 function setHostHints(): void {
@@ -173,7 +185,8 @@ async function applyScene(scene: SceneSnapshot): Promise<void> {
   const currentViewer = await ensureViewer()
   if (scene.sceneId !== loadedSceneId) {
     showStatus(`Loading ${scene.label}…`)
-    const resource = await app.readServerResource({ uri: `mol4agent://structure/${scene.sceneId}` })
+    const uri = scene.fileResourceUri ?? `mol4agent://structure/${scene.sceneId}`
+    const resource = await app.readServerResource({ uri })
     const data = decodeStructure(resource)
     await currentViewer.load({ data, format: scene.format, label: scene.label })
     loadedSceneId = scene.sceneId
@@ -199,14 +212,7 @@ async function deliverCapture(capture: PendingCapture): Promise<void> {
   try {
     await applyScene(capture.scene)
     const currentViewer = await ensureViewer()
-    // Headless hosts can throttle requestAnimationFrame. A short timer is
-    // enough for Mol* to finish the pending render before the readback.
-    await sleep(80)
-    const png = await currentViewer.capture({
-      width: capture.width,
-      height: capture.height,
-      transparent: capture.transparent,
-    })
+    const png = await captureWithContent(currentViewer, capture)
     await app.callServerTool({
       name: 'mol_capture_deliver',
       arguments: {
@@ -225,6 +231,79 @@ async function deliverCapture(capture: PendingCapture): Promise<void> {
       name: 'mol_capture_fail',
       arguments: { captureId: capture.captureId, message },
     }).catch(() => {})
+  }
+}
+
+async function captureWithContent(viewer: MolViewer, capture: PendingCapture): Promise<Uint8Array> {
+  let last: Uint8Array | undefined
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForRenderable(viewer, 10_000)
+    last = await viewer.capture({
+      width: capture.width,
+      height: capture.height,
+      transparent: capture.transparent,
+    })
+    if (await hasVisibleContent(last)) return last
+    await sleep(350)
+  }
+  if (last === undefined) throw new Error('the viewer produced no image')
+  throw new Error(
+    'the viewer rendered only the background; wait for the structure to finish loading and retry',
+  )
+}
+
+async function waitForRenderable(viewer: MolViewer, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    viewer.resize()
+    const diagnostics = viewer.diagnostics()
+    if (
+      diagnostics.host.clientWidth > 0
+      && diagnostics.host.clientHeight > 0
+      && diagnostics.canvas.clientWidth > 0
+      && diagnostics.canvas.clientHeight > 0
+      && diagnostics.atoms > 0
+      && diagnostics.representations > 0
+    ) {
+      // Let Mol* present the freshly applied representation.
+      await sleep(250)
+      return
+    }
+    await sleep(100)
+  }
+}
+
+async function hasVisibleContent(png: Uint8Array): Promise<boolean> {
+  if (typeof createImageBitmap !== 'function') return true
+  let bitmap: ImageBitmap | undefined
+  try {
+    bitmap = await createImageBitmap(new Blob([png as unknown as BlobPart], { type: 'image/png' }))
+    const width = 96
+    const height = Math.max(1, Math.round((bitmap.height / bitmap.width) * width))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (context === null) return true
+    context.drawImage(bitmap, 0, 0, width, height)
+    const data = context.getImageData(0, 0, width, height).data
+    const r0 = data[0] ?? 0
+    const g0 = data[1] ?? 0
+    const b0 = data[2] ?? 0
+    const a0 = data[3] ?? 0
+    let different = 0
+    for (let index = 0; index < data.length; index += 4) {
+      const delta = Math.abs((data[index] ?? 0) - r0)
+        + Math.abs((data[index + 1] ?? 0) - g0)
+        + Math.abs((data[index + 2] ?? 0) - b0)
+        + Math.abs((data[index + 3] ?? 0) - a0)
+      if (delta > 24) different += 1
+    }
+    return different / (width * height) >= 0.005
+  } catch {
+    return true
+  } finally {
+    bitmap?.close()
   }
 }
 
