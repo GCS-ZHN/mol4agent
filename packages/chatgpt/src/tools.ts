@@ -24,7 +24,8 @@ import {
 } from '@gcszhn/mol4agent-core/protocol'
 import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
 import { CaptureHub } from './capture.ts'
-import { baseNameOf, formatOfFile, isBinaryFormat } from './formats.ts'
+import { baseNameOf, formatOfFile, isBinaryFormat, isGzipFile, previewFileExtensions } from './formats.ts'
+import { gunzipBytes } from './host/gzip.ts'
 import { findInterfaceResidues, type InterfaceResult } from './interface.ts'
 import {
   inspectWorkspace,
@@ -180,7 +181,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       + 'without opening the viewer. Returns chains, residue/atom counts, and ligands. Use it before '
       + 'choosing chains or residues; never read a whole structure file as plain text.',
     inputSchema: {
-      path: z.string().min(1).describe('Structure file path, absolute or relative to the workspace.'),
+      path: z.string().min(1).describe('Structure file path (.gz supported), absolute or relative to the workspace.'),
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async (args, extra) => {
@@ -226,7 +227,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       + '(default 8 A). Returns residue ranges usable as mol_style targets. Currently supports '
       + 'PDB-like ATOM files (pdb/pdbqt/pqr).',
     inputSchema: {
-      path: z.string().min(1).describe('Structure file path.'),
+      path: z.string().min(1).describe('Structure file path (.gz supported).'),
       chainsA: z.array(z.string()).min(1).describe('Chain ids on the first side, e.g. ["A","C"].'),
       chainsB: z.array(z.string()).min(1).describe('Chain ids on the second side, e.g. ["B","D"].'),
       cutoff: z.number().gt(0).max(30).optional().describe('Distance cutoff in angstroms. Default 8.'),
@@ -253,7 +254,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       + 'Optionally set the representation/color and highlight a selection. The viewer appears in the '
       + 'conversation and updates when later mol_style/mol_select/mol_focus/mol_measure calls run.',
     inputSchema: {
-      path: z.string().min(1).describe('Structure file path, absolute or relative to the workspace.'),
+      path: z.string().min(1).describe('Structure file path (.gz supported), absolute or relative to the workspace.'),
       ...styleFields,
       select: selectorSchema.optional()
         .describe(`Optional selection to highlight after loading. ${SELECTOR_HELP}`),
@@ -461,8 +462,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       'openai/ui': {
         entrypoints: [{
           type: 'file',
-          extensions: ['.pdb', '.ent', '.pdbqt', '.pqr', '.cif', '.mmcif', '.mcif', '.bcif',
-            '.mol', '.sdf', '.sd', '.mol2', '.xyz', '.gro'],
+          extensions: previewFileExtensions(),
         }],
       },
     },
@@ -499,7 +499,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       bytes: resolved?.bytes ?? new Uint8Array(),
       ...(resolved !== undefined || file.resourceUri === undefined
         ? {}
-        : { fileResourceUri: file.resourceUri }),
+        : { fileResourceUri: file.resourceUri, fileGzip: isGzipFile(file.name) }),
       commands: [{ op: 'represent', style: { type: 'cartoon', color: 'chain-id' } }],
     })
     return textResult(
@@ -798,11 +798,19 @@ async function resolveViewedFile(
         : undefined
     if (bytes !== undefined) {
       if (bytes.byteLength > maxFileBytes) throw new Error(`file is too large (${bytes.byteLength} bytes)`)
+      let decoded: Uint8Array = bytes
+      if (typeof file.blob === 'string' && isGzipFile(file.name)) {
+        try {
+          decoded = gunzipBytes(bytes, maxFileBytes)
+        } catch (reason) {
+          throw new Error(`cannot decompress ${file.name}: ${reason instanceof Error ? reason.message : String(reason)}`)
+        }
+      }
       return {
         absolutePath: file.name,
         format,
         label: baseNameOf(file.name),
-        bytes,
+        bytes: decoded,
       }
     }
   }

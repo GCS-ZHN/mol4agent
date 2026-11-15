@@ -23,6 +23,8 @@ export interface SceneSnapshot {
   readonly source: SceneSource
   /** Host resource URI for a file viewer; absent for agent-opened scenes. */
   readonly fileResourceUri?: string
+  /** The host resource is still gzip-encoded and must be decoded by the app. */
+  readonly fileGzip?: boolean
   readonly commands: readonly MolCommand[]
 }
 
@@ -35,6 +37,7 @@ export interface SceneRecord {
   readonly source: SceneSource
   readonly bytes: Uint8Array
   readonly fileResourceUri?: string
+  readonly fileGzip?: boolean
   readonly commands: readonly MolCommand[]
   readonly revision: number
   /** Parsed once on open; used for early selector validation. */
@@ -80,6 +83,7 @@ export class SceneStore {
     readonly format: MolFormat
     readonly bytes: Uint8Array
     readonly fileResourceUri?: string
+    readonly fileGzip?: boolean
     readonly commands: readonly MolCommand[]
   }): SceneSnapshot {
     return this.open(input, 'file', false)
@@ -91,6 +95,7 @@ export class SceneStore {
     readonly format: MolFormat
     readonly bytes: Uint8Array
     readonly fileResourceUri?: string
+    readonly fileGzip?: boolean
     readonly commands: readonly MolCommand[]
   }, source: SceneSource, makeActive: boolean): SceneSnapshot {
     const summary = safeSummary(input.bytes, input.format)
@@ -102,6 +107,7 @@ export class SceneStore {
       source,
       bytes: input.bytes,
       ...(input.fileResourceUri === undefined ? {} : { fileResourceUri: input.fileResourceUri }),
+      ...(input.fileGzip === undefined ? {} : { fileGzip: input.fileGzip }),
       commands: input.commands,
       revision: 1,
       ...(summary === undefined ? {} : { summary }),
@@ -198,6 +204,7 @@ function snapshotOf(record: SceneRecord): SceneSnapshot {
     format: record.format,
     source: record.source,
     ...(record.fileResourceUri === undefined ? {} : { fileResourceUri: record.fileResourceUri }),
+    ...(record.fileGzip === undefined ? {} : { fileGzip: record.fileGzip }),
     commands: record.commands,
   }
 }

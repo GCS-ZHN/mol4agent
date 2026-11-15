@@ -6,8 +6,9 @@ Turn molecular structure files in an agent harness from "a wall of plain text"
 into a 3D page that humans can preview and agents can operate directly.
 
 - **Human preview**: open a `.pdb` / `.cif` / `.sdf` / `.mol2` / `.xyz` / `.gro`
-  file in the harness file previewer and get Mol*'s official 3D UI instead of
-  text. The previewer's **Open with** menu still offers plain text/code.
+  file, including `.gz` variants, in the harness file previewer and get Mol*'s
+  official 3D UI instead of text. The previewer's **Open with** menu still
+  offers plain text/code.
 - **Agent operation**: the LLM uses `mol_*` tools to change representations,
   colors, highlight residues/ligands, focus the camera, measure, and capture
   screenshots while the human watches the page change.

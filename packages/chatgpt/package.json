@@ -24,7 +24,7 @@
     "build": "node scripts/build.mjs",
     "install-local": "node scripts/install-local.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --experimental-strip-types --test test/*.test.ts test/*.test.mjs",
     "prepack": "npm run build"
   },
   "engines": {
