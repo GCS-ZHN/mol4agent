@@ -11,6 +11,8 @@ side panel that the agent operates with `mol_*` tools.
   viewer.
 - **Screenshots**: `mol_capture` renders the viewport to a PNG saved under
   `.mol4agent/captures/`.
+- **Tabs keep state**: each structure has its own viewer tab; switching tabs
+  keeps its camera, style, and selection. Closing a tab disposes that viewer.
 - **Same molecular semantics as DSH/ChatGPT**: this adapter passes the same
   `MolFormat`, selectors, commands, and capture semantics to
   `@gcszhn/mol4agent-core`.

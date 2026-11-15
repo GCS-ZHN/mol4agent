@@ -18,12 +18,13 @@
  * @module @gcszhn/mol4agent-opencode/gui
  */
 import { Plugin, Panel, Command, MenuItem, LinkHandler, type SessionRef } from '@opencode/plugin/gui'
-import { createComponent, createEffect, createSignal } from 'solid-js'
+import { createComponent, createEffect } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
 import { bytesToBase64 } from '../base64.ts'
 import { Mol4Agent } from '../rpc.ts'
-import { StructureViewer, type FetchedScene, type SceneInfo } from './viewer.tsx'
+import { StructureGroup, type StructureGroupRegistry } from './structure-group.ts'
+import { type FetchedScene, type SceneInfo } from './viewer.tsx'
 
 const EXTENSIONS = ['pdb', 'ent', 'pdbqt', 'pqr', 'cif', 'mmcif', 'mcif', 'bcif', 'mol', 'sdf', 'sd', 'mol2', 'xyz', 'gro', 'gz']
 
@@ -54,10 +55,14 @@ interface SceneEvent {
 export default Plugin.define({
   setup(ctx) {
     const rpc = ctx.client.rpc(Mol4Agent)
-    const [scenes, setScenes] = createStore<Record<string, SceneInfo>>({})
-    const [active, setActive] = createSignal('')
-    /** Session the `scenes` store belongs to; guards against stale routing. */
-    const [loadedSessionID, setLoadedSessionID] = createSignal('')
+    /** Scenes per session: sessionID -> path -> scene. */
+    const [scenes, setScenes] = createStore<Record<string, Record<string, SceneInfo>>>({})
+    /** Active tab path per session, for the menu item. */
+    const [active, setActive] = createStore<Record<string, string>>({})
+    /** Tab objects per session and path, reused so strip updates do not rebuild triggers. */
+    const tabs = new Map<string, { readonly id: string; readonly title: string; readonly group: string }>()
+    /** Per-tab viewer disposers; `Panel.close` removes one, unmount removes all. */
+    const groupRegistry: StructureGroupRegistry = {}
 
     /** Live viewers keyed by sceneId, for capture delivery. */
     const viewers = new Map<string, MolViewer>()
@@ -78,6 +83,21 @@ export default Plugin.define({
 
     const currentSessionID = (): string => ctx.sessions.current()?.id ?? ''
 
+    const labelOf = (path: string): string => {
+      const normalized = path.replaceAll('\\', '/')
+      const name = normalized.slice(normalized.lastIndexOf('/') + 1)
+      return name === '' ? path : name
+    }
+
+    const tabFor = (sessionID: string, path: string, title: string): { id: string; title: string; group: string } => {
+      const key = `${sessionID}\n${path}`
+      const cached = tabs.get(key)
+      if (cached !== undefined && cached.title === title) return cached
+      const next = { id: path, title, group: 'structure' }
+      tabs.set(key, next)
+      return next
+    }
+
     const openTab = (session: SessionRef | undefined, path: string, background: boolean): void => {
       if (session === undefined || path === '') return
       ctx.layout.open(`${ctx.id}:${path}`, session, { tab: 'select', ...(background ? { background: true } : {}) })
@@ -89,14 +109,14 @@ export default Plugin.define({
       const token = ++refreshToken
       try {
         const list = (await rpc.listScenes({ sessionID })) as unknown as SceneList
-        if (disposed || token !== refreshToken || sessionID !== currentSessionID()) return
+        if (disposed || token !== refreshToken) return
         const next: Record<string, SceneInfo> = {}
         for (const scene of list.scenes) next[scene.path] = scene
         // `reconcile` removes paths the session no longer has; a plain
-        // `setScenes(next)` would leave stale keys behind.
-        setScenes(reconcile(next))
-        setActive(list.active)
-        setLoadedSessionID(sessionID)
+        // set would leave stale keys behind. Keep other sessions' maps so a
+        // switch back does not rebuild their viewers.
+        setScenes(sessionID, reconcile(next))
+        setActive(sessionID, list.active)
       } catch (reason) {
         if (token === refreshToken) console.warn('[mol4agent] could not list scenes', reason)
       }
@@ -175,9 +195,6 @@ export default Plugin.define({
       const sessionID = session?.id ?? ''
       if (sessionID === lastSessionID) return
       lastSessionID = sessionID
-      setLoadedSessionID('')
-      setActive('')
-      setScenes(reconcile({}))
       if (session === undefined || sessionID === '') return
       void (async () => {
         await refresh(sessionID)
@@ -219,32 +236,37 @@ export default Plugin.define({
       region: 'side',
       width: 640,
       list: (input) => {
-        // The panel lists the routed session's strip; only expose scenes that
-        // belong to it, even if a refresh for another session is in flight.
-        if (loadedSessionID() !== input.session.id) return []
-        return input.open
-          .map(id => scenes[id])
-          .filter((scene): scene is SceneInfo => scene !== undefined)
-          .map(scene => ({ id: scene.path, title: scene.label }))
+        // Keep listing stored tabs even before the scene list arrives: an empty
+        // list would make the host drop tabs and rebuild their viewers.
+        const byPath = scenes[input.session.id] ?? {}
+        const keep = new Set(input.open)
+        const prefix = `${input.session.id}\n`
+        for (const key of tabs.keys()) {
+          if (key.startsWith(prefix) && !keep.has(key.slice(prefix.length))) tabs.delete(key)
+        }
+        return input.open.map(id => tabFor(input.session.id, id, byPath[id]?.label ?? labelOf(id)))
       },
-      render: (props) => {
-        const path = props.tab.id
-        const sessionID = (): string => props.session.id
-        return createComponent(StructureViewer, {
-          scene: (): SceneInfo | undefined => (loadedSessionID() === sessionID() ? scenes[path] : undefined),
-          fetchScene: async (sceneId: string) =>
-            (await rpc.fetchScene({ sceneId, sessionID: sessionID() })) as unknown as FetchedScene,
-          theme: () => ctx.appearance.mode(),
-          onViewer: (sceneId: string, viewer: MolViewer | undefined) => {
-            if (viewer !== undefined) {
-              if (!viewers.has(sceneId)) registeredAt.set(sceneId, Date.now())
-              viewers.set(sceneId, viewer)
-            } else {
-              viewers.delete(sceneId)
-              registeredAt.delete(sceneId)
-            }
-          },
-        })
+      render: (props) => createComponent(StructureGroup, {
+        tab: () => props.tab.id,
+        session: () => props.session,
+        scene: (sessionID: string, path: string) => scenes[sessionID]?.[path],
+        fetchScene: async (sceneId: string, sessionID: string) =>
+          (await rpc.fetchScene({ sceneId, sessionID })) as unknown as FetchedScene,
+        theme: () => ctx.appearance.mode(),
+        onViewer: (sceneId: string, viewer: MolViewer | undefined) => {
+          if (viewer !== undefined) {
+            if (!viewers.has(sceneId)) registeredAt.set(sceneId, Date.now())
+            viewers.set(sceneId, viewer)
+          } else {
+            viewers.delete(sceneId)
+            registeredAt.delete(sceneId)
+          }
+        },
+        registry: groupRegistry,
+      }),
+      close: (input) => {
+        groupRegistry.dispose?.(input.session.key, input.tab.id)
+        tabs.delete(`${input.session.id}\n${input.tab.id}`)
       },
     })
 
@@ -331,7 +353,7 @@ export default Plugin.define({
       run: () => {
         const session = ctx.sessions.current()
         if (!session) return
-        const path = loadedSessionID() === session.id ? active() : ''
+        const path = active[session.id] ?? ''
         if (path !== '') ctx.layout.open(`${ctx.id}:${path}`, session)
         else ctx.toast.show({ title: 'No structure open', description: 'Use mol_open or the "Open molecular structure" command.' })
       },
