@@ -249,9 +249,10 @@ sequenceDiagram
 - **官方 Mol* UI**：`createPluginUI` + `DefaultPluginUISpec`。viewer 打进
   `client.js`，没有懒加载 chunk。
 - **布局**：按 viewer 容器的宽高比选择，而不是浏览器窗口。高容器用 Mol* 的
-  `portrait` 布局，宽容器用 `landscape`。顶部 sequence、左侧 State Tree/Home
-  面板、右侧 Structure Tools 默认展开；因为 `showControls` 为 true，面板切换
-  按钮可用。
+  `portrait` 布局，宽容器用 `landscape`。官方控制面板组（顶部 sequence、
+  左侧 State Tree/Home、右侧 Structure Tools）**默认关闭**
+  （`showControls: false`）；点 viewport 上的滑杆按钮展开。Mol* 只在
+  `showControls` 为 true 时渲染这些 region。
 - **主题**：Mol* 皮肤和画布背景跟随 DSH 的 `theme/change`。
 - **tab 缓存**：预览卸载时把整个 Mol* 容器停到隐藏 holder；同一个 tab 重新
   mount 时 reattach + resize，而不是重新读文件。保留最近 2 个 tab；插件卸载

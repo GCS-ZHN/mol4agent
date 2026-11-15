@@ -265,7 +265,7 @@ export type StructureSelector =
 
 - `Viewer` 自带全部扩展（MVS、video-export、PDBE、skybox JPG 等），体积约 5 MB；官方 UI 的核心是 `createPluginUI`，它只挂 UI 和基础 spec，足以提供右侧 viewport controls。
 - UI 皮肤使用 Mol* 预编译的 `build/viewer/theme/{light,dark}.css`，按宿主主题注入 `<style>`；UI 选择器都在 `.msp-plugin` 下，不污染 DSH。
-- 面板布局按 viewer 容器的宽高选择 Mol* 的 `portrait`/`landscape`；顶部 sequence、左侧 State Tree/Home、右侧 Structure Tools 默认展开。`showControls: true` 是面板切换按钮能工作的前提（`PluginUI` 在 false 时不渲染任何 region）。
+- 面板布局按 viewer 容器的宽高选择 Mol* 的 `portrait`/`landscape`；官方控制面板组（顶部 sequence、左侧 State Tree/Home、右侧 Structure Tools）**默认关闭**（`showControls: false`），点 viewport 的滑杆按钮展开。`showControls` 为 true 时 `PluginUI` 才渲染这些 region。
 
 官方 viewport controls 提供重置、截图、设置、选择、全屏等入口；表示/测量等仍可由 agent 命令和 Mol* 面板操作。
 

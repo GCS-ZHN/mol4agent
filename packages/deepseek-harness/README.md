@@ -259,9 +259,10 @@ with `input: { attachments: true }` and `recordInput: false`.
   bundled into `client.js`; there is no lazy chunk.
 - **Layout**: chosen from the viewer container's aspect ratio, not the browser
   window. Tall containers use Mol*'s `portrait` layout, wide containers use
-  `landscape`. The top sequence, left State Tree/Home panel, and right Structure
-  Tools are open by default; the panel toggle buttons work because
-  `showControls` is true.
+  `landscape`. The official control-panel set (top sequence, left State
+  Tree/Home, right Structure Tools) **starts closed** (`showControls: false`);
+  the viewport's sliders button toggles it open. Mol* renders these regions only
+  while `showControls` is true.
 - **Theme**: the Mol* skin and canvas background follow DSH's
   `theme/change` event.
 - **Tab cache**: an unmounted preview parks its whole Mol* container in a hidden

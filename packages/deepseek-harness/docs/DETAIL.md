@@ -18,10 +18,10 @@ still lists **Code** and **Plain text**, so you can switch back at any time;
 `bcif` has no plain-text fallback because its bytes are binary.
 
 The viewer mounts Mol*'s own React UI: viewport controls (reset, screenshot,
-settings, selection, fullscreen), the right **Structure Tools** panel, the left
-State Tree/Home panel, and the top sequence open by default. Mol* only renders
-these regions when `showControls` is true, so the panel toggle buttons stay
-functional.
+settings, selection, fullscreen). The official control-panel set (right
+**Structure Tools**, left State Tree/Home, top sequence) **starts closed**
+(`showControls: false`); the viewport's sliders button toggles it open. Mol*
+renders these regions only while `showControls` is true.
 
 Light/dark follows the DSH theme: the Mol* skin and canvas background switch on
 `theme/change`. Switching document tabs parks the live Mol* container and

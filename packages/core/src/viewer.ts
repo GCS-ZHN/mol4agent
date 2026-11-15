@@ -104,9 +104,10 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
         layout: {
           initial: {
             isExpanded: false,
-            // PluginUI renders no region at all when showControls is false, so
-            // the panel toggle buttons become inert.
-            showControls: true,
+            // The official control-panel set starts closed. The viewport's
+            // sliders button toggles it; PluginUI only renders regions while
+            // showControls is true, so the toggle starts from false.
+            showControls: false,
             controlsDisplay: layoutMode,
             regionState: { left: 'full', top: 'full', right: 'full', bottom: 'hidden' },
             expandToFullscreen: false,
