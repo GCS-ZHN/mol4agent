@@ -116,10 +116,11 @@ build (`store.snapshot is not a function`).
   (it only renders kinds the file view does not render itself). Automatic
   file-tree interception is not possible; document the limitation in the README.
 - Provide human paths instead: **Ctrl+P file search** via `LinkHandler` (this is
-  the only file-search route that reaches the handler), the `/mol_open <path>`
-  slash command, and the pick-file command. `LinkHandler.open` may receive only
-  the basename, so cache the full path seen in `match` and reuse it in `open`.
-  Reject non-`file://` URLs so a remote link is never treated as a path.
+  the only file-search route that reaches the handler) and the pick-file command.
+  Do **not** register a `/mol_open` slash command: its name collides with the
+  agent tool `mol_open`. `LinkHandler.open` may receive only the basename, so
+  cache the full path seen in `match` and reuse it in `open`. Reject non-`file://`
+  URLs so a remote link is never treated as a path.
 
 ## Verification
 

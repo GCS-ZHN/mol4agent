@@ -4,8 +4,8 @@
 用官方 Mol* 3D 视图预览分子结构，agent 通过 `mol_*` 工具直接操作。
 
 - **harness 内预览**：`mol_open`（agent）、**Ctrl+P 文件搜索**（LinkHandler）、
-  `/mol_open <path>` 斜杠命令、以及「Open molecular structure」选文件命令（人类）
-  在侧边栏的官方 Mol* UI 里渲染结构，无需离开 harness、无需外部应用。
+  以及「Open molecular structure」选文件命令（人类）在侧边栏的官方 Mol* UI
+  里渲染结构，无需离开 harness、无需外部应用。
 - **agent 操作同一页面**：`mol_style` / `mol_select` / `mol_focus` / `mol_measure`
   修改打开的页面；`mol_info` / `mol_interface` 无需打开 viewer 即可摘要。
 - **截图**：`mol_capture` 把视口渲染成 PNG 保存到 `.mol4agent/captures/`。
@@ -22,8 +22,9 @@
 - **agent**：`mol_open`（先 `mol_info` 选链/残基）。
 - **人类**：
   - **Ctrl+P 文件检索** → 输入文件名 → 选中 `.pdb`/`.cif`/... 条目，会通过 `LinkHandler` 在 Mol* 面板里打开。
-  - `/mol_open <path>` 斜杠命令。
   - **Open molecular structure** 命令（系统选文件）。
+- **没有 `/mol_open` 斜杠命令**：它的名字会和 agent 工具 `mol_open` 冲突；
+  Ctrl+P 与选文件命令已覆盖人类打开路径。
 - **不能从内置文件树打开**：在文件树里点击 `.pdb` 会打开纯文本编辑器。OpenCode 不会把文件树点击路由给插件（注册 `"text"` kind 的 `FileViewer` 会被忽略），所以请用 **Ctrl+P** 而不是点文件树。
 
 ## 架构
@@ -33,9 +34,8 @@
 - **server**（`exports["."]`，`src/server.ts`）：注册 `mol_*` 工具与 `mol4agent`
   RPC。只有这里能看到路径、读取字节、保存场景日志。
 - **GUI**（`exports["./gui-experimental"]`，`src/gui/`）：侧边栏 `Panel`，每个
-  打开的结构一个 Mol* viewer 标签；另有启动器、选文件命令、`/mol_open <path>`
-  斜杠命令，以及 `LinkHandler`（Ctrl+P 文件搜索与 `.pdb` 链接可打开结构）。
-  通过 RPC 跟随场景，并渲染/回传截图。
+  打开的结构一个 Mol* viewer 标签；另有启动器、选文件命令，以及 `LinkHandler`
+  （Ctrl+P 文件搜索与 `.pdb` 链接可打开结构）。通过 RPC 跟随场景，并渲染/回传截图。
 - **RPC**（`exports["./rpc"]`，`src/rpc.ts`）：类型化的 `mol4agent` 契约。
 
 core 只接收 `{ data, format, label }` 加 JSON 命令；路径、后缀识别、IO、session
@@ -106,8 +106,8 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 - OpenCode 的工具结果没有内联图片内容类型，因此 `mol_capture` 返回保存路径
   （加一个 `file` 引用），而不是把 PNG 附加到模型上下文。
 - **内置文件树不能打开结构**：在文件树里点 `.pdb` 会打开文本编辑器。请用
-  **Ctrl+P 文件检索**、`/mol_open <path>` 或选文件命令。注册 `"text"` kind 的
-  `FileViewer` 会被宿主忽略（它只渲染 file view 自己不渲染的 kind）。
+  **Ctrl+P 文件检索**或选文件命令。注册 `"text"` kind 的 `FileViewer` 会被宿主
+  忽略（它只渲染 file view 自己不渲染的 kind）。
 - Scene 工具默认作用于当前 session 上次 `mol_open` 的结构；传 `tab`（`mol_open`
   返回的路径）可指定某个已打开结构。场景按 session 分桶；面板只显示当前 session。
 - `mol_capture` 需要目标 viewer 标签挂载：它会先激活该标签，若 15 秒内仍无法创建

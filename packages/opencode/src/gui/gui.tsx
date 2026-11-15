@@ -1,7 +1,11 @@
 /**
  * OpenCode 2 GUI part for mol4agent: a side panel with one Mol* viewer tab per
- * open structure, the launcher, a pick-file command, the `/mol_open <path>`
- * slash command, and a `LinkHandler` (Ctrl+P file search).
+ * open structure, the launcher, a pick-file command, and a `LinkHandler`
+ * (Ctrl+P file search).
+ *
+ * There is deliberately no `/mol_open` slash command: its name collides with
+ * the agent tool `mol_open`, and Ctrl+P plus the pick-file command cover the
+ * human paths.
  *
  * Built without JSX (esbuild + `createComponent` + imperative DOM): Solid 1.9
  * has no standalone JSX runtime, and the GUI must keep core's chunk lazy so
@@ -242,26 +246,6 @@ export default Plugin.define({
         if (!result.ok) {
           ctx.toast.show({ variant: 'error', title: 'Could not open structure', description: result.error })
         }
-      },
-    }))
-
-    ctx.add(Command, () => ({
-      id: 'mol-open-path',
-      title: 'Open a molecular structure by path',
-      description: 'Open a .pdb/.cif/... path in the Mol* viewer, e.g. /mol_open fixtures/1atp.pdb',
-      keywords: 'mol open pdb cif path slash',
-      slash: { name: 'mol_open', arguments: true as const },
-      run: (input) => {
-        const path = (input ?? '').trim()
-        if (path === '') {
-          ctx.toast.show({ title: 'mol_open', description: 'Usage: /mol_open <path>' })
-          return
-        }
-        const session = ctx.sessions.current()
-        void rpc.openPath({ path, cwd: session?.directory, sessionID: currentSessionID() }).then((raw) => {
-          const result = raw as { ok: boolean; error?: string }
-          if (!result.ok) ctx.toast.show({ variant: 'error', title: 'Could not open structure', description: result.error })
-        })
       },
     }))
 
