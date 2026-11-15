@@ -1,16 +1,18 @@
 /**
- * Session-header bridge: opens the right-sidebar preview whenever the agent
- * targets a new structure, and offers a chip to reopen the current scene.
+ * Session-header bridge: opens the right-sidebar preview for each new agent
+ * tab page, activates the tab targeted by a pending capture, and offers a chip
+ * for the active tab.
  *
- * It is session-scoped and mounted outside the chat flow, so an agent command
- * opens the page even when the tool card is scrolled away.
+ * It is mounted outside the chat flow, so an agent command opens the page even
+ * when the tool card is scrolled away.
  *
  * @module @gcszhn/mol4agent-deepseekharness/client/bridge
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type { MolSessionState } from '../state.ts'
 import { sessionFileAddress } from './address.ts'
 
 export interface MolBridgeInjected {
@@ -21,30 +23,51 @@ export interface MolBridgeInjected {
 export type MolBridgeProps = PropsRuntime<'conversation.session.header.utilities'> & MolBridgeInjected
 
 export function MolBridge(props: MolBridgeProps): ReactNode {
-  const projection = props.useProjection('mol4agent')
-  const scene = projection?.scene
-  // A scene that already existed when this Session was opened is restored by
-  // the chip, not auto-opened: switching Sessions should not steal the column.
-  const [initialSceneKey] = useState(() => scene?.sceneKey)
-  const opened = useRef<string | undefined>(initialSceneKey)
+  const projection = props.useProjection('mol4agent') as MolSessionState | undefined
+  const tabs = projection?.tabs
+  const activePath = projection?.active
+  const pending = projection?.pending
+  // Existing projection entries are restored by the chip/capture path, not
+  // auto-opened on Session mount. New or reopened tabs are opened as they land.
+  const initialized = useRef(false)
+  const opened = useRef(new Map<string, string>())
 
   useEffect(() => {
-    if (scene === null || scene === undefined) return
-    if (opened.current === scene.sceneKey) return
-    opened.current = scene.sceneKey
-    props.openResource(sessionFileAddress(props.sessionId, scene.path))
-  }, [scene, props.openResource, props.sessionId])
+    if (tabs === undefined) return
+    if (!initialized.current) {
+      initialized.current = true
+      for (const [path, scene] of Object.entries(tabs)) opened.current.set(path, scene.sceneKey)
+      return
+    }
+    let newest: string | undefined
+    for (const [path, scene] of Object.entries(tabs)) {
+      if (opened.current.get(path) === scene.sceneKey) continue
+      opened.current.set(path, scene.sceneKey)
+      newest = path
+    }
+    if (newest !== undefined) props.openResource(sessionFileAddress(props.sessionId, newest))
+  }, [tabs, props.openResource, props.sessionId])
 
-  if (scene === null || scene === undefined) return null
+  useEffect(() => {
+    if (pending === undefined) return
+    for (const request of Object.values(pending)) {
+      if (request.path === undefined) continue
+      props.openResource(sessionFileAddress(props.sessionId, request.path))
+      break
+    }
+  }, [pending, props.openResource, props.sessionId])
+
+  const active = activePath === null || activePath === undefined ? undefined : tabs?.[activePath]
+  if (active === undefined) return null
   return (
     <button
       type="button"
       style={chipStyle}
       title={props.t('openViewer')}
-      onClick={() => { props.openResource(sessionFileAddress(props.sessionId, scene.path)) }}
+      onClick={() => { props.openResource(sessionFileAddress(props.sessionId, active.path)) }}
     >
       <span style={dotStyle} aria-hidden="true" />
-      {scene.label}
+      {active.label}
     </button>
   )
 }

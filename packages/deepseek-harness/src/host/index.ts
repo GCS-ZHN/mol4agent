@@ -26,7 +26,11 @@ export async function apply(ctx: Context): Promise<void> {
 
   registerTools(ctx, {
     hub,
-    sceneOf: session => projection.stateOf(session),
+    sceneOf: (session, tab) => {
+      const state = projection.stateOf(session)
+      const key = tab ?? state.active
+      return key === null ? undefined : state.tabs[key]
+    },
     maxFileBytes: 64 * 1024 * 1024,
     captureTimeoutMs: 20_000,
     captureWidth: 1024,

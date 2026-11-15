@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type { MolFormat, MolViewer } from '@gcszhn/mol4agent-core'
 import { baseNameOf, formatOfFile } from '../formats.ts'
-import type { MolPendingCapture } from '../state.ts'
+import type { MolPendingCapture, MolSessionState } from '../state.ts'
 import { sessionPathOf } from './address.ts'
 import { loadMolCore } from './core-loader.ts'
 import { putCachedViewer, takeCachedViewer } from './viewer-cache.ts'
@@ -55,7 +55,7 @@ const EMPTY_MARK: LoadedMark = { revision: -1, version: undefined, sceneKey: und
 export function MolBody(props: MolBodyProps): ReactNode {
   const { tab } = props.useTabInfo()
   const meta = props.useResource<'file'>(props.resourceAddress)
-  const projection = props.useProjection('mol4agent')
+  const projection = props.useProjection('mol4agent') as MolSessionState | undefined
   const path = useMemo(() => sessionPathOf(props.resourceAddress) ?? '', [props.resourceAddress])
   const format = useMemo(() => (path === '' ? undefined : formatOfFile(path)), [path])
   const version = meta.value?.version
@@ -219,7 +219,7 @@ export function MolBody(props: MolBodyProps): ReactNode {
     void reload()
   }, [revision, version, reload])
 
-  const scene = projection?.scene
+  const scene = path === '' ? undefined : projection?.tabs?.[path]
   useEffect(() => {
     const viewer = viewerRef.current
     if (viewer === undefined || scene === null || scene === undefined) return
@@ -263,6 +263,7 @@ export function MolBody(props: MolBodyProps): ReactNode {
     if (scene === null || scene === undefined || scene.path !== path) return
     for (const [callId, request] of Object.entries(pending)) {
       if (handledCaptures.current.has(callId)) continue
+      if (request.path !== undefined && request.path !== path) continue
       handledCaptures.current.add(callId)
       void (async () => {
         try {

@@ -34,16 +34,18 @@ reattaches it, so camera, representations, and panel state survive a switch
 |---|---|
 | `mol_info` | Reads chains, residues, atoms, and ligands without opening a page |
 | `mol_interface` | Finds residues within a cutoff between two chain groups (PDB-like files) |
-| `mol_open` | Opens the structure in the sidebar and makes it the active scene |
+| `mol_open` | Opens the structure in a tab page (id = absolute path) and makes it active |
 | `mol_style` | Replaces the representation/theme, or adds one to a `target` selection |
 | `mol_select` | Selects or highlights a chain/residue/ligand/water/ion |
 | `mol_focus` | Moves the camera to a selection (or the whole structure) |
 | `mol_measure` | Adds a distance, angle, or dihedral between selections |
-| `mol_capture` | Returns a PNG of the current viewport in the tool result |
+| `mol_capture` | Returns a PNG of the target tab viewport in the tool result |
 
-`mol_open`, `mol_style`, `mol_select`, `mol_focus`, and `mol_measure` write a durable scene
-to the Session projection; every open viewer follows it and a reopened Session
-can restore the last scene. `mol_capture` blocks until the open page delivers
+`mol_style`, `mol_select`, `mol_focus`, `mol_measure`, and `mol_capture` accept
+`tab` (the path returned by `mol_open`) and default to the active tab. `mol_open`, `mol_style`, `mol_select`, `mol_focus`, and
+`mol_measure` write the durable per-tab scene to the Session projection; each
+open viewer follows only its own tab; a reopened Session can restore the last
+tab scenes. `mol_capture` blocks until the open page delivers
 the image through the internal `mol4agent_capture` session command.
 
 Selections are JSON, for example:

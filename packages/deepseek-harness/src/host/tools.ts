@@ -24,20 +24,22 @@ import {
 } from '@gcszhn/mol4agent-core/protocol'
 import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
 import { normalizeSelector } from '../selector.ts'
-import type { MolSessionState } from '../state.ts'
+import type { MolSceneState, MolSessionState } from '../state.ts'
 import type { CaptureHub } from './capture.ts'
 import { findInterfaceResidues, type InterfaceResult } from './interface.ts'
 import { resolveMoleculeFile, type ResolvedMoleculeFile } from './paths.ts'
 
 export interface MolToolOptions {
   readonly hub: CaptureHub
-  /** Read the current scene from the registered projection. */
-  readonly sceneOf: (session: Session) => MolSessionState
+  /** Read a tab page scene; defaults to the projection's active tab. */
+  readonly sceneOf: (session: Session, tab?: string) => MolSceneState | undefined
   readonly maxFileBytes: number
   readonly captureTimeoutMs: number
   readonly captureWidth: number
   readonly captureHeight: number
 }
+
+const TAB_HELP = 'Tab page id returned by mol_open (its absolute path). Defaults to the active tab.'
 
 const SELECTOR_HELP =
   'A StructureSelector object. Examples: {"kind":"ligand"}, {"kind":"protein"}, '
@@ -111,8 +113,8 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
 
   ctx.tools.register(defineTool({
     name: 'mol_open',
-    description: 'Open a molecular structure in the right-sidebar viewer and make it the active agent scene. '
-      + 'The page opens automatically. Optionally set the representation/color and highlight a selection.',
+    description: 'Open a molecular structure in a new or existing tab page (keyed by its absolute path) and make it the active tab. '
+      + 'The page opens automatically and the result includes the tab page id. Optionally set the representation/color and highlight a selection.',
     parameters: {
       path: { type: 'string', required: true, description: 'Structure file path, absolute or relative to the session working directory.' },
       type: { type: 'string', enum: REPRESENTATION_TYPES, description: 'Representation type. Defaults to cartoon.' },
@@ -129,15 +131,16 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       const agent = requireAgent(exec)
       const file = await resolveMoleculeFile(ctx, agent, args.path, options.maxFileBytes, exec.signal)
       if (args.select !== undefined) assertSelector(args.select)
-      return `${describeFile(file)}\n\n<viewer>Opened in the sidebar preview. Use mol_style, mol_select, mol_measure, or mol_capture to operate it.</viewer>`
+      return `${describeFile(file)}\n\n<viewer>Opened in the sidebar preview. Tab page: ${escapeAttribute(file.absolutePath)}. Pass this path as tab to operate this page after opening another.</viewer>`
     },
   }))
 
   ctx.tools.register(defineTool({
     name: 'mol_style',
-    description: 'Change the representation or color theme of the active molecular viewer scene. '
+    description: 'Change the representation or color theme of a molecular viewer tab page. '
       + 'Without target this replaces the current representation; with target it adds a representation to that selection.',
     parameters: {
+      tab: { type: 'string', description: TAB_HELP },
       type: { type: 'string', enum: REPRESENTATION_TYPES, description: 'Representation type, e.g. cartoon or ball-and-stick.' },
       color: { type: 'string', enum: COLOR_THEMES, description: 'Color theme, e.g. chain-id, element-symbol, residue-name.' },
       target: { type: 'json', description: `Optional selection to style additively; the rest of the structure keeps its representation. ${SELECTOR_HELP}` },
@@ -150,8 +153,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
     },
     async execute(args, exec) {
       const agent = requireAgent(exec)
-      const scene = options.sceneOf(agent.session).scene
-      if (scene === null) throw new ToolArgsError(['open a structure with mol_open before styling it'])
+      const scene = requireScene(options, agent, args.tab, 'styling it')
       if (args.target !== undefined) assertSelector(args.target)
       if (args.colorParams !== undefined) assertColorParams(args.colorParams)
       const style = [args.type ?? 'cartoon', args.color ?? 'chain-id'].join(' / ')
@@ -162,9 +164,10 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
 
   ctx.tools.register(defineTool({
     name: 'mol_select',
-    description: 'Select, highlight, or focus part of the active structure. '
+    description: 'Select, highlight, or focus part of a structure tab page. '
       + 'Use a StructureSelector; the selection is rendered in the open viewer.',
     parameters: {
+      tab: { type: 'string', description: TAB_HELP },
       target: { type: 'json', required: true, description: SELECTOR_HELP },
       mode: { type: 'string', enum: ['select', 'highlight'], description: 'Selection mode. Defaults to select.' },
       focus: { type: 'boolean', description: 'Move the camera to the selection.' },
@@ -176,8 +179,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
     },
     async execute(args, exec) {
       const agent = requireAgent(exec)
-      const scene = options.sceneOf(agent.session).scene
-      if (scene === null) throw new ToolArgsError(['open a structure with mol_open before selecting'])
+      const scene = requireScene(options, agent, args.tab, 'selecting')
       assertSelector(args.target)
       const mode = args.mode ?? 'select'
       return `${mode === 'highlight' ? 'Highlighted' : 'Selected'} ${describeSelector(args.target)} in ${scene.label}${args.focus === true ? ' and focused the camera' : ''}.`
@@ -189,6 +191,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
     description: 'Move the camera to a selection, or to the whole structure when target is omitted. '
       + 'Use it to frame an interface after styling it.',
     parameters: {
+      tab: { type: 'string', description: TAB_HELP },
       target: { type: 'json', description: `Optional selection to focus. ${SELECTOR_HELP}` },
     },
     isConcurrencySafe: () => false,
@@ -198,8 +201,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
     },
     async execute(args, exec) {
       const agent = requireAgent(exec)
-      const scene = options.sceneOf(agent.session).scene
-      if (scene === null) throw new ToolArgsError(['open a structure with mol_open before focusing'])
+      const scene = requireScene(options, agent, args.tab, 'focusing')
       if (args.target !== undefined) assertSelector(args.target)
       return args.target === undefined
         ? `Focused ${scene.label}.`
@@ -209,9 +211,10 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
 
   ctx.tools.register(defineTool({
     name: 'mol_measure',
-    description: 'Add a distance, angle, or dihedral measurement between exactly 2/3/4 selections in the active viewer. '
+    description: 'Add a distance, angle, or dihedral measurement between exactly 2/3/4 selections in a tab page. '
       + 'Use chain/residue/residues/comp/schema selectors, not semantic categories or raw coordinates.',
     parameters: {
+      tab: { type: 'string', description: TAB_HELP },
       kind: { type: 'string', required: true, enum: ['distance', 'angle', 'dihedral'], description: 'Measurement kind.' },
       targets: {
         type: 'array',
@@ -227,8 +230,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
     },
     async execute(args, exec) {
       const agent = requireAgent(exec)
-      const scene = options.sceneOf(agent.session).scene
-      if (scene === null) throw new ToolArgsError(['open a structure with mol_open before measuring'])
+      const scene = requireScene(options, agent, args.tab, 'measuring')
       const needed = args.kind === 'distance' ? 2 : args.kind === 'angle' ? 3 : 4
       if (args.targets.length !== needed) {
         throw new ToolArgsError([`${args.kind} needs exactly ${needed} targets, received ${args.targets.length}`])
@@ -240,9 +242,10 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
 
   ctx.tools.register(defineTool({
     name: 'mol_capture',
-    description: 'Capture the current molecular viewer viewport as a PNG and attach it to this tool result. '
+    description: 'Capture a molecular viewer tab page viewport as a PNG and attach it to this tool result. '
       + 'Use it to visually verify a view or show a figure to the user.',
     parameters: {
+      tab: { type: 'string', description: TAB_HELP },
       width: { type: 'integer', description: `Capture width in pixels. Defaults to ${options.captureWidth}.` },
       height: { type: 'integer', description: `Capture height in pixels. Defaults to ${options.captureHeight}.` },
       transparent: { type: 'boolean', description: 'Render with a transparent background.' },
@@ -276,8 +279,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
     },
     async execute(args, exec) {
       const agent = requireAgent(exec)
-      const scene = options.sceneOf(agent.session).scene
-      if (scene === null) throw new ToolArgsError(['open a structure with mol_open before capturing'])
+      const scene = requireScene(options, agent, args.tab, 'capturing')
       const delivery = await options.hub.wait(agent.id, String(exec.callId), options.captureTimeoutMs, exec.signal)
       const ref = delivery.ref
       const savedPath = await persistCapture(ctx, agent, ref, exec.signal)
@@ -292,6 +294,21 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       }
     },
   }))
+}
+
+function requireScene(
+  options: MolToolOptions,
+  agent: Agent,
+  tab: string | undefined,
+  action: string,
+): MolSceneState {
+  const scene = options.sceneOf(agent.session, tab)
+  if (scene !== undefined) return scene
+  throw new ToolArgsError([
+    tab === undefined
+      ? `open a structure with mol_open before ${action}`
+      : `no tab page for ${tab}; call mol_open or omit tab to use the active page`,
+  ])
 }
 
 async function persistCapture(

@@ -30,8 +30,14 @@ semantics.
   `sidebar.right.tab.document` keyed by the implementation id.
 - Keep path parsing and format mapping in this adapter; core only receives bytes
   plus format. Do not add path logic to core for a preview feature.
-- The header bridge opens a new `sceneKey`; do not auto-open a scene that already
-  existed when a session was restored.
+- The projection is keyed by **tab page id (absolute path)**: `mol_open` adds or
+  replaces `tabs[path]` and sets `active`; scene tools fold into `args.tab`
+  (default `active`). Never reintroduce a single session-wide `scene`.
+- The body selects `tabs[path]` for its own tab; do not let one tab apply another
+  tab's commands. Capture pending carries the target `path`; the bridge activates
+  that tab and only its body delivers.
+- The header bridge opens a new or reopened tab; do not auto-open tabs that
+  already existed when a session was restored.
 
 ## Viewer behavior
 
