@@ -3,13 +3,17 @@
 [mol4agent](../../README_zh.md) 的 OpenCode 2 适配器：在 harness 内的侧边栏里
 用官方 Mol* 3D 视图预览分子结构，agent 通过 `mol_*` 工具直接操作。
 
-- **harness 内预览**：`mol_open`（agent）和「Open molecular structure」命令
-  （人类）在侧边栏的官方 Mol* UI 里渲染结构，无需离开 harness、无需外部应用。
+- **harness 内预览**：`mol_open`（agent）、**Ctrl+P 文件搜索**（LinkHandler）、
+  `/mol_open <path>` 斜杠命令、以及「Open molecular structure」选文件命令（人类）
+  在侧边栏的官方 Mol* UI 里渲染结构，无需离开 harness、无需外部应用。
 - **agent 操作同一页面**：`mol_style` / `mol_select` / `mol_focus` / `mol_measure`
   修改打开的页面；`mol_info` / `mol_interface` 无需打开 viewer 即可摘要。
 - **截图**：`mol_capture` 把视口渲染成 PNG 保存到 `.mol4agent/captures/`。
 - **与 DSH/ChatGPT 语义一致**：本适配器把相同的 `MolFormat`、selector、命令
   与截图语义传给 `@gcszhn/mol4agent-core`。
+- **格式**：`.pdb`、`.ent`、`.pdbqt`、`.pqr`、`.cif`、`.mmcif`、`.mcif`、`.bcif`、
+  `.mol`、`.sdf`、`.sd`、`.mol2`、`.xyz`、`.gro`，以及 `.gz` 变体（server 端先解压
+  再交给 core）。
 
 ## 架构
 
@@ -18,8 +22,9 @@
 - **server**（`exports["."]`，`src/server.ts`）：注册 `mol_*` 工具与 `mol4agent`
   RPC。只有这里能看到路径、读取字节、保存场景日志。
 - **GUI**（`exports["./gui-experimental"]`，`src/gui/`）：侧边栏 `Panel`，每个
-  打开的结构一个 Mol* viewer 标签，另有启动器与选文件命令。通过 RPC 跟随场景，
-  并渲染/回传截图。
+  打开的结构一个 Mol* viewer 标签；另有启动器、选文件命令、`/mol_open <path>`
+  斜杠命令，以及 `LinkHandler`（Ctrl+P 文件搜索与 `.pdb` 链接可打开结构）。
+  通过 RPC 跟随场景，并渲染/回传截图。
 - **RPC**（`exports["./rpc"]`，`src/rpc.ts`）：类型化的 `mol4agent` 契约。
 
 core 只接收 `{ data, format, label }` 加 JSON 命令；路径、后缀识别、IO、session
@@ -72,7 +77,9 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 
 - OpenCode 的工具结果没有内联图片内容类型，因此 `mol_capture` 返回保存路径
   （加一个 `file` 引用），而不是把 PNG 附加到模型上下文。
-- 点击文件树里的 `.pdb` 仍打开内置文本编辑器；结构预览通过 `mol_open` 或选文件
-  命令进入。`FileViewer` 拦截是后续项。
+- 点击文件树里的 `.pdb` 仍打开内置文本编辑器。请用 **Ctrl+P 文件搜索**
+  （LinkHandler）、`/mol_open <path>` 或选文件命令打开结构。注册 `"text"` kind 的
+  `FileViewer` 会被宿主忽略（它只渲染 file view 自己不渲染的 kind），所以暂无法
+  自动拦截文件树点击。
 - `mol_interface` 只解析 PDB 类 ATOM 记录；`mol_info` 尚不能从原始字节摘要 BCIF。
 - 文件上限 64 MiB；需要 WebGL 2。

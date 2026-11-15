@@ -3,9 +3,10 @@
 OpenCode 2 adapter for [mol4agent](../../README.md): an in-harness Mol* 3D viewer
 side panel that the agent operates with `mol_*` tools.
 
-- **In-harness preview**: `mol_open` (agent) and the "Open molecular structure"
-  command (human) render a structure in the side panel's official Mol* UI —
-  no external app.
+- **In-harness preview**: `mol_open` (agent), **Ctrl+P file search** (LinkHandler),
+  the `/mol_open <path>` slash command, and the "Open molecular structure"
+  pick-file command (human) render a structure in the side panel's official Mol*
+  UI — no external app.
 - **Agent-operated page**: `mol_style`, `mol_select`, `mol_focus`, `mol_measure`
   mutate the open page; `mol_info` and `mol_interface` summarize files without a
   viewer.
@@ -14,6 +15,9 @@ side panel that the agent operates with `mol_*` tools.
 - **Same molecular semantics as DSH/ChatGPT**: this adapter passes the same
   `MolFormat`, selectors, commands, and capture semantics to
   `@gcszhn/mol4agent-core`.
+- **Formats**: `.pdb`, `.ent`, `.pdbqt`, `.pqr`, `.cif`, `.mmcif`, `.mcif`,
+  `.bcif`, `.mol`, `.sdf`, `.sd`, `.mol2`, `.xyz`, `.gro`, and `.gz` variants
+  (decoded server-side before core).
 
 ## Architecture
 
@@ -23,8 +27,10 @@ The package is an OpenCode plugin with three parts:
   the `mol4agent` RPC. It is the only place that sees paths, reads bytes, and
   stores the scene log.
 - **GUI** (`exports["./gui-experimental"]`, `src/gui/`): a side `Panel` with one
-  Mol* viewer tab per open structure, plus the launcher and pick-file command.
-  It follows scenes through RPC and renders/delivers screenshots.
+  Mol* viewer tab per open structure, the launcher, the pick-file command, the
+  `/mol_open <path>` slash command, and a `LinkHandler` (Ctrl+P file search and
+  `.pdb` links open the structure). It follows scenes through RPC and
+  renders/delivers screenshots.
 - **RPC** (`exports["./rpc"]`, `src/rpc.ts`): the typed `mol4agent` contract.
 
 Core receives only `{ data, format, label }` plus JSON commands; paths, suffix
@@ -98,9 +104,11 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 - OpenCode tool results have no inline-image content type, so `mol_capture`
   returns the saved path (and a `file` reference) rather than attaching the PNG
   to the model context.
-- The file-tree `.pdb` click opens the built-in text editor; the structure
-  preview is reached through `mol_open` or the pick-file command. A `FileViewer`
-  interception is a follow-up.
+- The file-tree `.pdb` click opens the built-in text editor. Open structures via
+  **Ctrl+P file search** (LinkHandler), `/mol_open <path>`, or the pick-file
+  command. A `FileViewer` for the `"text"` kind is ignored by the host (it only
+  renders kinds the file view does not render itself), so automatic file-tree
+  interception is not possible yet.
 - `mol_interface` parses PDB-like ATOM records only; `mol_info` cannot summarize
   BCIF from raw bytes yet.
 - Files are capped at 64 MiB; WebGL 2 is required.

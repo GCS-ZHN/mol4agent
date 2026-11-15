@@ -57,28 +57,41 @@ event broadcast reaches.
   `mol_capture` returns the saved path and a `file` content reference; it cannot
   attach the PNG to the model context. Document this in the README.
 
-## GUI build (Vite, not esbuild)
+## GUI build (esbuild + JSX-free Solid)
 
-- The GUI bundle must be built with Vite via the `gui()` preset from
-  `@opencode/plugin/gui/vite` (`vite-plugin-solid`). Solid 1.9 **removed** the
-  standard `jsx`/`jsxs`/`Fragment` exports, so esbuild's automatic JSX cannot
-  compile Solid components (the `solid-js/jsx-runtime` alias is a legacy stub,
-  and `solid-js/h` is a hyperscript runtime, not a component runtime). Do not
-  replace Vite with esbuild for the GUI.
-- core imports Mol*'s theme CSS as a default-exported string; redirect `.css`
-  through Vite's `?inline` query (see `vite.config.ts`'s `cssAsText`). Vite's
-  normal CSS pipeline does not provide a string default export.
+- The GUI bundle is built with **esbuild**, not Vite. Vite's
+  `inlineDynamicImports` inlines the lazy `import("@gcszhn/mol4agent-core")`
+  eagerly, so Mol*'s Markdown dependency runs `document.createElement("i")` at
+  module scope and crashes the Electron **main** process on every fresh app
+  start (it only "worked" earlier via window hot-reload while main held an older
+  bundle). esbuild keeps the dynamic import lazy.
+- Solid 1.9 has no standalone `jsx`/`jsxs`/`Fragment` runtime (`solid-js/jsx-runtime`
+  points at core, which does not export them; `solid-js/h` is a hyperscript
+  runtime, not a component runtime). The GUI source therefore uses **no JSX**:
+  `createComponent` for components and imperative `document.createElement` for
+  elements. Do not reintroduce JSX.
 - The app shares `solid-js`, `solid-js/web`, `solid-js/store`, `effect`,
   `@opencode/*`, `electron`, and Node builtins. Everything else (Mol*, React,
   core) is bundled. Alias `react`/`react-dom` to one React 18 instance.
-- The GUI bundle's module scope is evaluated in the Electron **main** process
-  too. Lazy-import `@gcszhn/mol4agent-core` inside the viewer component so
-  Mol*/React are never evaluated in main (no DOM there).
+- core imports Mol*'s theme CSS as a default-exported string; esbuild's
+  `loader: { '.css': 'text' }` provides it. Route core through one lazy
+  `loadCore()` so its dependency graph is never inlined eagerly.
+
+## Human open
+
+- The file-tree `.pdb` click opens the built-in text editor. A `FileViewer` for
+  the `"text"` kind is ignored by the host (it only renders kinds the file view
+  does not render itself), so automatic file-tree interception is not possible
+  yet. Document this limitation in the README.
+- Provide human paths instead: **Ctrl+P file search** via `LinkHandler`, the
+  `/mol_open <path>` slash command, and the pick-file command. `LinkHandler.open`
+  may receive only the basename from the file tree; cache the full path seen in
+  `match` and reuse it in `open`.
 
 ## Verification
 
 - `pnpm --filter @gcszhn/mol4agent-opencode typecheck`, then the package build
-  (`node scripts/build.mjs && vite build`). Core must be built first.
+  (`node scripts/build.mjs`). Core must be built first.
 - The server part hot-reloads on `dist/index.js` rebuild + `/reload`; the GUI
   hot-reloads in every window on `dist/gui.cjs` rebuild. A plugin whose GUI
   first-load **failed** ("requires a module the app does not share") needs a

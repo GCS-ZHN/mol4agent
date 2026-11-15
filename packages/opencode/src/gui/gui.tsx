@@ -7,14 +7,12 @@
  *
  * @module @gcszhn/mol4agent-opencode/gui
  */
-import { Plugin, Panel, Command, MenuItem } from '@opencode/plugin/gui'
-import { FileViewer } from '@opencode/plugin/gui/file'
+import { Plugin, Panel, Command, MenuItem, LinkHandler } from '@opencode/plugin/gui'
 import { createComponent, createSignal } from 'solid-js'
 import { createStore } from 'solid-js/store'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
 import { bytesToBase64 } from '../base64.ts'
 import { Mol4Agent } from '../rpc.ts'
-import { createMolecularFileViewer } from './file-viewer.tsx'
 import { StructureViewer, type FetchedScene, type SceneInfo } from './viewer.tsx'
 
 const EXTENSIONS = ['pdb', 'ent', 'pdbqt', 'pqr', 'cif', 'mmcif', 'mcif', 'bcif', 'mol', 'sdf', 'sd', 'mol2', 'xyz', 'gro']
@@ -125,9 +123,36 @@ export default Plugin.define({
       },
     })
 
-    // Render a structure instead of plain text when the file view would show a
-    // molecular file (OpenCode classifies .pdb/.cif/... as `"text"`).
-    ctx.add(FileViewer, createMolecularFileViewer(() => ctx.appearance.mode()))
+    // Intercept clicks on a molecular file/link and open it in the Mol* panel.
+    // The file tree calls `match` with the absolute path but `open` with only
+    // the basename, so cache the full path from `match` and use it in `open`.
+    const MOLECULAR_HREF = /\.(pdb|ent|pdbqt|pqr|cif|mmcif|mcif|bcif|mol|sdf|sd|mol2|xyz|gro)(\.gz)?$/iu
+    const hrefToPath = (href: string): string =>
+      href.startsWith('file://') ? decodeURIComponent(href.slice('file://'.length)) : href
+    const isPath = (href: string): boolean => /[\\/]/.test(href)
+    const basenameOf = (href: string): string => {
+      const path = hrefToPath(href).replaceAll('\\', '/')
+      return path.slice(path.lastIndexOf('/') + 1)
+    }
+    const linkedPaths = new Map<string, string>()
+    ctx.add(LinkHandler, {
+      priority: 10,
+      match: (link) => {
+        const hit = MOLECULAR_HREF.test(link.href)
+        if (hit && isPath(link.href)) linkedPaths.set(basenameOf(link.href), hrefToPath(link.href))
+        return hit
+      },
+      open: (link) => {
+        const href = hrefToPath(link.href)
+        const path = isPath(href) ? href : (linkedPaths.get(href) ?? href)
+        const session = ctx.sessions.current()
+        void rpc.openPath({ path, cwd: session?.directory }).then((raw) => {
+          const result = raw as { ok: boolean; error?: string }
+          if (!result.ok) ctx.toast.show({ variant: 'error', title: 'Could not open structure', description: result.error })
+        })
+      },
+      exists: () => true,
+    })
 
     ctx.add(MenuItem, () => {
       const session = ctx.sessions.current()
@@ -159,6 +184,26 @@ export default Plugin.define({
         if (!result.ok) {
           ctx.toast.show({ variant: 'error', title: 'Could not open structure', description: result.error })
         }
+      },
+    }))
+
+    ctx.add(Command, () => ({
+      id: 'mol-open-path',
+      title: 'Open a molecular structure by path',
+      description: 'Open a .pdb/.cif/... path in the Mol* viewer, e.g. /mol_open fixtures/1atp.pdb',
+      keywords: 'mol open pdb cif path slash',
+      slash: { name: 'mol_open', arguments: true as const },
+      run: (input) => {
+        const path = (input ?? '').trim()
+        if (path === '') {
+          ctx.toast.show({ title: 'mol_open', description: 'Usage: /mol_open <path>' })
+          return
+        }
+        const session = ctx.sessions.current()
+        void rpc.openPath({ path, cwd: session?.directory }).then((raw) => {
+          const result = raw as { ok: boolean; error?: string }
+          if (!result.ok) ctx.toast.show({ variant: 'error', title: 'Could not open structure', description: result.error })
+        })
       },
     }))
 

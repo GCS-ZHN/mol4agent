@@ -6,8 +6,9 @@
  */
 import { readFile, stat } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 import type { MolFormat } from '@gcszhn/mol4agent-core/protocol'
-import { EXTENSION_FORMATS, baseNameOf, formatOfFile } from './formats.ts'
+import { EXTENSION_FORMATS, baseNameOf, formatOfFile, isGzipFile } from './formats.ts'
 
 /** One structure file this adapter can hand to the viewer. */
 export interface ResolvedMoleculeFile {
@@ -48,7 +49,13 @@ export async function resolveMoleculeFile(
   if (info.size > maxFileBytes) {
     throw new Error(`file is too large (${info.size} bytes; limit ${maxFileBytes})`)
   }
-  const bytes = new Uint8Array(await readFile(absolutePath, { signal }))
+  let bytes: Uint8Array = new Uint8Array(await readFile(absolutePath, { signal }))
+  if (isGzipFile(absolutePath)) {
+    bytes = new Uint8Array(gunzipSync(bytes))
+    if (bytes.byteLength > maxFileBytes) {
+      throw new Error(`decompressed file is too large (${bytes.byteLength} bytes; limit ${maxFileBytes})`)
+    }
+  }
   return {
     absolutePath,
     format,

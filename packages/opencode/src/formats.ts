@@ -28,13 +28,20 @@ export const EXTENSION_FORMATS: Readonly<Record<string, MolFormat>> = {
 /** Suffixes whose bytes are not text. */
 export const BINARY_EXTENSIONS: readonly string[] = ['bcif']
 
-/** Map a file name or path to a content format. */
+/** Map a file name or path to a content format. `.gz` variants decode to the inner suffix. */
 export function formatOfFile(fileNameOrPath: string): MolFormat | undefined {
   const normalized = fileNameOrPath.replaceAll('\\', '/')
-  const name = normalized.slice(normalized.lastIndexOf('/') + 1).toLowerCase()
+  let name = normalized.slice(normalized.lastIndexOf('/') + 1).toLowerCase()
+  if (name.endsWith('.gz')) name = name.slice(0, -3)
   const dot = name.lastIndexOf('.')
   if (dot < 0) return undefined
   return EXTENSION_FORMATS[name.slice(dot + 1)]
+}
+
+/** Whether the path is gzip-compressed (`.gz`). */
+export function isGzipFile(fileNameOrPath: string): boolean {
+  const normalized = fileNameOrPath.replaceAll('\\', '/')
+  return normalized.slice(normalized.lastIndexOf('/') + 1).toLowerCase().endsWith('.gz')
 }
 
 /** Display name for a path, without decoding a URL. */
