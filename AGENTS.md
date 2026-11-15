@@ -31,6 +31,10 @@ are in its AGENTS playbook.
   path detection, IO, or session state in core, it is in the wrong package.
 - Use the official Mol* UI (`createPluginUI` + `DefaultPluginUISpec`); do not
   reintroduce the headless viewer, the `Viewer` wrapper, or a custom toolbar.
+- Viewer state is **tab-page scoped**: one tab is one viewer and one scene.
+  Human preview-mode switches and agent `mol_open` share the body, never a
+  mutable scene across tabs. Read [architecture §1.3.1](docs/architecture.md#131-sidebar-tab-state-and-file-open-paths)
+  before changing the preview, bridge, projection, or capture routing.
 - Keep agent operations on `mol_*` tools. Shell/code is for calculations
   (interface geometry, H-bond candidates, builds), not for driving the viewer.
 - A new selector/command/tool is a cross-package change: update core semantics,

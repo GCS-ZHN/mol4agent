@@ -68,6 +68,39 @@ APIs, but **molecular behavior must be consistent**:
 A new selector/command/tool is a cross-package change: core semantics, every
 adapter, the prompt, and the relevant READMEs must be updated together.
 
+#### 1.3.1 Sidebar, tab state, and file-open paths
+
+These are acceptance requirements for every adapter with a document-preview
+surface; adapter-specific APIs and limits stay in that adapter's README.
+
+- **Sidebar visualization.** A supported molecular file opened through the
+  harness's file preview renders in the host's right sidebar with the official
+  Mol* UI, not in a separate window or a custom app shell. An agent-initiated
+  open reveals that page proactively.
+- **Tab-page state.** One preview tab is one independent viewer instance and one
+  scene. Its tab page id (for DSH: the absolute path) owns its commands, pending
+  captures, camera, representations, measurements, and control-panel state.
+  Switching tabs reattaches/preserves its viewer; it must not reload the file,
+  copy commands into another tab, or deliver a capture as another tab's. Only
+  host services such as the light/dark theme are shared. An adapter may cap
+  retained viewers (DSH: LRU 2) and must evict them without touching the active
+  tab.
+- **Human open and preview mode.** Structure preview is the default for a
+  supported molecular file. The host's existing **Open with** affordance can
+  switch that tab to plain text/code (binary-only formats such as BCIF have no
+  text fallback), and switching back returns to the structure preview without
+  losing the tab's viewer state. A human opening a file must not be silently
+  replaced by an agent tab for a different path.
+- **Agent open.** `mol_open` creates or updates a tab page keyed by the
+  structure path, makes it the active agent tab, and returns that tab page id;
+  the page opens without a human click. Scene tools (style/select/focus/measure/
+  capture) accept the id and default to the active agent tab. Operating one tab
+  must not change another; capture activates its target tab.
+- **Human/agent coexistence.** Both open paths use the same preview body and
+  scene model. Reopening the same path updates that tab (new scene key); opening
+  a different path creates an independent tab. Agent operations stay `mol_*`
+  tool calls, never page-code injection.
+
 ### 1.4 Documentation ownership
 
 | Document | Owns |
