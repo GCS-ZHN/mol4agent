@@ -13,7 +13,7 @@
 
 - Date: 2026-11-15
 - Baseline: DeepSeek Harness `0.2.2-rc.3`, Mol* `5.13.1`
-- Package version: `0.1.0`
+- Package versions: independent per package (see each `package.json`)
 
 ---
 
@@ -240,8 +240,9 @@ See the [ChatGPT README](../packages/chatgpt/README.md).
   the protocol.
 - Semantic changes (commands, selectors, style, capture) are cross-package
   changes and bump core/adapter versions.
-- Current package version: `0.1.0`. npm packages contain compiled JS/`.d.ts`,
-  required configuration/docs, and no source or `AGENTS.md`.
+- Packages version independently. Bump only the package whose code changed;
+  publishing on `main` skips versions already on npm. npm packages contain
+  compiled JS/`.d.ts`, required configuration/docs, and no source or `AGENTS.md`.
 - Packaging/release details live in package AGENTS; DSH's `engines.dsh` pins the
   supported host range.
 

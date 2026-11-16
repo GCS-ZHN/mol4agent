@@ -109,9 +109,9 @@ opencode plugin add @gcszhn/mol4agent-opencode
 ```
 
 `plugin add` 会安装包并写入**全局** `opencode.json(c)`，桌面端会在每个窗口加载
-其 GUI 部分。可用 `@0.1.0` 固定版本；用 `opencode plugin list` 确认（桌面端
-**Settings > Extensions > Plugins** 也可查看）。npm 包由 release tag 发布；首次
-发布前请先用下面的本地源码方式。
+其 GUI 部分。可用 `@0.1.1` 固定版本；用 `opencode plugin list` 确认（桌面端
+**Settings > Extensions > Plugins** 也可查看）。当 `packages/opencode/package.json`
+的版本在 `main` 上变化时会自动发布；未发布的改动请先用下面的本地源码方式。
 
 ### 从本地源码安装
 

@@ -75,7 +75,7 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 `dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理）；安装或更新
 Host bundle 后重启 DSH。
 
-npm 形式（0.1.0，发布后）：
+npm 形式（0.1.0，已发布）：
 
 ```sh
 dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
@@ -98,9 +98,9 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
 
 ### 从 GitHub marketplace 安装
 
-Codex 读取仓库里的 `.agents/plugins/marketplace.json`。可安装的插件产物由
-tag release workflow 发布到自动生成的 `plugin-dist` 分支，因此这条安装路径
-不使用 npm，也不需要在本地构建：
+Codex 读取仓库里的 `.agents/plugins/marketplace.json`。当 ChatGPT 包版本在
+`main` 上变化时，release workflow 会把可安装的插件产物发布到自动生成的
+`plugin-dist` 分支，因此这条安装路径不使用 npm，也不需要在本地构建：
 
 ```sh
 codex plugin marketplace add GCS-ZHN/mol4agent

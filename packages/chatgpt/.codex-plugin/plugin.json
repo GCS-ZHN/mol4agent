@@ -1,6 +1,6 @@
 {
   "name": "mol4agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Open PDB/mmCIF/SDF structures in an interactive Mol* viewer that the agent can operate with mol_* tools.",
   "author": {
     "name": "gcszhn"

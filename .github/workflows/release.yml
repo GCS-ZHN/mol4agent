@@ -1,12 +1,22 @@
 name: release
 
+# Per-package releases on `main`. CI must pass first, then each package is
+# published only when its own package.json version is not released yet.
+# See "Versioning and releases" in AGENTS.md.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print the release plan without publishing
+        type: boolean
+        default: true
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-main
   cancel-in-progress: false
 
 permissions:
@@ -14,11 +24,15 @@ permissions:
 
 jobs:
   release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
+          # workflow_run runs from the default branch; release the commit CI
+          # actually checked, not a newer main tip.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
@@ -34,107 +48,19 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build and test
+      - name: Verify a manual release
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          pnpm --filter @gcszhn/mol4agent-core build
-          pnpm --filter @gcszhn/mol4agent-core typecheck
-          pnpm --filter @gcszhn/mol4agent-deepseekharness typecheck
-          pnpm --filter @gcszhn/mol4agent-chatgpt typecheck
-          pnpm --filter @gcszhn/mol4agent-opencode typecheck
+          pnpm typecheck
           pnpm --filter @gcszhn/mol4agent-core test
           pnpm --filter @gcszhn/mol4agent-deepseekharness test
           pnpm --filter @gcszhn/mol4agent-opencode test
           pnpm --filter @gcszhn/mol4agent-chatgpt build
           pnpm --filter @gcszhn/mol4agent-chatgpt test
-          pnpm --filter @gcszhn/mol4agent-deepseekharness build
-          pnpm --filter @gcszhn/mol4agent-opencode build
 
-      - name: Verify package versions match tag
-        run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          test -n "$TAG" || { echo "tag must be vX.Y.Z"; exit 1; }
-          for pkg in packages/core packages/deepseek-harness packages/chatgpt packages/opencode; do
-            VERSION="$(node -p "require('./$pkg/package.json').version")"
-            if [ "$VERSION" != "$TAG" ]; then
-              echo "$pkg version $VERSION != tag $GITHUB_REF_NAME"
-              exit 1
-            fi
-          done
-          echo "versions match $GITHUB_REF_NAME"
-
-      - name: Publish Codex plugin-dist branch
+      - name: Publish packages with new versions
         env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p dist/plugins/mol4agent
-          cp -R packages/chatgpt/lib dist/plugins/mol4agent/lib
-          cp -R packages/chatgpt/skills dist/plugins/mol4agent/skills
-          cp -R packages/chatgpt/.codex-plugin dist/plugins/mol4agent/.codex-plugin
-          cp packages/chatgpt/.mcp.json dist/plugins/mol4agent/.mcp.json
-          cp packages/chatgpt/icon.svg dist/plugins/mol4agent/icon.svg
-          cp packages/chatgpt/README.md dist/plugins/mol4agent/README.md
-          cp packages/chatgpt/README_zh.md dist/plugins/mol4agent/README_zh.md
-          cd dist
-          git init -b plugin-dist
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "plugin-dist: ${GITHUB_REF_NAME}"
-          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" plugin-dist
-
-      - name: Publish core
-        working-directory: packages/core
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          if npm view "@gcszhn/mol4agent-core@$VERSION" version >/dev/null 2>&1; then
-            echo "@gcszhn/mol4agent-core@$VERSION is already published; skipping"
-          else
-            pnpm publish --access public --no-git-checks
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish DSH adapter
-        working-directory: packages/deepseek-harness
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          if npm view "@gcszhn/mol4agent-deepseekharness@$VERSION" version >/dev/null 2>&1; then
-            echo "@gcszhn/mol4agent-deepseekharness@$VERSION is already published; skipping"
-          else
-            pnpm publish --access public --no-git-checks
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish OpenCode adapter
-        working-directory: packages/opencode
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          if npm view "@gcszhn/mol4agent-opencode@$VERSION" version >/dev/null 2>&1; then
-            echo "@gcszhn/mol4agent-opencode@$VERSION is already published; skipping"
-          else
-            pnpm publish --access public --no-git-checks
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Build release notes
-        run: |
-          PREV_TAG="$(git tag --sort=-v:refname | grep -v -F -x "$GITHUB_REF_NAME" | head -n 1 || true)"
-          if [ -n "$PREV_TAG" ]; then
-            RANGE="$PREV_TAG..HEAD"
-          else
-            RANGE="HEAD"
-          fi
-          {
-            echo "## Changes"
-            echo
-            echo '```'
-            git log --oneline --no-merges "$RANGE"
-            echo '```'
-          } > release-notes.md
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          body_path: release-notes.md
-          generate_release_notes: true
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
+        run: node .github/scripts/release-packages.mjs

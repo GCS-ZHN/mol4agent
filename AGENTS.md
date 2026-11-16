@@ -34,6 +34,56 @@ The canonical cross-harness goals and acceptance criteria live in
 behavior; do not restate them here. Implementation requirements for each package
 are in its AGENTS playbook.
 
+## Versioning and releases
+
+### Version numbers
+
+- Every package under `packages/` owns its version; there is no repository-wide
+  release version. The root `package.json` version is metadata, not a release
+  marker.
+- Bump a package version in the same PR that changes its published artifact.
+  Do not use a separate version-only PR, and do not create release tags.
+- Patch (`0.1.1`) is a bug fix with no API or behavior-contract change. Minor
+  (`0.2.0`) adds a capability or changes observable behavior; while a package
+  is `0.x`, a minor bump is also a compatibility boundary and may break
+  consumers. Major (`1.0.0`) is breaking; compatibility is not guaranteed.
+- Bump only packages whose published artifact changes. Repo-only changes (CI,
+  `AGENTS.md`, architecture docs, root README) bump nothing. A package README
+  ships in the tarball, so changing one counts as an artifact change.
+- Never reuse a published version. The release workflow skips versions already
+  present on npm or `plugin-dist`; ship a fix with a new version.
+- A change spanning core and adapters bumps core plus every adapter that must
+  ship it. An adapter-only change bumps only that adapter; do not bump core or
+  unrelated adapters.
+- The ChatGPT adapter keeps `package.json`, `.codex-plugin/plugin.json`, and the
+  `VERSION` constants in `src/server.ts` and `src/client/main.ts` equal. The
+  release script fails on a `package.json`/`plugin.json` version mismatch.
+
+### Core dependency and bundled adapters
+
+- Adapters declare core as `workspace:^`, never `workspace:*`; publishing
+  rewrites it to `^x.y.z`. Other published dependencies use ranges too, except
+  host-provided peer APIs that must pin the host version (DSH).
+- Every adapter bundles core into its artifacts: DSH `host.js`/`client.js`,
+  ChatGPT `server.js`/`viewer.html`, and OpenCode `index.js`/`gui.cjs`. A core
+  patch does **not** reach an installed adapter on its own. Each adapter that
+  should ship the fix must bump and republish; the rebuild embeds the new core,
+  and `workspace:^` rewrites the manifest without a dependency edit.
+- Core patch releases can therefore be adopted by republishing adapters with no
+  code change. Core minor/major releases are compatibility boundaries: review
+  and test each adapter, then bump and republish the ones that adopt them.
+
+### Release execution
+
+- Releases run from `.github/workflows/release.yml` after `ci` succeeds on
+  `main`. `.github/scripts/release-packages.mjs` checks each package's version
+  against its release target (npm for core/DSH/OpenCode, the `plugin-dist`
+  branch for ChatGPT) and skips versions already published. Do not reintroduce
+  tag-triggered releases or a repository-wide version check.
+- The ChatGPT plugin has no npm package: its release artifact is the
+  force-pushed `plugin-dist` branch, and its version bump is what republishes
+  it.
+
 ## Cross-cutting constraints
 
 - Treat the core/adapter boundary in the READMEs as immutable. If a change needs
@@ -58,11 +108,11 @@ are in its AGENTS playbook.
   behavior.
 - A new package/adapter is a cross-cutting change: wire it into
   `.github/workflows/ci.yml` (install, core build, typecheck, unit tests,
-  package build) and, when publishable, into `.github/workflows/release.yml`
-  (build/test, version-match loop, publish step). Every package ships unit tests
-  for its pure logic (suffix/format detection, selectors, scene store, capture
-  hub, summaries) plus a `test` script that CI runs; a manual harness check does
-  not replace those tests.
+  package build) and, when publishable, into
+  `.github/scripts/release-packages.mjs` (publish step and ordering). Every
+  package ships unit tests for its pure logic (suffix/format detection,
+  selectors, scene store, capture hub, summaries) plus a `test` script that CI
+  runs; a manual harness check does not replace those tests.
 - Documentation defaults to English with a synchronized `README_zh.md`. Update
   the relevant READMEs when behavior or APIs change.
 - npm packages contain compiled JS/`.d.ts` plus only the assets/config each

@@ -137,10 +137,10 @@ opencode plugin add @gcszhn/mol4agent-opencode
 
 `plugin add` installs the package and writes it to the **global**
 `opencode.json(c)`, so the desktop app loads its GUI part in every window.
-Pin an exact version with `@0.1.0`, and confirm with `opencode plugin list`
+Pin an exact version with `@0.1.1`, and confirm with `opencode plugin list`
 (or **Settings > Extensions > Plugins** in the desktop app). The npm package is
-published from release tags; before the first tagged release, use the local
-checkout path below.
+published automatically when `packages/opencode/package.json` changes version on
+`main`; use the local checkout path below to test unreleased changes.
 
 ### From a local checkout
 

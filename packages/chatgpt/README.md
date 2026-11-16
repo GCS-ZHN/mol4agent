@@ -155,8 +155,8 @@ external CSP domains; the viewer and Mol* assets are inlined.
 
 Codex installs plugins from Git, not npm. This repository exposes
 `.agents/plugins/marketplace.json`; the `mol4agent` entry points at the
-generated `plugin-dist` branch, where the tag release workflow publishes the
-built `lib/` payload:
+generated `plugin-dist` branch, where the release workflow publishes the built
+`lib/` payload whenever the ChatGPT package version changes:
 
 ```sh
 codex plugin marketplace add GCS-ZHN/mol4agent

@@ -308,7 +308,7 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 `dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理），然后重启
 DSH。
 
-npm 形式（0.1.0，发布后）：
+npm 形式（0.1.0，已发布）：
 
 ```sh
 dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0

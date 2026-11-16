@@ -85,7 +85,7 @@ also be listed in `dsh.profile.bundles` in that profile's `package.json`; the
 DSH Plugin manager does this when it installs/enables a bundle. Restart DSH after
 installing or updating the Host bundle.
 
-npm form (0.1.0, after publishing):
+npm form (0.1.0, published):
 
 ```sh
 dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
@@ -116,8 +116,8 @@ change (`lib/client.js`) only needs a page refresh.
 
 Codex reads the marketplace manifest in `.agents/plugins/marketplace.json`.
 The installable plugin payload is published to the generated `plugin-dist`
-branch by the tag release workflow, so this path does not use npm and does not
-require a local build:
+branch when the ChatGPT package version changes on `main`, so this path does not
+use npm and does not require a local build:
 
 ```sh
 codex plugin marketplace add GCS-ZHN/mol4agent
