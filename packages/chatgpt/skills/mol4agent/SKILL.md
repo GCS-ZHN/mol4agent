@@ -12,14 +12,17 @@ structure file as plain text, and do not drive the viewer with shell commands.
 
 1. `mol_info` first when you need chain ids, residue numbers, ligands, or atom
    counts. It does not open a page.
-2. `mol_open` with the path to show the structure. The viewer appears as an MCP
-   App card in the conversation. The tool returns a compact summary, not the
-   file.
+2. `mol_open` **once per structure** with the path to show it. The viewer
+   appears as an MCP App card in the conversation, and the tool returns a
+   compact summary instead of the file. Do not call `mol_open` again for the
+   same path just to change the view: it replaces the active scene and resets
+   the camera. Reuse the open scene with the tools below.
 3. Operate the open scene:
    - `mol_style` for representation/color; add `target` for a selection only.
    - `mol_select` to select/highlight; `mol_focus` to frame it.
    - `mol_measure` for distance/angle/dihedral.
-4. `mol_capture` to return a PNG. The viewer card must still be mounted.
+4. `mol_capture` to return a PNG from the existing viewer tab. It does not
+   mount another card; the tab must still be open.
 
 ## Selectors
 
@@ -67,7 +70,11 @@ Then style each returned range:
 ## Notes
 
 - Paths may be absolute or relative to the workspace.
-- One scene is active at a time; `mol_open` replaces it.
+- One scene is active at a time. Open each structure once, then adjust the
+  current scene with `mol_style` / `mol_select` / `mol_focus` / `mol_measure` /
+  `mol_capture`. Calling `mol_open` again for the same file restarts the scene
+  instead of applying an adjustment.
 - BCIF renders but cannot be summarized by `mol_info` yet.
 - `mol_interface` supports PDB-like ATOM files only.
-- If `mol_capture` times out, keep the viewer card open and retry.
+- If `mol_capture` times out, keep the viewer tab open and retry; reopen the
+  structure only if the tab was closed.
