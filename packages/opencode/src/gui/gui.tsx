@@ -7,9 +7,16 @@
  * the agent tool `mol_open`, and Ctrl+P plus the pick-file command cover the
  * human paths.
  *
+ * The window's plugin host always loads GUI bundles from, and binds
+ * `ctx.client` to, the app's **built-in** server. A session can belong to a
+ * remote server, so every RPC call goes through that session's own
+ * `session.server.client`; paths are forwarded raw and resolved on the server
+ * that owns the session. Never send a desktop-local path or a client-computed
+ * `cwd` to a remote server.
+ *
  * Scenes follow the routed session: a session switch resets the local scene
- * list, refreshes it from the server, and claims captures that were requested
- * while another session was routed.
+ * list, refreshes it from that session's server, and claims captures that were
+ * requested while another session was routed.
  *
  * Built without JSX (esbuild + `createComponent` + imperative DOM): Solid 1.9
  * has no standalone JSX runtime, and the GUI must keep core's chunk lazy so
@@ -23,6 +30,7 @@ import { createStore, reconcile } from 'solid-js/store'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
 import { bytesToBase64 } from '../base64.ts'
 import { Mol4Agent } from '../rpc.ts'
+import { MOLECULAR_HREF, basenameOf, hrefToPath, isPathLike, isRemoteLink } from './links.ts'
 import { captureDecision, mergeScenes, missingPaths, routeSceneEvent, selectScene } from './routing.ts'
 import { StructureGroup, StructurePool } from './structure-group.ts'
 import { type FetchedScene, type SceneInfo } from './viewer.tsx'
@@ -53,9 +61,36 @@ interface SceneEvent {
   readonly open?: boolean
 }
 
+/** One event subscription per server, replaced when that server's client restarts. */
+interface ServerWatch {
+  readonly client: unknown
+  readonly offs: readonly (() => void)[]
+}
+
 export default Plugin.define({
   setup(ctx) {
-    const rpc = ctx.client.rpc(Mol4Agent)
+    /**
+     * The RPC client of the server that owns `session`. `ctx.client` is always
+     * the built-in local server, which is the wrong server for a remote session.
+     */
+    const rpcOf = (session: SessionRef) => {
+      // Read the live server ref: a restart or re-authentication replaces its
+      // client under the same server id.
+      const server = ctx.servers.get(session.server.id) ?? session.server
+      return server.client.rpc(Mol4Agent)
+    }
+    /**
+     * RPC methods are location-scoped; send the session's server-side directory
+     * so a multi-workspace server routes to the instance that owns the session.
+     * It is the server's own path, never a client-local one.
+     */
+    const optionsOf = (session: SessionRef) => {
+      const directory = session.location?.directory
+      return directory === undefined ? undefined : { location: { directory } }
+    }
+    const sessionOf = (sessionID: string): SessionRef | undefined =>
+      ctx.sessions.list().find(session => session.id === sessionID)
+
     /** Scenes per session: sessionID -> path -> scene. */
     const [scenes, setScenes] = createStore<Record<string, Record<string, SceneInfo>>>({})
     /** Active tab path per session, for the menu item. */
@@ -87,8 +122,11 @@ export default Plugin.define({
     /** Viewers outlive a panel render and the session switch that unmounts it. */
     const pool = new StructurePool({
       scene: (sessionID: string, path: string) => selectScene(scenes, sessionID, path),
-      fetchScene: async (sceneId: string, sessionID: string) =>
-        (await rpc.fetchScene({ sceneId, sessionID })) as unknown as FetchedScene,
+      fetchScene: async (sceneId: string, sessionID: string) => {
+        const session = sessionOf(sessionID)
+        if (session === undefined) throw new Error(`session ${sessionID} is no longer open`)
+        return (await rpcOf(session).fetchScene({ sceneId, sessionID }, optionsOf(session))) as unknown as FetchedScene
+      },
       theme: () => ctx.appearance.mode(),
       onViewer: trackViewer,
     })
@@ -98,14 +136,13 @@ export default Plugin.define({
     const FIRST_FRAME_SETTLE_MS = 400
 
     let refreshToken = 0
-    let lastSessionID: string | undefined
+    let lastSessionKey: string | undefined
     let disposed = false
 
     const currentSessionID = (): string => ctx.sessions.current()?.id ?? ''
 
     const labelOf = (path: string): string => {
-      const normalized = path.replaceAll('\\', '/')
-      const name = normalized.slice(normalized.lastIndexOf('/') + 1)
+      const name = basenameOf(path)
       return name === '' ? path : name
     }
 
@@ -128,12 +165,13 @@ export default Plugin.define({
       ctx.layout.open(`${ctx.id}:${path}`, session, { tab: 'select', ...(background ? { background: true } : {}) })
     }
 
-    /** Load one session's scenes; stale responses must not overwrite a new route. */
-    const refresh = async (sessionID: string): Promise<void> => {
+    /** Load one session's scenes from the server that owns it; stale responses must not overwrite a new route. */
+    const refresh = async (session: SessionRef): Promise<void> => {
+      const sessionID = session.id
       if (sessionID === '') return
       const token = ++refreshToken
       try {
-        const list = (await rpc.listScenes({ sessionID })) as unknown as SceneList
+        const list = (await rpcOf(session).listScenes({ sessionID }, optionsOf(session))) as unknown as SceneList
         if (disposed || token !== refreshToken) return
         // `reconcile` removes paths the session no longer has; a plain
         // set would leave stale keys behind. Keep other sessions' maps so a
@@ -194,9 +232,10 @@ export default Plugin.define({
       if (disposed || capture.sessionID !== currentSessionID()) return
       const session = ctx.sessions.current()
       if (session?.id !== capture.sessionID) return
+      const rpc = rpcOf(session)
       // Ensure the scene store has this scene (the panel `list` filters through
       // it), then reveal the target tab so its viewer mounts.
-      await refresh(capture.sessionID)
+      await refresh(session)
       if (disposed || capture.sessionID !== currentSessionID()) return
       openTab(session, capture.path, false)
       const viewer = await waitForViewer(capture.sceneId, 15_000)
@@ -206,21 +245,27 @@ export default Plugin.define({
       const decision = captureDecision(capture.sessionID, currentSessionID(), viewer !== undefined)
       if (decision === 'leave-pending') return
       if (decision === 'fail') {
-        await rpc.failCapture({
-          captureId: capture.captureId,
-          message:
-            'the structure viewer tab is not visible; open the molecular viewer from the side panel and retry mol_capture',
-        })
+        await rpc.failCapture(
+          {
+            captureId: capture.captureId,
+            message:
+              'the structure viewer tab is not visible; open the molecular viewer from the side panel and retry mol_capture',
+          },
+          optionsOf(session),
+        )
         return
       }
       if (viewer === undefined) return
       if (!(await waitForViewerLayout(viewer, 5000))) {
         if (capture.sessionID !== currentSessionID()) return
-        await rpc.failCapture({
-          captureId: capture.captureId,
-          message:
-            'the structure viewer tab has no layout size; open the side panel and retry mol_capture',
-        })
+        await rpc.failCapture(
+          {
+            captureId: capture.captureId,
+            message:
+              'the structure viewer tab has no layout size; open the side panel and retry mol_capture',
+          },
+          optionsOf(session),
+        )
         return
       }
       if (capture.sessionID !== currentSessionID()) return
@@ -229,18 +274,25 @@ export default Plugin.define({
       if (settle > 0) await new Promise(resolve => setTimeout(resolve, settle))
       try {
         const png = await viewer.capture({ width: capture.width, height: capture.height, transparent: capture.transparent })
-        await rpc.deliverCapture({ captureId: capture.captureId, data: bytesToBase64(png), width: capture.width, height: capture.height })
+        await rpc.deliverCapture(
+          { captureId: capture.captureId, data: bytesToBase64(png), width: capture.width, height: capture.height },
+          optionsOf(session),
+        )
       } catch (reason) {
         if (disposed || capture.sessionID !== currentSessionID()) return
-        await rpc.failCapture({ captureId: capture.captureId, message: reason instanceof Error ? reason.message : String(reason) })
+        await rpc.failCapture(
+          { captureId: capture.captureId, message: reason instanceof Error ? reason.message : String(reason) },
+          optionsOf(session),
+        )
       }
     }
 
     /** RPC events are live-only, so claim captures queued before this route. */
-    const claimPending = async (sessionID: string, session: SessionRef | undefined): Promise<void> => {
-      if (sessionID === '' || session === undefined) return
+    const claimPending = async (session: SessionRef | undefined): Promise<void> => {
+      if (session === undefined || session.id === '') return
+      const sessionID = session.id
       try {
-        const pending = (await rpc.pendingCaptures({ sessionID })) as unknown as {
+        const pending = (await rpcOf(session).pendingCaptures({ sessionID }, optionsOf(session))) as unknown as {
           captures: readonly CaptureRequest[]
         }
         if (disposed || sessionID !== currentSessionID()) return
@@ -250,26 +302,7 @@ export default Plugin.define({
       }
     }
 
-    createEffect(() => {
-      const session = ctx.sessions.current()
-      const sessionID = session?.id ?? ''
-      if (sessionID === lastSessionID) return
-      lastSessionID = sessionID
-      if (session === undefined || sessionID === '') return
-      void (async () => {
-        await refresh(sessionID)
-        if (disposed || sessionID !== currentSessionID()) return
-        const path = pendingOpen.get(sessionID)
-        if (path !== undefined) {
-          pendingOpen.delete(sessionID)
-          openTab(session, path, true)
-        }
-        await claimPending(sessionID, session)
-      })()
-    })
-
-    const offScene = rpc.events.on('scene', (event) => {
-      const data = (event as unknown as { data: SceneEvent }).data
+    const handleScene = (data: SceneEvent | undefined): void => {
       const route = routeSceneEvent(currentSessionID(), data)
       if (route.action === 'ignore') return
       if (route.action === 'queue') {
@@ -279,7 +312,8 @@ export default Plugin.define({
         return
       }
       const session = ctx.sessions.current()
-      void refresh(route.sessionID).then(() => {
+      if (session === undefined || session.id !== route.sessionID) return
+      void refresh(session).then(() => {
         if (disposed) return
         if (route.sessionID !== currentSessionID()) {
           // Routed away while refreshing: keep the open for the next visit.
@@ -288,13 +322,63 @@ export default Plugin.define({
         }
         // Always reopen on `open` (also when the active path is unchanged, e.g.
         // the user closed the tab and `mol_open` reopened the same file).
-        if (route.path !== undefined) openTab(session, route.path, true)
+        if (route.path !== undefined) openTab(ctx.sessions.current(), route.path, true)
       })
-    })
-    const offCapture = rpc.events.on('capture', (event) => {
-      const data = (event as unknown as { data: CaptureEvent }).data
+    }
+
+    const handleCapture = (data: CaptureEvent | undefined): void => {
       if (data?.sessionID !== undefined && data.sessionID !== currentSessionID()) return
-      void deliver(data)
+      if (data !== undefined) void deliver(data)
+    }
+
+    createEffect(() => {
+      const session = ctx.sessions.current()
+      const key = session?.key ?? ''
+      if (key === lastSessionKey) return
+      lastSessionKey = key
+      if (session === undefined) return
+      void (async () => {
+        await refresh(session)
+        if (disposed || session.key !== (ctx.sessions.current()?.key ?? '')) return
+        const path = pendingOpen.get(session.id)
+        if (path !== undefined) {
+          pendingOpen.delete(session.id)
+          openTab(session, path, true)
+        }
+        await claimPending(session)
+      })()
+    })
+
+    /**
+     * RPC events are broadcast per server. Subscribe on every server that has an
+     * open session, not just the routed one, so an `mol_open` in a background
+     * session can still queue its tab. Re-subscribe when a server restarts and
+     * hands out a new client.
+     */
+    const watches = new Map<string, ServerWatch>()
+    createEffect(() => {
+      const live = new Set<string>()
+      for (const session of ctx.sessions.list()) {
+        const server = ctx.servers.get(session.server.id) ?? session.server
+        live.add(server.id)
+        const client = server.client
+        const watch = watches.get(server.id)
+        if (watch?.client === client) continue
+        watch?.offs.forEach(off => off())
+        const rpc = client.rpc(Mol4Agent)
+        watches.set(server.id, {
+          client,
+          offs: [
+            rpc.events.on('scene', (event) => handleScene((event as unknown as { data: SceneEvent }).data)),
+            rpc.events.on('capture', (event) => handleCapture((event as unknown as { data: CaptureEvent }).data)),
+          ],
+        })
+      }
+      for (const [id, watch] of watches) {
+        if (live.has(id)) continue
+        watch.offs.forEach(off => off())
+        watches.delete(id)
+      }
     })
 
     ctx.add(Panel, {
@@ -334,73 +418,35 @@ export default Plugin.define({
     // file tree does not.
     // `match` sees the absolute path but `open` may get only the basename, so
     // cache the full path from `match` and reuse it in `open`.
-    const MOLECULAR_HREF = /\.(pdb|ent|pdbqt|pqr|cif|mmcif|mcif|bcif|mol|sdf|sd|mol2|xyz|gro)(\.gz)?$/iu
-    const isWindowsDrive = (href: string): boolean => /^[a-z]:[\\/]/iu.test(href)
-    const hrefToPath = (href: string): string => {
-      if (!href.startsWith('file://')) return href
-      let path: string
-      try {
-        path = decodeURIComponent(href.slice('file://'.length))
-      } catch {
-        path = href.slice('file://'.length)
-      }
-      // `file:///C:/...` decodes to `/C:/...`; drop the URL-only slash.
-      return /^\/[a-z]:[\\/]/iu.test(path) ? path.slice(1) : path
-    }
-    const isRemote = (href: string): boolean =>
-      !href.startsWith('file://') && !isWindowsDrive(href) && /^[a-z][a-z0-9+.-]*:/iu.test(href)
-    const isAbsolutePath = (href: string): boolean =>
-      href.startsWith('/') || href.startsWith('\\') || isWindowsDrive(href)
-    const isPath = (href: string): boolean => /[\\/]/u.test(href)
-    const basenameOf = (href: string): string => {
-      const path = hrefToPath(href).replaceAll('\\', '/')
-      return path.slice(path.lastIndexOf('/') + 1)
-    }
-    const joinPath = (left: string, right: string): string => {
-      if (right === '' || right === '.') return left
-      return `${left.replace(/[\\/]+$/u, '')}/${right.replace(/^[\\/]+/u, '')}`
-    }
     const linkedPaths = new Map<string, string>()
     ctx.add(LinkHandler, {
       priority: 10,
       match: (link) => {
-        if (isRemote(link.href)) return false
+        if (isRemoteLink(link.href)) return false
         // Only exact workspace files or path-like text: a bare `foo.pdb` in
         // prose must not become a link.
-        if (link.exact !== true && !isPath(link.href)) return false
+        if (link.exact !== true && !isPathLike(link.href)) return false
         const hit = MOLECULAR_HREF.test(link.href)
-        if (hit && isPath(link.href)) linkedPaths.set(basenameOf(link.href), hrefToPath(link.href))
+        if (hit && isPathLike(link.href)) linkedPaths.set(basenameOf(link.href), hrefToPath(link.href))
         return hit
       },
       open: (link) => {
-        if (isRemote(link.href)) return
+        if (isRemoteLink(link.href)) return
         const href = hrefToPath(link.href)
-        const resolved = isPath(href) ? href : (linkedPaths.get(basenameOf(href)) ?? href)
+        const resolved = isPathLike(href) ? href : (linkedPaths.get(basenameOf(href)) ?? href)
         const session = link.session ?? ctx.sessions.current()
-        const sessionID = link.session?.id ?? currentSessionID()
-        // Only use the link's own workspace. Falling back to the routed
-        // session's directory would resolve another session's relative path in
-        // the wrong workspace.
-        const directory = link.session === undefined
-          ? ctx.sessions.current()?.directory
-          : link.session.location?.directory
-        if (link.session !== undefined && directory === undefined) {
+        if (session === undefined) {
           ctx.toast.show({
             variant: 'error',
             title: 'Could not open structure',
-            description: 'The session workspace is not available yet; try again in a moment.',
+            description: 'No session is routed; open the structure from a session.',
           })
           return
         }
-        const baseDirectory = link.base === undefined
-          ? directory
-          : isAbsolutePath(link.base)
-            ? link.base
-            : directory === undefined
-              ? undefined
-              : joinPath(directory, link.base)
-        const cwd = isAbsolutePath(resolved) ? directory : baseDirectory
-        void rpc.openPath({ path: resolved, cwd: cwd === '' ? undefined : cwd, sessionID }).then((raw) => {
+        // Send the path and the link base unchanged. The server that owns the
+        // session resolves them in its own namespace; the desktop may be a
+        // different machine or OS from that server.
+        void rpcOf(session).openPath({ path: resolved, base: link.base, sessionID: session.id }, optionsOf(session)).then((raw) => {
           const result = raw as { ok: boolean; path?: string; tab?: string; error?: string }
           if (!result.ok) {
             ctx.toast.show({ variant: 'error', title: 'Could not open structure', description: result.error })
@@ -410,10 +456,10 @@ export default Plugin.define({
         })
       },
       exists: (link) => {
-        if (isRemote(link.href)) return false
+        if (isRemoteLink(link.href)) return false
         // The GUI has no filesystem, so only claim links the host marked exact
         // or that are visibly paths.
-        return link.exact === true || isPath(link.href)
+        return link.exact === true || isPathLike(link.href)
       },
     })
 
@@ -439,10 +485,22 @@ export default Plugin.define({
       run: async () => {
         if (!ctx.desktop) return
         const session = ctx.sessions.current()
+        if (session === undefined) return
+        // The system picker names a file on this computer. That is the session
+        // server's namespace only when the server is local to this machine.
+        if (session.server.local === false) {
+          ctx.toast.show({
+            variant: 'error',
+            title: 'Cannot pick a file on the session server',
+            description:
+              'The file picker selects files on this computer. For a remote server, use Ctrl+P file search, click a .pdb/.cif path in the conversation, or ask the agent to run mol_open.',
+          })
+          return
+        }
         const picked = await ctx.desktop.pick({ extensions: EXTENSIONS, multiple: false })
         const path = picked?.[0]
         if (!path) return
-        const result = (await rpc.openPath({ path, cwd: session?.directory, sessionID: currentSessionID() })) as unknown as {
+        const result = (await rpcOf(session).openPath({ path, sessionID: session.id }, optionsOf(session))) as unknown as {
           ok: boolean
           tab?: string
           error?: string
@@ -457,8 +515,8 @@ export default Plugin.define({
 
     return () => {
       disposed = true
-      offScene()
-      offCapture()
+      for (const watch of watches.values()) watch.offs.forEach(off => off())
+      watches.clear()
       pool.disposeAll()
       for (const viewer of viewers.values()) viewer.dispose()
       viewers.clear()

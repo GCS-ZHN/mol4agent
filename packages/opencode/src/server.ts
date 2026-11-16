@@ -68,7 +68,12 @@ export default Plugin.define({
       } catch (reason) {
         console.warn('[mol4agent] could not read the session directory', reason)
       }
-      return process.cwd()
+      // Never fall back to the server's process cwd: that can silently read a
+      // same-named file from the wrong workspace.
+      throw new Error(
+        `could not resolve the workspace directory for session ${sessionID}; `
+        + 'open a structure from an active session or pass an absolute server-side path',
+      )
     }
 
     const requireScene = (sessionID: string, action: string, tab: string | undefined): SceneSnapshot => {
@@ -97,10 +102,20 @@ export default Plugin.define({
         return data
       },
       async openPath(input) {
-        const { path, cwd, sessionID } = input as { path: string; cwd?: string; sessionID?: string }
+        const { path, cwd, base, sessionID } = input as {
+          path: string
+          cwd?: string
+          base?: string
+          sessionID?: string
+        }
         try {
-          const base = cwd ?? process.cwd()
-          const file = await resolveMoleculeFile(base, path, MAX_FILE_BYTES, new AbortController().signal)
+          // Resolution belongs to the server that owns the session. The GUI may
+          // be a desktop window on another machine (or OS), so its `cwd` is only
+          // a fallback for callers that have no session.
+          const root = sessionID === undefined || sessionID === ''
+            ? (cwd ?? process.cwd())
+            : await sessionDirectory(sessionID)
+          const file = await resolveMoleculeFile(root, path, MAX_FILE_BYTES, new AbortController().signal, base)
           const scene = store.open(sessionID ?? '', {
             path: file.absolutePath,
             label: file.label,

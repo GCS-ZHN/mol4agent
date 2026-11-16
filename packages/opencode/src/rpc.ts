@@ -69,7 +69,12 @@ export const Mol4Agent = Rpc.define({
     openPath: {
       input: {
         type: 'object',
-        properties: { path: { type: 'string' }, cwd: { type: 'string' }, sessionID: { type: 'string' } },
+        properties: {
+          path: { type: 'string' },
+          cwd: { type: 'string' },
+          base: { type: 'string' },
+          sessionID: { type: 'string' },
+        },
         required: ['path'],
         additionalProperties: false,
       },

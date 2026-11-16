@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { gzipSync } from 'node:zlib'
-import { resolveMoleculeFile } from '../src/paths.ts'
+import { resolveMoleculeFile, resolveServerPath } from '../src/paths.ts'
 
 const PDB = 'ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\nEND\n'
 const LIMIT = 1024 * 1024
@@ -94,4 +94,51 @@ test('respects an aborted signal', async () => {
   const cwd = await workspace()
   await writeFile(join(cwd, 'abort.pdb'), PDB)
   await assert.rejects(resolveMoleculeFile(cwd, 'abort.pdb', LIMIT, AbortSignal.abort()))
+})
+
+test('resolves a relative path against the link base directory', async () => {
+  const cwd = await workspace()
+  await mkdir(join(cwd, 'ligands'), { recursive: true })
+  await writeFile(join(cwd, 'ligands', 'aspirin.sdf'), 'aspirin\n')
+  const file = await resolveMoleculeFile(cwd, 'aspirin.sdf', LIMIT, signal(), 'ligands')
+  assert.equal(file.absolutePath, join(cwd, 'ligands', 'aspirin.sdf'))
+  assert.equal(file.label, 'aspirin.sdf')
+})
+
+test('an absolute path ignores the link base', () => {
+  const path = resolveServerPath('/workspace', '/data/example.pdb', 'elsewhere')
+  assert.equal(path, '/data/example.pdb')
+})
+
+test('rejects Windows absolute paths on a POSIX server', { skip: process.platform === 'win32' }, () => {
+  assert.throws(
+    () => resolveServerPath('/workspace', 'C:\\data\\corp\\example.pdb'),
+    /Windows path, but the OpenCode server runs on POSIX/u,
+  )
+  assert.throws(
+    () => resolveServerPath('/workspace', '/C:/data/corp/example.pdb'),
+    /Windows path, but the OpenCode server runs on POSIX/u,
+  )
+  assert.throws(
+    () => resolveServerPath('/workspace', '\\\\server\\share\\example.pdb'),
+    /Windows path, but the OpenCode server runs on POSIX/u,
+  )
+})
+
+test('rejects Windows separators in relative paths on a POSIX server', { skip: process.platform === 'win32' }, () => {
+  assert.throws(
+    () => resolveServerPath('/workspace', 'example\\5jds.pdb'),
+    /Windows path separators, but the OpenCode server runs on POSIX/u,
+  )
+})
+
+test('rejects URLs instead of treating them as paths', () => {
+  assert.throws(
+    () => resolveServerPath('/workspace', 'https://example.test/1crn.pdb'),
+    /is a URL, not a filesystem path/u,
+  )
+  assert.throws(
+    () => resolveServerPath('/workspace', 'example.pdb', 'https://example.test/files'),
+    /path base is a URL, not a filesystem path/u,
+  )
 })

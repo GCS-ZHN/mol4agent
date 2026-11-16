@@ -179,6 +179,12 @@ plugins. Then ask the agent:
 > Open fixtures/1atp.pdb, use cartoon with chain-id coloring, highlight ATP,
 > focus it, and capture a screenshot.
 
+For a **remote (SSH) session**, install the plugin on both the desktop machine
+(global config: the panel and picker) and the server (the `mol_*` tools). The
+viewer RPC is routed to the session's own server, and paths are resolved there.
+A remote-only install exposes the tools without a desktop panel. See
+[Remote servers and the web](packages/opencode/README.md#remote-servers-and-the-web).
+
 Each structure tab keeps its camera, style, and selection while it stays open;
 close unused tabs (each live viewer holds a WebGL context). See the
 [OpenCode adapter README](packages/opencode/README.md) for tools and limitations.

@@ -48,6 +48,32 @@ event broadcast reaches. The key is stable and carries no schema version while
 the package is unreleased; a dev hot reload that changes the store shape can
 keep the old instance (`??=`), so restart the server after such a change.
 
+### Remote sessions (client vs. server namespace)
+
+- OpenCode 2.3's window plugin host loads `./gui-experimental` bundles from, and
+  binds the GUI's `ctx.client` to, the **built-in local server** — even when the
+  routed session is on a remote (SSH) server. Never call the plugin RPC through
+  `ctx.client`: use `session.server.client.rpc(Mol4Agent)` and pass the
+  session's server-side `location` (`session.location.directory`) in the call
+  options. Otherwise `openPath` runs on the desktop's OS and a POSIX server path
+  becomes `C:\data\...` (the remote-server bug in issue #5).
+- Subscribe to `scene`/`capture` events on **every server that has an open
+  session** (`ctx.sessions.list()`), not only the routed session's server, and
+  re-subscribe when a server's `client` changes. The GUI's own `ctx.client`
+  events only cover the built-in server.
+- The GUI forwards the host's raw `href` (plus `link.base`) to `openPath`. It
+  must not decide absoluteness, join `cwd`, strip drive letters, or apply
+  `path.win32`/`path.posix` rules: `paths.ts` resolves in the server's namespace
+  and rejects foreign styles with a clear error. A `file:///C:/...` link is left
+  as `/C:/...`; the Windows server normalizes it and a POSIX server rejects it.
+- `ctx.desktop.pick` returns a path on the desktop machine. Do not call it for a
+  session whose `server.local` is false; direct the user to Ctrl+P, conversation
+  links, or `mol_open`, which all resolve on the session's server.
+- A remote-only install has no GUI panel (the desktop does not load GUI bundles
+  from non-builtin servers). The GUI and tools halves are installed separately:
+  desktop global config for the panel, remote server config for tools. Keep this
+  matrix in both READMEs.
+
 ### Session buckets and tab targeting
 
 - One server process serves several sessions. `SceneStore` is **bucketed per
@@ -133,7 +159,8 @@ keep the old instance (`??=`), so restart the server after such a change.
   its name collides with the agent tool `mol_open`. `LinkHandler.open` may
   receive only the basename, so cache the full path seen in `match` and reuse it
   in `open`. Reject non-`file://` URLs so a remote link is never treated as a
-  path.
+  path. Decode `file://` but do not strip an OS drive prefix or otherwise
+  localize the path; `paths.ts` does the server-side normalization.
 
 ## Verification
 
@@ -154,3 +181,10 @@ keep the old instance (`??=`), so restart the server after such a change.
   light/dark after opening a structure, mount on an existing scene, request a
   capture while switching sessions, and style/capture two tabs independently.
   Check the panel strip and the PNGs.
+- Remote matrix (manual, when network access allows): a desktop window
+  connected to an SSH server. Install the plugin locally and remotely; run
+  `mol_open` with a relative and an absolute server path, open one via Ctrl+P,
+  and `mol_capture`. Confirm the capture is written under the remote workspace
+  and that no error mentions a client drive path. A client-local path (e.g. the
+  Windows picker) must produce the explicit "Windows path ... POSIX" error, not
+  a re-rooted `cwd` path.
