@@ -44,7 +44,8 @@
 - **GUI**（`exports["./gui-experimental"]`，`src/gui/`）：侧边栏 `Panel`，每个
   打开的结构一个 Mol* viewer 标签；另有启动器、选文件命令，以及 `LinkHandler`
   （Ctrl+P 文件搜索，即 `/open`，与 `.pdb` 链接可打开结构）。通过 RPC 跟随场景，
-  并渲染/回传截图。
+  并渲染/回传截图。RPC 指向**会话所属 server**（`session.server.client`）：窗口的
+  `ctx.client` 始终是内置本地 server。
 - **RPC**（`exports["./rpc"]`，`src/rpc.ts`）：类型化的 `mol4agent` 契约。
 
 core 只接收 `{ data, format, label }` 加 JSON 命令；路径、后缀识别、IO、session
@@ -59,6 +60,30 @@ core 只接收 `{ data, format, label }` 加 JSON 命令；路径、后缀识别
 OpenCode v1 无法运行本适配器：v1 是终端 UI，没有 GUI 插件层、没有自定义 RPC、
 也没有 DOM/WebGL 供 Mol* 使用。它的 server/TUI 插件无法渲染可交互 3D 页面或返回
 渲染好的截图，因此只能移植纯文本的 `mol_info` / `mol_interface` 工具。
+
+### 远程 server 与网页端
+
+OpenCode 2.3 的窗口插件宿主只会从桌面端**内置 server**加载 GUI bundle，并把 GUI
+的 `ctx.client` 绑定到该内置 server，即使当前会话属于远程（SSH）server。因此本适配
+器把 GUI 当作「会话所属 server」的瘦客户端：
+
+- GUI 的每次 RPC 调用都走 `session.server.client`，并带上会话服务端的 location。
+  `mol_open`、样式、聚焦、测量与截图都在会话所属 server 上执行；路径也由该 server
+  按会话 workspace 解析。GUI 绝不用客户端操作系统的规则判断/改写路径。
+- 在**远程桌面会话**中查看结构时，插件需要同时安装在桌面机（全局配置：提供 GUI 与
+  选文件）和远程 server（提供 `mol_*` 工具）。只装在远程时 agent 能看到工具，但桌面
+  端没有面板：桌面端不会从非内置 server 加载 GUI bundle。
+- 「Open molecular structure」系统选文件读取的是**桌面机**上的文件，因此远程会话下
+  会禁用。请改用 Ctrl+P 文件检索、点击对话中的 `.pdb`/`.cif` 路径，或让 agent 执行
+  `mol_open`；这些方式都会把路径交给会话所属 server 解析。
+
+### 当前局限：网页端只有工具，没有 viewer
+
+Mol* 面板依赖**桌面端的本地 GUI 插件宿主**。`opencode serve` 提供的 OpenCode 2.3
+网页端没有 plugin-GUI bridge，不会挂载 `./gui-experimental`：没有侧栏、没有 viewer，
+也没有截图目标。server 部分仍然可用——`mol_open` 会在会话所属 server 上记录场景、
+`mol_*` 工具照常执行——但由于没有 viewer 渲染，`mol_capture` 会超时。查看结构请使用
+桌面端（本地，或连接远程 server）；浏览器会话只能使用工具。
 
 ## 工具
 
@@ -107,7 +132,8 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 }
 ```
 
-server 部分按当前 location 加载；GUI 部分由桌面端加载。GUI 重新构建后无需重启即可
+server 部分按当前 location 加载；GUI 部分由桌面端从其内置 server 加载（远程安装见
+[远程 server 与网页端](#远程-server-与网页端)）。GUI 重新构建后无需重启即可
 热更新（`pnpm --filter @gcszhn/mol4agent-opencode build`）；server 改动需要 `/reload`。
 
 ## 开发
@@ -128,6 +154,9 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 
 - OpenCode 的工具结果没有内联图片内容类型，因此 `mol_capture` 返回保存路径
   （加一个 `file` 引用），而不是把 PNG 附加到模型上下文。
+- **浏览器会话只有工具。** viewer 面板依赖桌面端的本地 GUI 插件宿主；`opencode
+  serve` 网页端没有 plugin-GUI bridge，`mol_open` 只会记录场景，不会挂载 viewer，
+  `mol_capture` 会超时。Mol* 面板请使用桌面端。
 - **内置文件树不能打开结构**：在文件树里点 `.pdb` 会打开文本编辑器。请用
   **Ctrl+P 文件检索**（即 `/open`）或选文件命令。注册 `"text"` kind 的
   `FileViewer` 会被宿主忽略（它只渲染 file view 自己不渲染的 kind）。

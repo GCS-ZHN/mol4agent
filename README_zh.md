@@ -156,6 +156,13 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 
 > 打开 fixtures/1atp.pdb，用 cartoon 和 chain-id 着色，高亮 ATP，聚焦并截图。
 
+**远程（SSH）会话**需要把插件同时安装在桌面机（全局配置：面板与选文件）和远程
+server（`mol_*` 工具）。viewer 的 RPC 会路由到会话所属 server，路径也在那里解析；
+只装在远程时 agent 有工具，但桌面端没有面板。浏览器端（`opencode serve`）**只有
+工具**：Mol* 面板依赖桌面端的本地 GUI 插件宿主，`mol_open` 在网页端可用，但没有
+viewer 挂载，`mol_capture` 会超时。详见
+[远程 server 与网页端](packages/opencode/README_zh.md#远程-server-与网页端)。
+
 每个结构标签在打开期间保留相机、样式和选择；不用的标签记得关闭（每个常驻
 viewer 占用一个 WebGL context）。工具与限制见
 [OpenCode 适配 README](packages/opencode/README_zh.md)。

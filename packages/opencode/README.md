@@ -53,6 +53,8 @@ The package is an OpenCode plugin with three parts:
   Mol* viewer tab per open structure, the launcher, the pick-file command, and a
   `LinkHandler` (Ctrl+P file search, i.e. `/open`, and `.pdb` links open the
   structure). It follows scenes through RPC and renders/delivers screenshots.
+  It targets each session's own server (`session.server.client`), because the
+  window's `ctx.client` is always the built-in local server.
 - **RPC** (`exports["./rpc"]`, `src/rpc.ts`): the typed `mol4agent` contract.
 
 Core receives only `{ data, format, label }` plus JSON commands; paths, suffix
@@ -69,6 +71,38 @@ OpenCode v1 cannot run this adapter: v1 is a terminal UI with no GUI plugin
 layer, no custom RPC, and no DOM/WebGL for Mol*. Its server/TUI plugins cannot
 render an interactive 3D page or return a rendered screenshot, so only the
 text-only `mol_info` / `mol_interface` tools could be ported.
+
+### Remote servers and the web
+
+OpenCode 2.3 loads a plugin's GUI bundle from, and binds the GUI's `ctx.client`
+to, the desktop app's **built-in server**, even while the routed session belongs
+to a remote (SSH) server. This adapter treats the GUI as a thin client of the
+session's own server:
+
+- Every GUI RPC call uses `session.server.client` and the session's server-side
+  location. `mol_open`, styling, focusing, measuring, and capture therefore run
+  on the server that owns the session, and paths are resolved there against the
+  session's workspace directory. The GUI never interprets a path with the
+  client OS's rules.
+- To view structures in a **remote desktop session**, install the plugin both on
+  the desktop machine (global config: provides the GUI and the file picker) and
+  on the remote server (provides the `mol_*` tools). A remote-only install shows
+  the tools but no panel: the desktop does not load GUI bundles from a
+  non-builtin server.
+- The system file picker ("Open molecular structure") reads files on the
+  desktop machine, so it is disabled for remote sessions. Use Ctrl+P file
+  search, click a `.pdb`/`.cif` path in the conversation, or ask the agent to
+  run `mol_open`; those paths are resolved on the session's server.
+
+### Current limitation: the web UI is tool-only
+
+The Mol* panel depends on the **desktop app's local GUI-plugin host**. The
+OpenCode 2.3 web app served by `opencode serve` has no plugin-GUI bridge, so it
+never mounts `./gui-experimental`: there is no side panel, no viewer, and no
+capture target. The server half still works — `mol_open` records the scene and
+the `mol_*` tools run on the session's server — but `mol_capture` times out
+because no viewer exists to render it. Use the desktop app (local, or connected
+to a remote server) for the viewer; a browser session is tool-only.
 
 ## Tools
 
@@ -131,7 +165,9 @@ checkout directory instead:
 ```
 
 The server part loads for the current location; the GUI part loads in the
-desktop app. GUI rebuilds reload in every window without a restart
+desktop app from its built-in server (see [Remote servers and the
+web](#remote-servers-and-the-web) for a remote setup). GUI rebuilds reload in
+every window without a restart
 (`pnpm --filter @gcszhn/mol4agent-opencode build`); server changes need a
 `/reload`.
 
@@ -154,6 +190,10 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 - OpenCode tool results have no inline-image content type, so `mol_capture`
   returns the saved path (and a `file` reference) rather than attaching the PNG
   to the model context.
+- **A browser session is tool-only.** The viewer panel requires the desktop
+  app's local GUI-plugin host; the `opencode serve` web app has no plugin-GUI
+  bridge, so `mol_open` records the scene but no viewer mounts and `mol_capture`
+  times out. Use the desktop app for the Mol* panel.
 - The built-in file tree cannot open a structure: clicking a `.pdb` there opens
   the text editor. Use **Ctrl+P file search** (`/open`) or the pick-file command
   instead. A `FileViewer` for the `"text"` kind is ignored by the host (it only
