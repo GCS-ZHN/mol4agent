@@ -28,6 +28,9 @@ core: createPluginUI -> Mol* state tree -> commands -> capture
 - Commands are JSON-serializable; **loading is a method, not a command**, because
   adapter-owned bytes may not be serializable.
 - `@gcszhn/mol4agent-core/parse` is pure and works in Node and the browser.
+- `@gcszhn/mol4agent-core/sources` is pure too: it turns an entry id into a
+  download plan (`url`, optional JSON `indexField`, format, file name). Network
+  access and file writes stay in the adapter.
 
 ## Install
 
@@ -57,9 +60,10 @@ Package `exports` point at `lib`, and the npm `files` allowlist includes only
 
 | Import | Exports |
 |---|---|
-| `@gcszhn/mol4agent-core` | `createMolViewer`, protocol types, format helpers, `summarizeStructure`, `compileSelector`, `selectorSchema` |
+| `@gcszhn/mol4agent-core` | `createMolViewer`, protocol types, format helpers, source helpers, `summarizeStructure`, `compileSelector`, `selectorSchema` |
 | `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`, `StructureData`, `MolCommand`, `StructureSelector`, `StructureSummary`, `Mol4AgentError`, and the `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` guards |
 | `@gcszhn/mol4agent-core/parse` | `summarizeStructure`, `summarizePdbLike`, `summarizeCif`, `summarizeSdf`, `summarizeMol2`, `summarizeXyz`, `summarizeGro` |
+| `@gcszhn/mol4agent-core/sources` | `SOURCE_DATABASES`, `SOURCE_DATABASE_INFO`, `resolveSource`, `normalizeSourceDb`, `readSourceIndexField`, and the `isSourceDatabase` guard |
 | `@gcszhn/mol4agent-core/react` | `Mol4AgentViewer`, `Mol4AgentViewerHandle`, `Mol4AgentScene` |
 
 ## `createMolViewer`
@@ -205,7 +209,7 @@ type CommandResult =
 
 Error codes: `INVALID_COMMAND`, `UNSUPPORTED_FORMAT`, `UNSUPPORTED_REPRESENTATION`,
 `REPRESENT_FAILED`, `NO_STRUCTURE`, `LOAD_FAILED`, `CAPTURE_FAILED`,
-`SUMMARY_UNSUPPORTED`, `DISPOSED`.
+`SUMMARY_UNSUPPORTED`, `UNSUPPORTED_SOURCE`, `INVALID_ENTRY_ID`, `DISPOSED`.
 
 ## Selectors
 
@@ -271,6 +275,44 @@ const summary = summarizeStructure({ data: pdbText, format: 'pdb', label: '1atp.
 BCIF can be rendered but not summarized from raw bytes yet; `summarizeStructure`
 throws `SUMMARY_UNSUPPORTED`. A post-load viewer fallback may still expose
 `complete: false`.
+
+## Database sources
+
+`mol_fetch` starts from an entry id instead of a local file. Core validates the
+id and returns a download plan; it never performs the request or writes a file.
+Adapters execute the plan with their own HTTPS and filesystem APIs.
+
+```ts
+import { resolveSource } from '@gcszhn/mol4agent-core/sources'
+
+resolveSource({ entryId: '1crn' })
+// { sourceDb: 'rcsb-pdb', entryId: '1CRN', format: 'pdb',
+//   fileName: '1CRN.pdb',
+//   plan: { url: 'https://files.rcsb.org/download/1CRN.pdb' },
+//   description: 'RCSB PDB entry 1CRN (PDB format)' }
+
+resolveSource({ entryId: 'P00533', sourceDb: 'alphafold' })
+// plan: { url: 'https://alphafold.ebi.ac.uk/api/prediction/P00533',
+//         indexField: '0.pdbUrl' }
+```
+
+| `source_db` | `entry_id` | Format |
+|---|---|---|
+| `rcsb-pdb` (default) | 4-character PDB id (`1crn`) | `pdb` |
+| `rcsb-cif` | 4-character PDB id (`1crn`) | `mmcif` |
+| `rcsb-bcif` | 4-character PDB id (`1crn`) | `bcif` |
+| `alphafold` | UniProt accession (`P00533`) | `pdb` |
+| `pubchem` | CID (`2244`) or compound name (`aspirin`) | `sdf` |
+| `chembl` | `CHEMBL25`, or a bare number (`25`) | `sdf` |
+
+`plan.indexField` marks a JSON index document: the adapter reads that dot path
+and downloads the URL it names. AlphaFold file names are versioned, so
+`0.pdbUrl` skips the API's array wrapper and selects the current PDB URL. Use
+`readSourceIndexField(payload, field)` for that lookup.
+
+`SOURCE_DATABASE_INFO` supplies the label, description, entry hint, and format
+for tool descriptions. `normalizeSourceDb` enforces the closed list, and invalid
+ids raise `Mol4AgentError` with `UNSUPPORTED_SOURCE` or `INVALID_ENTRY_ID`.
 
 ## Capture
 
@@ -347,8 +389,8 @@ sequenceDiagram
 
 ## Status
 
-- `protocol`, `formats`, `parse/*`, `viewer`, `select`, `react` are implemented
-  and typechecked.
+- `protocol`, `formats`, `parse/*`, `sources`, `viewer`, `select`, `react` are
+  implemented and typechecked.
 - Verified in headless Chrome + SwiftShader with real 1CRN PDB/CIF, 1ATP, and a
   PubChem aspirin SDF: official UI, load, cartoon/polymer-and-ligand, ligand
   highlight, focus, and PNG capture.

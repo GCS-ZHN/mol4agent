@@ -9,8 +9,11 @@ mol4agent 的 DeepSeek Harness（DSH）适配包：右侧栏分子文档预览�
   UI 打开，而不是纯文本。每个后缀也接受 `.gz` 变体（例如 `.pdb.gz`、
   `.cif.gz`、`.sdf.gz`），适配器会先解压再交给 core。预览器的「打开方式」仍
   可切回代码/纯文本（`bcif` 是二进制，没有纯文本回退）。
-- **agent 工具**：`mol_info`、`mol_interface`、`mol_open`、`mol_style`、
-  `mol_select`、`mol_focus`、`mol_measure`、`mol_capture`。
+- **agent 工具**：`mol_info`、`mol_interface`、`mol_fetch`、`mol_open`、
+  `mol_style`、`mol_select`、`mol_focus`、`mol_measure`、`mol_capture`。
+- **数据库抓取**：`mol_fetch` 可把 PDB 条目（PDB/mmCIF/BinaryCIF）、AlphaFold
+  DB 预测结构、PubChem 化合物和 ChEMBL 小分子下载到工作区，agent 可以直接
+  从条目 id 开始，而不需要本地文件。
 - **agent 驱动页面**：工具调用被折叠进可持久化的 session projection；打开的
   页面跟随它并应用命令。
 - **自动打开**：agent 指定新结构时，通过 session header 的 bridge 打开对应
@@ -63,6 +66,7 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 |---|---|---|
 | `mol_info` | `path` | 摘要链、残基、原子、配体。不打开 viewer，也不改变场景。 |
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 在 PDB-like 文件中找两个链组之间的界面残基（默认 8 Å，0 < cutoff ≤ 30），返回可用于 `mol_style`/`mol_focus` 的区间。 |
+| `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
 | `mol_open` | `path`、`type?`、`color?`、`select?`、`focus?` | 按绝对路径创建/更新 tab 页面并设为活动 tab；发出 `represent`，可选 `select`/`focus`。tab 页面 id 即绝对路径。 |
 | `mol_style` | `tab?`、`type?`、`color?`、`target?`、`colorParams?` | 给指定 tab（默认活动 tab）追加 `represent`。不传 `target` 替换整个场景表示；传 `target` 只给该选择添加表示。`colorParams` 可传 `{"value": 16711680}` 表示 uniform 红色。 |
 | `mol_select` | `tab?`、`target`、`mode?`、`focus?` | 追加 `select`；`mode` 为 `select` 或 `highlight`。 |
@@ -70,8 +74,32 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | `mol_measure` | `tab?`、`kind`、`targets` | 追加 `measure`；距离 2 个目标，角度 3 个，二面角 4 个。 |
 | `mol_capture` | `tab?`、`width?`、`height?`、`transparent?` | 阻塞等待目标 tab 回传 PNG（默认 1024×768）；当前模型支持图片时把图片作为附件返回，并在可用时给出 `savedPath`。 |
 
-`path` 是绝对路径，或相对 session 工作目录。文件上限 64 MiB；gzip 解压后
-同样限制 64 MiB。
+`path` 是绝对路径，或相对 session 工作目录；`target_path` 规则相同。文件
+上限 64 MiB；gzip 解压后同样限制 64 MiB。
+
+### 数据库来源
+
+| `source_db` | `entry_id` | 保存格式 |
+|---|---|---|
+| `rcsb-pdb`（默认） | 4 字符 PDB id，例如 `1crn` | `.pdb` |
+| `rcsb-cif` | 4 字符 PDB id，例如 `1crn` | `.cif`（mmCIF） |
+| `rcsb-bcif` | 4 字符 PDB id，例如 `1crn` | `.bcif`（BinaryCIF） |
+| `alphafold` | UniProt accession，例如 `P00533` | `.pdb` |
+| `pubchem` | CID（`2244`）或化合物名（`aspirin`） | `.sdf`（3D） |
+| `chembl` | ChEMBL id（`CHEMBL25`）或纯数字（`25`） | `.sdf` |
+
+条目 id 的规范化和校验在 core（`@gcszhn/mol4agent-core/sources`）；Host 负责
+HTTPS 下载，上限 64 MiB、30 秒超时，并先写临时文件再原子替换，失败的抓取
+不会留下半个结构。目标文件已存在会被覆盖。AlphaFold 的文件名带版本号，所以
+Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件。
+
+`mol_fetch` 示例：
+
+```json
+{ "entry_id": "1crn", "target_path": "fixtures/1crn.pdb" }
+{ "entry_id": "aspirin", "source_db": "pubchem", "target_path": "fixtures/" }
+{ "entry_id": "P00533", "source_db": "alphafold", "target_path": "egfr.pdb" }
+```
 
 `mol_info` 示例：
 
@@ -149,6 +177,7 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | `mol_measure` | 追加 `{ op: 'measure', kind, targets }` |
 | `mol_capture` | 添加 pending 截图项；不产生 viewer 命令 |
 | `mol_interface` | 无；只返回计算出的区间 |
+| `mol_fetch` | 无；只下载文件 |
 | `mol_info` | 无 |
 
 ## Session projection
@@ -336,6 +365,10 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.1.0
   标签（label）还没有暴露成工具。
 - `mol_interface` 目前只解析 PDB-like ATOM 记录（`pdb`/`pdbqt`/`pqr`）；
   mmCIF/BCIF 的界面计算尚未实现。
+- `mol_fetch` 需要 DSH Host 能访问外网 HTTPS。下载上限 64 MiB、30 秒超时；
+  抓取失败不会写出半个文件。PubChem 请求的是 3D SDF（`record_type=3d`），
+  没有 3D 构象的化合物会返回 HTTP 404。下载内容按未压缩保存，因此 `.gz`
+  目标会被拒绝。
 - 8 Å cutoff 可能产生很大的界面（7CZD A/B：91 个残基）；想要更干净的图可
   降低 cutoff 或只聚焦一个区间。
 - tab 页面 id 是绝对路径；重新打开同一路径会更新该 tab（新的 `sceneKey`），

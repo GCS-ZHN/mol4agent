@@ -21,6 +21,11 @@
       "import": "./lib/parse/index.js",
       "default": "./lib/parse/index.js"
     },
+    "./sources": {
+      "types": "./lib/sources.d.ts",
+      "import": "./lib/sources.js",
+      "default": "./lib/sources.js"
+    },
     "./react": {
       "types": "./lib/react.d.ts",
       "import": "./lib/react.js",

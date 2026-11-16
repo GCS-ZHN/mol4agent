@@ -19,13 +19,17 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { defineTool, ToolArgsError, ToolContextUnavailableError } from '@deepseek-ai/dsh-tools'
 import {
   COLOR_THEMES,
+  Mol4AgentError,
   REPRESENTATION_TYPES,
   type StructureSummary,
 } from '@gcszhn/mol4agent-core/protocol'
+import { SOURCE_DATABASES, resolveSource, type ResolvedSource } from '@gcszhn/mol4agent-core/sources'
 import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
+import { baseNameOf } from '../formats.ts'
 import { normalizeSelector } from '../selector.ts'
 import type { MolSceneState, MolSessionState } from '../state.ts'
 import type { CaptureHub } from './capture.ts'
+import { downloadMoleculeSource, FetchTargetError, resolveFetchTarget } from './fetch.ts'
 import { findInterfaceResidues, type InterfaceResult } from './interface.ts'
 import { resolveMoleculeFile, type ResolvedMoleculeFile } from './paths.ts'
 
@@ -34,6 +38,7 @@ export interface MolToolOptions {
   /** Read a tab page scene; defaults to the projection's active tab. */
   readonly sceneOf: (session: Session, tab?: string) => MolSceneState | undefined
   readonly maxFileBytes: number
+  readonly fetchTimeoutMs: number
   readonly captureTimeoutMs: number
   readonly captureWidth: number
   readonly captureHeight: number
@@ -108,6 +113,75 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       const cutoff = args.cutoff ?? 8
       if (!(cutoff > 0 && cutoff <= 30)) throw new ToolArgsError(['cutoff must be between 0 and 30 angstroms'])
       return formatInterface(file.label, findInterfaceResidues(file.bytes, { chainsA, chainsB, cutoff }))
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'mol_fetch',
+    description: 'Download a molecular structure from an online database and save it to a path. '
+      + 'Use it when the user names a database entry instead of a local file: '
+      + 'PDB ids (1crn), AlphaFold UniProt accessions (P00533), '
+      + 'PubChem CIDs or names (2244, aspirin), or ChEMBL ids (CHEMBL25). '
+      + 'Returns the saved path and a structure summary; use mol_open with that path to display it.',
+    parameters: {
+      entry_id: {
+        type: 'string',
+        required: true,
+        description: 'Entry id or compound name for source_db. rcsb-pdb/rcsb-cif/rcsb-bcif: 4-character PDB id (1crn); '
+          + 'alphafold: UniProt accession (P00533); pubchem: CID (2244) or compound name (aspirin); '
+          + 'chembl: ChEMBL id (CHEMBL25).',
+      },
+      target_path: {
+        type: 'string',
+        required: true,
+        description: 'Destination file path, absolute or relative to the session working directory. '
+          + 'A directory or a trailing slash appends the source file name; a path without a suffix gets one.',
+      },
+      source_db: {
+        type: 'string',
+        enum: SOURCE_DATABASES,
+        description: 'Source database. Defaults to rcsb-pdb.',
+      },
+    },
+    isConcurrencySafe: () => false,
+    output: {
+      schema: { type: 'string' },
+      render: (_args, text) => [{ type: 'text', text }],
+    },
+    async execute(args, exec) {
+      const agent = requireAgent(exec)
+      let source: ResolvedSource
+      try {
+        source = resolveSource({ entryId: args.entry_id, sourceDb: args.source_db })
+      } catch (error) {
+        if (error instanceof Mol4AgentError) throw new ToolArgsError([error.message])
+        throw error
+      }
+      const cwd = await ctx.workingDirectory.ensure(agent, exec.signal)
+      let targetPath: string
+      try {
+        targetPath = await resolveFetchTarget(cwd, args.target_path, source)
+      } catch (error) {
+        if (error instanceof FetchTargetError) throw new ToolArgsError([error.message])
+        throw error
+      }
+      const download = await downloadMoleculeSource({
+        source,
+        targetPath,
+        maxBytes: options.maxFileBytes,
+        timeoutMs: options.fetchTimeoutMs,
+        signal: exec.signal,
+      })
+      const file: ResolvedMoleculeFile = {
+        absolutePath: targetPath,
+        format: source.format,
+        label: baseNameOf(targetPath),
+        bytes: download.bytes,
+      }
+      return `Downloaded ${source.description} from ${download.url}\n`
+        + `saved: ${targetPath} (${download.bytes.byteLength} bytes)\n\n`
+        + describeFile(file)
+        + `\n\nUse mol_open with path "${targetPath}" to display it.`
     },
   }))
 
