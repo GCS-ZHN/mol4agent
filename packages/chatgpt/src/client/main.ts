@@ -45,8 +45,8 @@ let appliedCommands = 0
 let currentSceneId = ''
 let currentRevision = -1
 let boundSceneId: string | null = null
-let appKind: SceneSource | 'capture' | 'unknown' = 'unknown'
-let pollMode: SceneSource | 'capture' = 'agent'
+let appKind: SceneSource | 'unknown' = 'unknown'
+let pollMode: SceneSource = 'agent'
 let pollStarted = false
 let disposed = false
 let queue: Promise<void> = Promise.resolve()
@@ -64,7 +64,7 @@ app.addEventListener('toolresult', params => {
     if (appKind === 'unknown') appKind = scene.source
     if (appKind === 'file' && scene.source !== 'file') return
     if (appKind === 'agent' && scene.source !== 'agent') return
-    if (appKind !== 'capture' && boundSceneId !== null && scene.sceneId !== boundSceneId) return
+    if (boundSceneId !== null && scene.sceneId !== boundSceneId) return
     void enqueue(async () => {
       const applied = await applyScene(scene)
       if (applied && !pollStarted) startPoll(appKind === 'file' ? 'file' : 'agent')
@@ -99,12 +99,12 @@ async function main(): Promise<void> {
   }
   applyHostContext(app.getHostContext())
   setHostHints()
-  void openSidePanel()
   const toolName = app.getHostContext()?.toolInfo?.tool.name
-  if (toolName === 'mol_capture') appKind = 'capture'
-  else if (toolName === 'mol_view_file') appKind = 'file'
+  if (toolName === 'mol_view_file') appKind = 'file'
   else if (toolName === 'mol_open') appKind = 'agent'
-  if (appKind === 'capture') startPoll('capture')
+  // Only open/file pages may claim the side panel; a capture result belongs to
+  // the agent tab that is already mounted.
+  if (toolName !== 'mol_capture') void openSidePanel()
 }
 
 async function openSidePanel(): Promise<void> {
@@ -200,7 +200,7 @@ async function pollLoop(): Promise<void> {
   }
 }
 
-function startPoll(mode: SceneSource | 'capture'): void {
+function startPoll(mode: SceneSource): void {
   if (pollStarted) return
   pollStarted = true
   pollMode = mode
@@ -218,10 +218,8 @@ async function applyScene(scene: SceneSnapshot): Promise<boolean> {
   try {
     if (appKind === 'file' && scene.source !== 'file') return false
     if (appKind === 'agent' && scene.source !== 'agent') return false
-    if (appKind !== 'capture') {
-      if (boundSceneId === null) boundSceneId = scene.sceneId
-      else if (scene.sceneId !== boundSceneId) return false
-    }
+    if (boundSceneId === null) boundSceneId = scene.sceneId
+    else if (scene.sceneId !== boundSceneId) return false
     if (scene.sceneId === currentSceneId && scene.revision < currentRevision) return false
     const currentViewer = await ensureViewer()
     if (scene.sceneId !== loadedSceneId) {

@@ -398,6 +398,9 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     return textResult(`Added a ${args.kind} measurement.`, { scene: next ?? scene })
   })
 
+  // Capture must stay a plain tool. Advertising the viewer template makes the
+  // host mount a second App card for every screenshot; the agent tab opened by
+  // mol_open already polls for and delivers capture requests.
   server.registerTool('mol_capture', {
     title: 'Capture the viewer as PNG',
     description: 'Capture the current molecular viewer viewport as a PNG and attach it to this tool result. '
@@ -411,10 +414,6 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       transparent: z.boolean().optional().describe('Render with a transparent background.'),
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    _meta: {
-      ui: { resourceUri: VIEWER_URI },
-      'openai/outputTemplate': VIEWER_URI,
-    },
   }, async (args, extra) => {
     const scene = requireScene(store, 'capture')
     const width = args.width ?? options.captureWidth
@@ -527,6 +526,8 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     const mode = args.mode ?? 'agent'
     const deadline = Date.now() + (args.timeoutMs ?? 20_000)
     while (!extra.signal.aborted) {
+      // Legacy capture-only page. Current viewers open through mol_open /
+      // mol_view_file and claim captures from their agent-mode poll.
       if (mode === 'capture') {
         const capture = captures.claim()
         if (capture !== null) return pollResult(capture.scene, capture, false)

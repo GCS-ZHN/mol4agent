@@ -89,8 +89,10 @@ store 保留一个**活跃 agent scene** 和多个独立的 **file-viewer scene*
 
 ### 截图会合
 
-`mol_capture` 入队后等待；app 在下一次轮询里 claim，请求 core 渲染视口，再用
-`mol_capture_deliver` 提交 PNG；等待中的工具随后返回图片。内部工具标了
+`mol_capture` 入队后等待；`mol_open` 打开的 agent tab 在下一次轮询里 claim，
+请求 core 渲染视口，再用 `mol_capture_deliver` 提交 PNG；等待中的工具随后返回
+图片。`mol_capture` 刻意不带 viewer `_meta`，宿主不会为每次截图再挂载一张
+卡片，截图也保留人眼看到的相机视角。内部工具标了
 `_meta.ui.visibility: ["app"]`，模型不会调用它们。
 
 ## 工具
@@ -179,8 +181,8 @@ codex plugin add mol4agent@mol4agent-local
 - **只有一个活跃 agent scene**：`mol_open` 替换的是模型工具操作的 agent scene；
   旧 agent tab 和文件 tab 保持各自绑定的 scene。`mol_capture` 截取活跃
   agent scene。
-- **截图需要 viewer**：长工具序列后原卡片可能已卸载；重试一次
-  `mol_capture`，它的 UI 资源会挂载新的 viewer 并完成渲染。宿主禁止
+- **截图需要 viewer**：`mol_capture` 复用 `mol_open` 已挂载的 agent tab。
+  该 tab 被关闭时先用 `mol_open` 重新打开，再重试截图。宿主禁止
   app→tool 调用时才会超时。
 - **依赖宿主 `serverTools`**：实时更新和截图需要宿主允许 app 回调 server；
   受限宿主只能显示静态场景。
