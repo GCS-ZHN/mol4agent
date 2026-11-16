@@ -4,6 +4,7 @@ export const MOL_PROMPT = `## Molecular structures
 When a task involves a molecular structure file (for example .pdb, .ent, .cif, .mmcif, .bcif, .sdf, .mol, .mol2, .xyz, .gro, .pdbqt, .pqr):
 
 - Use \`mol_info\` to read chains, residue/atom counts, and ligands. Never dump a whole structure file as plain text.
+- Use \`mol_fetch\` when the user names a database entry instead of a local file: it downloads from RCSB PDB (\`rcsb-pdb\`, \`rcsb-cif\`, \`rcsb-bcif\`), AlphaFold DB, PubChem, or ChEMBL to \`target_path\`, then returns the saved path and a summary. Pass \`source_db\` (default \`rcsb-pdb\`); call \`mol_open\` on the returned path to display it.
 - Use \`mol_interface\` to find residues within a distance cutoff (default 8 A) between two chain groups. It returns ranges usable by \`mol_style\` and \`mol_focus\`.
 - Use \`mol_open\` to display it in a right-sidebar tab page and make it the active tab. The page opens automatically; the result includes the tab page id (absolute path).
 - \`mol_style\`, \`mol_select\`, \`mol_focus\`, \`mol_measure\`, and \`mol_capture\` accept a \`tab\` argument. Omit it to use the active tab; pass the path returned by \`mol_open\` to operate another tab independently.

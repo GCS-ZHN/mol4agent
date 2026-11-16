@@ -36,6 +36,7 @@ reattaches it, so camera, representations, and panel state survive a switch
 |---|---|
 | `mol_info` | Reads chains, residues, atoms, and ligands without opening a page |
 | `mol_interface` | Finds residues within a cutoff between two chain groups (PDB-like files) |
+| `mol_fetch` | Downloads a database entry (RCSB PDB, AlphaFold, PubChem, ChEMBL) to a workspace path |
 | `mol_open` | Opens the structure in a tab page (id = absolute path) and makes it active |
 | `mol_style` | Replaces the representation/theme, or adds one to a `target` selection |
 | `mol_select` | Selects or highlights a chain/residue/ligand/water/ion |
