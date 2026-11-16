@@ -9,6 +9,9 @@ side panel that the agent operates with `mol_*` tools.
 - **Agent-operated page**: `mol_style`, `mol_select`, `mol_focus`, `mol_measure`
   mutate the open page; `mol_info` and `mol_interface` summarize files without a
   viewer.
+- **Database fetch**: `mol_fetch` downloads a structure from RCSB PDB
+  (PDB/mmCIF/BinaryCIF), AlphaFold DB, PubChem, or ChEMBL and saves it on the
+  session's server, ready for `mol_open`.
 - **Screenshots**: `mol_capture` renders the viewport to a PNG saved under
   `.mol4agent/captures/`.
 - **Tabs keep state**: each structure has its own viewer tab; switching tabs
@@ -70,7 +73,7 @@ Requires **OpenCode 2.2.0 or newer** — the `@opencode/plugin/gui` window API
 OpenCode v1 cannot run this adapter: v1 is a terminal UI with no GUI plugin
 layer, no custom RPC, and no DOM/WebGL for Mol*. Its server/TUI plugins cannot
 render an interactive 3D page or return a rendered screenshot, so only the
-text-only `mol_info` / `mol_interface` tools could be ported.
+text-only `mol_info` / `mol_interface` / `mol_fetch` tools could be ported.
 
 ### Remote servers and the web
 
@@ -110,6 +113,7 @@ to a remote server) for the viewer; a browser session is tool-only.
 |---|---|
 | `mol_info` | Summarize chains, residues, atoms, ligands. Does not open a viewer. |
 | `mol_interface` | Find interface residues between two chain groups (PDB-like ATOM files). |
+| `mol_fetch` | Download a database entry (`entry_id`, `target_path`, `source_db?`) and save it on the session's server. |
 | `mol_open` | Open a structure in the side panel and make it the active scene. |
 | `mol_style` | Change representation/color; with `target`, style a selection additively. |
 | `mol_select` | Select/highlight (and optionally focus) a selection. |
@@ -127,6 +131,36 @@ Selectors are the same JSON shapes as the other adapters:
 {"kind":"comp","compId":"ATP"}
 ```
 
+### Database sources
+
+`mol_fetch` takes `entry_id`, `target_path`, and an optional `source_db`
+(default `rcsb-pdb`). `target_path` follows the same server-side rules as every
+other path argument: absolute, or relative to the session workspace. A
+directory (or a trailing slash) appends the source file name, and a suffix-less
+path gets the source suffix.
+
+| `source_db` | `entry_id` | Saved format |
+|---|---|---|
+| `rcsb-pdb` (default) | 4-character PDB id, e.g. `1crn` | `.pdb` |
+| `rcsb-cif` | 4-character PDB id, e.g. `1crn` | `.cif` (mmCIF) |
+| `rcsb-bcif` | 4-character PDB id, e.g. `1crn` | `.bcif` (BinaryCIF) |
+| `alphafold` | UniProt accession, e.g. `P00533` | `.pdb` |
+| `pubchem` | CID (`2244`) or compound name (`aspirin`) | `.sdf` (3D) |
+| `chembl` | ChEMBL id (`CHEMBL25`) or bare number (`25`) | `.sdf` |
+
+Entry ids are normalized and validated in core
+(`@gcszhn/mol4agent-core/sources`); the OpenCode server performs the HTTPS
+download, caps it at 64 MiB, times out after 30 s, and writes through a
+temporary file so a failed fetch leaves no partial structure. Existing targets
+are overwritten. AlphaFold file names are versioned, so the server resolves
+`0.pdbUrl` through the AlphaFold JSON API before downloading.
+
+```json
+{ "entry_id": "1crn", "target_path": "fixtures/1crn.pdb" }
+{ "entry_id": "aspirin", "source_db": "pubchem", "target_path": "fixtures/" }
+{ "entry_id": "P00533", "source_db": "alphafold", "target_path": "egfr.pdb" }
+```
+
 ## Install
 
 ### From npm
@@ -137,7 +171,7 @@ opencode plugin add @gcszhn/mol4agent-opencode
 
 `plugin add` installs the package and writes it to the **global**
 `opencode.json(c)`, so the desktop app loads its GUI part in every window.
-Pin an exact version with `@0.1.1`, and confirm with `opencode plugin list`
+Pin an exact version with `@0.2.0`, and confirm with `opencode plugin list`
 (or **Settings > Extensions > Plugins** in the desktop app). The npm package is
 published automatically when `packages/opencode/package.json` changes version on
 `main`; use the local checkout path below to test unreleased changes.
@@ -209,6 +243,12 @@ pnpm --filter @gcszhn/mol4agent-opencode build
   item to reveal it.
 - `mol_interface` parses PDB-like ATOM records only; `mol_info` cannot summarize
   BCIF from raw bytes yet.
+- `mol_fetch` needs outbound HTTPS on the **server that owns the session** — a
+  remote server downloads and stores the file itself, not the desktop machine.
+  Downloads are capped at 64 MiB and time out after 30 s; a failed fetch does
+  not write a partial file. PubChem is requested as a 3D SDF (`record_type=3d`),
+  so compounds without a 3D conformer return HTTP 404. Downloaded bytes are
+  stored uncompressed, so a `.gz` target is rejected.
 - Files are capped at 64 MiB (including gzip-decompressed output); WebGL 2 is
   required. A session keeps at most 12 open structure tabs (oldest non-active
   evicted).

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
@@ -46,6 +46,35 @@ async function start(sessionRoot: string, fails = false): Promise<OpenPath> {
   return openPath
 }
 
+interface RegisteredTool {
+  name: string
+  execute(input: unknown, context: { sessionID: string; signal: AbortSignal }): Promise<{ content: string }>
+}
+
+async function startTools(sessionRoot: string): Promise<Map<string, RegisteredTool>> {
+  const tools = new Map<string, RegisteredTool>()
+  const ctx = {
+    app: { version: 'test' },
+    session: {
+      async get() {
+        return { location: { directory: sessionRoot } }
+      },
+    },
+    rpc: {
+      async register() {
+        return { events: { async emit() {} } }
+      },
+    },
+    tool: {
+      async transform(edit: (editor: { add(entry: unknown): void }) => void) {
+        edit({ add(entry) { const tool = entry as RegisteredTool; tools.set(tool.name, tool) } })
+      },
+    },
+  }
+  await server.setup(ctx as never)
+  return tools
+}
+
 async function workspace(): Promise<string> {
   if (root === '') {
     root = await mkdtemp(join(tmpdir(), 'mol4agent-opencode-server-'))
@@ -78,6 +107,29 @@ test('openPath rejects a Windows path on a POSIX server instead of re-rooting it
   assert.equal(result.ok, false)
   assert.match(result.error ?? '', /Windows path, but the OpenCode server runs on POSIX/u)
   assert.doesNotMatch(result.error ?? '', /^cannot read /u)
+})
+
+test('mol_fetch downloads on the session server and reports the saved path', async () => {
+  const cwd = await workspace()
+  const tools = await startTools(cwd)
+  const fetchTool = tools.get('mol_fetch')
+  assert.ok(fetchTool, 'mol_fetch was not registered')
+
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(PDB, { status: 200 })
+  try {
+    const result = await fetchTool.execute(
+      { entry_id: '1crn', target_path: 'downloads/1crn' },
+      { sessionID: 'session-1', signal: new AbortController().signal },
+    )
+    const saved = join(cwd, 'downloads', '1crn.pdb')
+    assert.ok(result.content.includes(`saved: ${saved}`), result.content)
+    assert.match(result.content, /RCSB PDB entry 1CRN/u)
+    assert.equal(await readFile(saved, 'utf8'), PDB)
+  } finally {
+    globalThis.fetch = originalFetch
+    await rm(join(cwd, 'downloads'), { recursive: true, force: true })
+  }
 })
 
 test('openPath fails clearly when the session workspace is unknown', async () => {
