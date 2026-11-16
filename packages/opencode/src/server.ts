@@ -13,11 +13,14 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Plugin } from '@opencode/plugin'
-import type { MolCommand, StructureSelector } from '@gcszhn/mol4agent-core/protocol'
+import { Mol4AgentError, type MolCommand, type StructureSelector } from '@gcszhn/mol4agent-core/protocol'
+import { SOURCE_DATABASES, resolveSource, type ResolvedSource, type SourceDatabase } from '@gcszhn/mol4agent-core/sources'
 import { base64ToBytes } from './base64.ts'
 import { CaptureHub } from './capture.ts'
+import { FetchTargetError, downloadMoleculeSource, resolveFetchTarget } from './fetch.ts'
+import { baseNameOf } from './formats.ts'
 import { findInterfaceResidues } from './interface.ts'
-import { resolveMoleculeFile } from './paths.ts'
+import { resolveMoleculeFile, type ResolvedMoleculeFile } from './paths.ts'
 import { Mol4Agent } from './rpc.ts'
 import { SceneStore, type SceneSnapshot } from './scene.ts'
 import { normalizeSelector } from './selector.ts'
@@ -36,6 +39,7 @@ import {
 } from './tools.ts'
 
 const MAX_FILE_BYTES = 64 * 1024 * 1024
+const FETCH_TIMEOUT_MS = 30_000
 const DEFAULT_CAPTURE_WIDTH = 1024
 const DEFAULT_CAPTURE_HEIGHT = 768
 const CAPTURE_TIMEOUT_MS = readPositiveInt('MOL4AGENT_CAPTURE_TIMEOUT_MS', 45_000)
@@ -247,6 +251,78 @@ export default Plugin.define({
           const b = chainsB.map(chain => chain.trim()).filter(Boolean)
           if (a.length === 0 || b.length === 0) throw new Error('chainsA and chainsB must not be empty')
           return { content: formatInterface(file.label, findInterfaceResidues(file.bytes, { chainsA: a, chainsB: b, cutoff: cutoff ?? 8 })) }
+        },
+      })
+
+      editor.add({
+        name: 'mol_fetch',
+        description:
+          'Download a molecular structure from an online database and save it to a path. Use it when '
+          + 'the user names a database entry instead of a local file: PDB ids (1crn), AlphaFold UniProt '
+          + 'accessions (P00533), PubChem CIDs or names (2244, aspirin), or ChEMBL ids (CHEMBL25). '
+          + 'Returns the saved path and a structure summary; use mol_open with that path to display it.',
+        input: {
+          type: 'object',
+          properties: {
+            entry_id: {
+              type: 'string',
+              minLength: 1,
+              description: 'Entry id or compound name for source_db. rcsb-pdb/rcsb-cif/rcsb-bcif: '
+                + '4-character PDB id (1crn); alphafold: UniProt accession (P00533); '
+                + 'pubchem: CID (2244) or compound name (aspirin); chembl: ChEMBL id (CHEMBL25).',
+            },
+            target_path: {
+              type: 'string',
+              minLength: 1,
+              description: 'Destination path on the session\'s server, absolute or relative to the '
+                + 'session working directory. A directory or a trailing slash appends the source file '
+                + 'name; a path without a suffix gets one.',
+            },
+            source_db: {
+              enum: SOURCE_DATABASES,
+              description: 'Source database. Defaults to rcsb-pdb.',
+            },
+          },
+          required: ['entry_id', 'target_path'],
+          additionalProperties: false,
+        },
+        execute: async (input, context) => {
+          const args = input as { entry_id: string; target_path: string; source_db?: string }
+          let source: ResolvedSource
+          try {
+            source = resolveSource({ entryId: args.entry_id, sourceDb: args.source_db as SourceDatabase | undefined })
+          } catch (error) {
+            if (error instanceof Mol4AgentError) throw new Error(error.message)
+            throw error
+          }
+          const cwd = await sessionDirectory(context.sessionID)
+          let targetPath: string
+          try {
+            targetPath = await resolveFetchTarget(cwd, args.target_path, source)
+          } catch (error) {
+            if (error instanceof FetchTargetError) throw new Error(error.message)
+            throw error
+          }
+          const download = await downloadMoleculeSource({
+            source,
+            targetPath,
+            maxBytes: MAX_FILE_BYTES,
+            timeoutMs: FETCH_TIMEOUT_MS,
+            signal: context.signal,
+          })
+          const file: ResolvedMoleculeFile = {
+            absolutePath: targetPath,
+            format: source.format,
+            label: baseNameOf(targetPath),
+            bytes: download.bytes,
+          }
+          return {
+            content:
+              `Downloaded ${source.description} from ${download.url}\n`
+              + `saved: ${targetPath} (${download.bytes.byteLength} bytes)\n\n`
+              + describeFile(file)
+              + `\n\nUse mol_open with path "${targetPath}" to display it.`,
+          }
         },
       })
 

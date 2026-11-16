@@ -13,8 +13,8 @@ changing core semantics.
   (`./gui`, `./gui/file`, `./gui/vite`, Panel/RPC registration) landed in 2.2.0.
   Built and verified on 2.3.0. Do not claim support for older versions.
 - OpenCode v1 has no GUI plugin layer, no custom RPC, and no DOM/WebGL, so this
-  adapter cannot run there; only the text-only `mol_info`/`mol_interface` tools
-  could be ported. It is a v2.2+ GUI-plugin artifact.
+  adapter cannot run there; only the text-only `mol_info`/`mol_interface`/
+  `mol_fetch` tools could be ported. It is a v2.2+ GUI-plugin artifact.
 
 ## Server / GUI split
 

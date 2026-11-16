@@ -1,6 +1,6 @@
 {
   "name": "@gcszhn/mol4agent-opencode",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "description": "OpenCode 2 adapter for mol4agent: an in-harness Mol* viewer panel with agent-operable mol_* tools.",
   "license": "MIT",

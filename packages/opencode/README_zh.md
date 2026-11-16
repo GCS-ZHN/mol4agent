@@ -8,6 +8,8 @@
   官方 Mol* UI 里渲染结构，无需离开 harness、无需外部应用。
 - **agent 操作同一页面**：`mol_style` / `mol_select` / `mol_focus` / `mol_measure`
   修改打开的页面；`mol_info` / `mol_interface` 无需打开 viewer 即可摘要。
+- **数据库抓取**：`mol_fetch` 从 RCSB PDB（PDB/mmCIF/BinaryCIF）、AlphaFold DB、
+  PubChem 或 ChEMBL 下载结构并保存在会话所属 server 上，随后可直接 `mol_open`。
 - **截图**：`mol_capture` 把视口渲染成 PNG 保存到 `.mol4agent/captures/`。
 - **标签保持状态**：每个结构一个 viewer 标签；切换标签会保留相机、样式和选择。
   viewer 也会在切换会话标签页后保留，切回同一会话时恢复之前的状态；关闭结构标签
@@ -59,7 +61,7 @@ core 只接收 `{ data, format, label }` 加 JSON 命令；路径、后缀识别
 
 OpenCode v1 无法运行本适配器：v1 是终端 UI，没有 GUI 插件层、没有自定义 RPC、
 也没有 DOM/WebGL 供 Mol* 使用。它的 server/TUI 插件无法渲染可交互 3D 页面或返回
-渲染好的截图，因此只能移植纯文本的 `mol_info` / `mol_interface` 工具。
+渲染好的截图，因此只能移植纯文本的 `mol_info` / `mol_interface` / `mol_fetch` 工具。
 
 ### 远程 server 与网页端
 
@@ -91,6 +93,7 @@ Mol* 面板依赖**桌面端的本地 GUI 插件宿主**。`opencode serve` 提�
 |---|---|
 | `mol_info` | 摘要链、残基、原子、配体；不打开 viewer |
 | `mol_interface` | 寻找两组链之间的界面残基（PDB 类 ATOM 文件） |
+| `mol_fetch` | 下载数据库条目（`entry_id`、`target_path`、`source_db?`）并保存到会话所属 server |
 | `mol_open` | 在侧边栏打开结构并设为活动场景 |
 | `mol_style` | 修改表示/颜色；带 `target` 时叠加式着色某个选区 |
 | `mol_select` | 选择/高亮（可同时聚焦）某个选区 |
@@ -99,6 +102,33 @@ Mol* 面板依赖**桌面端的本地 GUI 插件宿主**。`opencode serve` 提�
 | `mol_capture` | 把视口渲染成 PNG 保存到 `.mol4agent/captures/` |
 
 selector 与其他适配器使用相同的 JSON 形状，见 [README.md](README.md)。
+
+### 数据库来源
+
+`mol_fetch` 接收 `entry_id`、`target_path`，以及可选的 `source_db`（默认
+`rcsb-pdb`）。`target_path` 与其他路径参数走相同的 server 端规则：绝对路径，或
+相对会话 workspace。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的
+路径会补上来源后缀。
+
+| `source_db` | `entry_id` | 保存格式 |
+|---|---|---|
+| `rcsb-pdb`（默认） | 4 字符 PDB id，例如 `1crn` | `.pdb` |
+| `rcsb-cif` | 4 字符 PDB id，例如 `1crn` | `.cif`（mmCIF） |
+| `rcsb-bcif` | 4 字符 PDB id，例如 `1crn` | `.bcif`（BinaryCIF） |
+| `alphafold` | UniProt accession，例如 `P00533` | `.pdb` |
+| `pubchem` | CID（`2244`）或化合物名（`aspirin`） | `.sdf`（3D） |
+| `chembl` | ChEMBL id（`CHEMBL25`）或纯数字（`25`） | `.sdf` |
+
+条目 id 的规范化和校验在 core（`@gcszhn/mol4agent-core/sources`）；OpenCode
+server 负责 HTTPS 下载，上限 64 MiB、30 秒超时，并先写临时文件再原子替换，失败
+的抓取不会留下半个结构。目标文件已存在会被覆盖。AlphaFold 的文件名带版本号，
+所以 server 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件。
+
+```json
+{ "entry_id": "1crn", "target_path": "fixtures/1crn.pdb" }
+{ "entry_id": "aspirin", "source_db": "pubchem", "target_path": "fixtures/" }
+{ "entry_id": "P00533", "source_db": "alphafold", "target_path": "egfr.pdb" }
+```
 
 ## 安装
 
@@ -109,7 +139,7 @@ opencode plugin add @gcszhn/mol4agent-opencode
 ```
 
 `plugin add` 会安装包并写入**全局** `opencode.json(c)`，桌面端会在每个窗口加载
-其 GUI 部分。可用 `@0.1.1` 固定版本；用 `opencode plugin list` 确认（桌面端
+其 GUI 部分。可用 `@0.2.0` 固定版本；用 `opencode plugin list` 确认（桌面端
 **Settings > Extensions > Plugins** 也可查看）。当 `packages/opencode/package.json`
 的版本在 `main` 上变化时会自动发布；未发布的改动请先用下面的本地源码方式。
 
@@ -168,5 +198,9 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 - GUI 首次挂载时，面板只列出当前 session 已存储的标签；若活动结构的标签不在
   标签栏里，用 **Molecular viewer** 菜单项重新显示。
 - `mol_interface` 只解析 PDB 类 ATOM 记录；`mol_info` 尚不能从原始字节摘要 BCIF。
+- `mol_fetch` 需要**会话所属 server** 能访问外网 HTTPS——远程 server 会自己在
+  远端下载并保存文件，而不是下载到桌面机。下载上限 64 MiB、30 秒超时；失败的
+  抓取不会留下半个文件。PubChem 按 3D SDF（`record_type=3d`）请求，没有 3D 构象
+  的化合物会返回 HTTP 404。下载内容按未压缩保存，因此 `.gz` 目标会被拒绝。
 - 文件上限 64 MiB（含 gzip 解压后）；需要 WebGL 2。每个 session 最多保留 12 个打开的
   结构标签（淘汰最旧的非活动标签）。
