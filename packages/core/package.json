@@ -1,6 +1,6 @@
 {
   "name": "@gcszhn/mol4agent-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Harness-neutral Mol* viewer engine: bytes + explicit format in, commands out.",
   "main": "./lib/index.js",

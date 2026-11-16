@@ -123,7 +123,7 @@ importers:
         specifier: 0.2.2-rc.3
         version: 0.2.2-rc.3(58bbce42e90a903c4344c75a07fc310a)
       '@gcszhn/mol4agent-core':
-        specifier: workspace:^
+        specifier: workspace:>=0.2.0 <1.0.0
         version: link:../core
       '@types/node':
         specifier: ^22.20.5

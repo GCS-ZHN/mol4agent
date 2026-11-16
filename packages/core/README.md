@@ -40,7 +40,7 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-The package is published on npm as `@gcszhn/mol4agent-core@0.1.0`; inside this
+The package is published on npm as `@gcszhn/mol4agent-core@0.2.0`; inside this
 monorepo, pnpm links the workspace copy instead. `molstar` and `react` are peer
 dependencies. The DSH adapter bundles Mol* into a single client script; a plain
 web app can use the package directly.

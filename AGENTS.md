@@ -55,15 +55,18 @@ are in its AGENTS playbook.
 - A change spanning core and adapters bumps core plus every adapter that must
   ship it. An adapter-only change bumps only that adapter; do not bump core or
   unrelated adapters.
-- The ChatGPT adapter keeps `package.json`, `.codex-plugin/plugin.json`, and the
-  `VERSION` constants in `src/server.ts` and `src/client/main.ts` equal. The
-  release script fails on a `package.json`/`plugin.json` version mismatch.
+- Keep every hardcoded version string equal to `package.json`: the ChatGPT
+  `.codex-plugin/plugin.json` and the `VERSION` constants in `src/server.ts`
+  and `src/client/main.ts`, plus the DSH HTTP `User-Agent` in
+  `src/host/fetch.ts`. The release script fails on a package/plugin mismatch.
 
 ### Core dependency and bundled adapters
 
 - Adapters declare core as `workspace:^`, never `workspace:*`; publishing
-  rewrites it to `^x.y.z`. Other published dependencies use ranges too, except
-  host-provided peer APIs that must pin the host version (DSH).
+  rewrites it to `^x.y.z`. DSH's build-time core dependency uses
+  `workspace:>=0.2.0 <1.0.0` (published as `>=0.2.0 <1.0.0`) so its bundle can
+  be built against any 0.x core. Other published dependencies use ranges too,
+  except host-provided peer APIs that must pin the host version.
 - Every adapter bundles core into its artifacts: DSH `host.js`/`client.js`,
   ChatGPT `server.js`/`viewer.html`, and OpenCode `index.js`/`gui.cjs`. A core
   patch does **not** reach an installed adapter on its own. Each adapter that
