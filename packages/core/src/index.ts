@@ -8,6 +8,7 @@
  */
 export * from './protocol.ts'
 export * from './formats.ts'
+export * from './sources.ts'
 export { summarizeStructure } from './parse/index.ts'
 export { createMolViewer } from './viewer.ts'
 export type { MolViewer, MolViewerOptions } from './viewer.ts'

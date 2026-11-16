@@ -12,8 +12,11 @@ preview that an agent can operate.
   decodes it before handing bytes to core. The previewer's **Open with** menu
   still offers code/plain text (`bcif` has no plain-text fallback because its
   bytes are binary).
-- **Agent tools**: `mol_info`, `mol_interface`, `mol_open`, `mol_style`,
-  `mol_select`, `mol_focus`, `mol_measure`, `mol_capture`.
+- **Agent tools**: `mol_info`, `mol_interface`, `mol_fetch`, `mol_open`,
+  `mol_style`, `mol_select`, `mol_focus`, `mol_measure`, `mol_capture`.
+- **Database fetch**: `mol_fetch` downloads PDB entries (PDB/mmCIF/BinaryCIF),
+  AlphaFold DB predictions, PubChem compounds, and ChEMBL molecules into the
+  workspace, so an agent can start from an entry id instead of a local file.
 - **Agent-driven page**: tool calls are folded into a durable session
   projection; the open page follows it and applies commands.
 - **Auto-open**: naming a new structure reveals its preview through a
@@ -68,6 +71,7 @@ away.
 |---|---|---|
 | `mol_info` | `path` | Summarize chains, residues, atoms, ligands. Does not open a viewer or change the scene. |
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å, 0 < cutoff ≤ 30) in PDB-like files. Returns ranges for `mol_style`/`mol_focus`. |
+| `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
 | `mol_open` | `path`, `type?`, `color?`, `select?`, `focus?` | Create/update the tab page keyed by the absolute path and make it active. Emits `represent` and optionally `select`/`focus`; the tab page id is the path. |
 | `mol_style` | `tab?`, `type?`, `color?`, `target?`, `colorParams?` | Append `represent` to the tab (`tab` defaults to active). Without `target` it replaces the scene representation; with `target` it adds a representation to that selection only. `colorParams` carries e.g. `{"value": 16711680}` for uniform red. |
 | `mol_select` | `tab?`, `target`, `mode?`, `focus?` | Append `select`. `mode` is `select` or `highlight`. |
@@ -75,8 +79,34 @@ away.
 | `mol_measure` | `tab?`, `kind`, `targets` | Append `measure`. 2 targets for distance, 3 for angle, 4 for dihedral. |
 | `mol_capture` | `tab?`, `width?`, `height?`, `transparent?` | Block until the target tab delivers a PNG (default 1024×768). Returns an image attachment when the routed model accepts images, plus `savedPath` when available. |
 
-`path` is absolute or relative to the session working directory. Files are
-limited to 64 MiB.
+`path` is absolute or relative to the session working directory. `target_path`
+follows the same rule. Files are limited to 64 MiB.
+
+### Database sources
+
+| `source_db` | `entry_id` | Saved format |
+|---|---|---|
+| `rcsb-pdb` (default) | 4-character PDB id, e.g. `1crn` | `.pdb` |
+| `rcsb-cif` | 4-character PDB id, e.g. `1crn` | `.cif` (mmCIF) |
+| `rcsb-bcif` | 4-character PDB id, e.g. `1crn` | `.bcif` (BinaryCIF) |
+| `alphafold` | UniProt accession, e.g. `P00533` | `.pdb` |
+| `pubchem` | CID (`2244`) or compound name (`aspirin`) | `.sdf` (3D) |
+| `chembl` | ChEMBL id (`CHEMBL25`) or bare number (`25`) | `.sdf` |
+
+Entry ids are normalized and validated in core
+(`@gcszhn/mol4agent-core/sources`); the Host performs the HTTPS download, caps
+it at 64 MiB, times out after 30 s, and writes through a temporary file so a
+failed fetch leaves no partial structure. Existing targets are overwritten.
+AlphaFold file names are versioned, so the Host resolves `0.pdbUrl` through the
+AlphaFold JSON API before downloading.
+
+`mol_fetch` examples:
+
+```json
+{ "entry_id": "1crn", "target_path": "fixtures/1crn.pdb" }
+{ "entry_id": "aspirin", "source_db": "pubchem", "target_path": "fixtures/" }
+{ "entry_id": "P00533", "source_db": "alphafold", "target_path": "egfr.pdb" }
+```
 
 `mol_info` example:
 
@@ -156,6 +186,7 @@ range.
 | `mol_measure` | Append `{ op: 'measure', kind, targets }` |
 | `mol_capture` | Add a pending capture entry; no viewer command |
 | `mol_interface` | None; returns computed ranges only |
+| `mol_fetch` | None; downloads a file only |
 | `mol_info` | None |
 
 ## Session projection
@@ -355,6 +386,11 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
   it adds a selection component. Labels are not exposed as a tool yet.
 - `mol_interface` currently parses PDB-like ATOM records (`pdb`/`pdbqt`/`pqr`)
   only; mmCIF/BCIF interface calculation is not implemented.
+- `mol_fetch` needs outbound HTTPS from the DSH Host. Downloads are capped at
+  64 MiB and time out after 30 s; a failed fetch does not write a partial file.
+  PubChem is requested as a 3D SDF (`record_type=3d`), so compounds without a 3D
+  conformer return HTTP 404. Downloaded bytes are stored uncompressed, so a
+  `.gz` target is rejected.
 - An 8 Å cutoff can produce a large interface (7CZD A/B: 91 residues); lower
   the cutoff or focus a single range for a cleaner figure.
 - A tab page id is the absolute path. Reopening the same path updates that tab

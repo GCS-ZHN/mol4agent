@@ -10,6 +10,9 @@ keep its protocol consistent for every adapter.
 
 - `StructureData` is **bytes + explicit `MolFormat`**; core never receives a path,
   inspects a suffix, or imports a harness SDK, filesystem, network, or session API.
+- `sources.ts` maps entry ids to download plans (URL, optional JSON index field,
+  format, file name) and must stay network/filesystem-free; downloading and
+  writing are adapter jobs.
 - Text formats passed as `Uint8Array` must be UTF-8 decoded; honor `binary` for
   BCIF. A PDB wrapped as a Binary data object produces an empty hierarchy.
 - Loading is a method, not a command; commands stay JSON-serializable and

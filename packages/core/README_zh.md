@@ -28,6 +28,9 @@ core: createPluginUI -> Mol* state tree -> commands -> capture
 - 命令是 JSON 可序列化的；**加载是方法，不是命令**，因为适配包持有的字节
   不一定可序列化。
 - `@gcszhn/mol4agent-core/parse` 是纯函数，Node 和浏览器都能用。
+- `@gcszhn/mol4agent-core/sources` 同样是纯函数：把条目 id 变成下载计划
+  （`url`、可选的 JSON `indexField`、格式、文件名）。网络和写文件仍由适配包
+  负责。
 
 ## 安装
 
@@ -55,9 +58,10 @@ Package `exports` 指向 `lib`，npm `files` 只包含 `lib` 和 README；`src/`
 
 | Import | 导出 |
 |---|---|
-| `@gcszhn/mol4agent-core` | `createMolViewer`、协议类型、format 辅助函数、`summarizeStructure`、`compileSelector`、`selectorSchema` |
+| `@gcszhn/mol4agent-core` | `createMolViewer`、协议类型、format 辅助函数、source 辅助函数、`summarizeStructure`、`compileSelector`、`selectorSchema` |
 | `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`、`StructureData`、`MolCommand`、`StructureSelector`、`StructureSummary`、`Mol4AgentError`，以及 `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` 守卫 |
 | `@gcszhn/mol4agent-core/parse` | `summarizeStructure`、`summarizePdbLike`、`summarizeCif`、`summarizeSdf`、`summarizeMol2`、`summarizeXyz`、`summarizeGro` |
+| `@gcszhn/mol4agent-core/sources` | `SOURCE_DATABASES`、`SOURCE_DATABASE_INFO`、`resolveSource`、`normalizeSourceDb`、`readSourceIndexField`，以及 `isSourceDatabase` 守卫 |
 | `@gcszhn/mol4agent-core/react` | `Mol4AgentViewer`、`Mol4AgentViewerHandle`、`Mol4AgentScene` |
 
 ## `createMolViewer`
@@ -202,7 +206,7 @@ type CommandResult =
 
 错误码：`INVALID_COMMAND`、`UNSUPPORTED_FORMAT`、`UNSUPPORTED_REPRESENTATION`、
 `REPRESENT_FAILED`、`NO_STRUCTURE`、`LOAD_FAILED`、`CAPTURE_FAILED`、
-`SUMMARY_UNSUPPORTED`、`DISPOSED`。
+`SUMMARY_UNSUPPORTED`、`UNSUPPORTED_SOURCE`、`INVALID_ENTRY_ID`、`DISPOSED`。
 
 ## 选择器
 
@@ -266,6 +270,43 @@ const summary = summarizeStructure({ data: pdbText, format: 'pdb', label: '1atp.
 
 BCIF 可以渲染，但目前不能从 raw bytes 摘要；`summarizeStructure` 会抛
 `SUMMARY_UNSUPPORTED`。viewer 的兜底摘要仍可能返回 `complete: false`。
+
+## 数据库来源
+
+`mol_fetch` 从条目 id 而不是本地文件开始。core 只校验 id 并返回下载计划，
+不发起请求、不写文件；实际请求和落盘由适配包用各自的 HTTPS/文件系统 API
+完成。
+
+```ts
+import { resolveSource } from '@gcszhn/mol4agent-core/sources'
+
+resolveSource({ entryId: '1crn' })
+// { sourceDb: 'rcsb-pdb', entryId: '1CRN', format: 'pdb',
+//   fileName: '1CRN.pdb',
+//   plan: { url: 'https://files.rcsb.org/download/1CRN.pdb' },
+//   description: 'RCSB PDB entry 1CRN (PDB format)' }
+
+resolveSource({ entryId: 'P00533', sourceDb: 'alphafold' })
+// plan: { url: 'https://alphafold.ebi.ac.uk/api/prediction/P00533',
+//         indexField: '0.pdbUrl' }
+```
+
+| `source_db` | `entry_id` | 格式 |
+|---|---|---|
+| `rcsb-pdb`（默认） | 4 字符 PDB id（`1crn`） | `pdb` |
+| `rcsb-cif` | 4 字符 PDB id（`1crn`） | `mmcif` |
+| `rcsb-bcif` | 4 字符 PDB id（`1crn`） | `bcif` |
+| `alphafold` | UniProt accession（`P00533`） | `pdb` |
+| `pubchem` | CID（`2244`）或化合物名（`aspirin`） | `sdf` |
+| `chembl` | `CHEMBL25`，或纯数字（`25`） | `sdf` |
+
+`plan.indexField` 表示这是一个 JSON 索引文档：适配包按点路径取值，再下载其中
+的 URL。AlphaFold 的文件名带版本号，所以 `0.pdbUrl` 跳过 API 的数组包装并取
+当前 PDB URL。取该字段可用 `readSourceIndexField(payload, field)`。
+
+`SOURCE_DATABASE_INFO` 提供每个来源的 label、描述、entry 提示和格式，供工具
+描述使用。`normalizeSourceDb` 校验闭集；非法 id 会抛出 `Mol4AgentError`，
+错误码为 `UNSUPPORTED_SOURCE` 或 `INVALID_ENTRY_ID`。
 
 ## 截图
 
@@ -341,8 +382,8 @@ sequenceDiagram
 
 ## 状态
 
-- `protocol`、`formats`、`parse/*`、`viewer`、`select`、`react` 均已实现并通过
-  typecheck。
+- `protocol`、`formats`、`parse/*`、`sources`、`viewer`、`select`、`react` 均已
+  实现并通过 typecheck。
 - 在 headless Chrome + SwiftShader 下用真实 1CRN PDB/CIF、1ATP 和 PubChem
   aspirin SDF 验证过：官方 UI、加载、cartoon/polymer-and-ligand、配体高亮、
   聚焦和 PNG 截图。
