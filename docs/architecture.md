@@ -273,7 +273,9 @@ See the [ChatGPT README](../packages/chatgpt/README.md).
   `@opencode/plugin` 2.2.0+ (the `./gui` window API; verified on 2.3.0). Remote
   (SSH) sessions are supported when the plugin is installed on both the desktop
   and the server: the GUI routes every RPC call to the session's own server, so
-  paths are resolved in the server's namespace. OpenCode tool results have no
+  paths are resolved in the server's namespace. The browser app served by
+  `opencode serve` is tool-only: it has no plugin-GUI bridge, so no viewer
+  mounts and `mol_capture` cannot complete. OpenCode tool results have no
   inline image, so `mol_capture` returns the saved path; the file-tree `.pdb`
   click is not intercepted, so open structures with Ctrl+P (`/open`) or the
   pick-file command (see its README).

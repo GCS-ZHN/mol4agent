@@ -73,6 +73,10 @@ keep the old instance (`??=`), so restart the server after such a change.
   from non-builtin servers). The GUI and tools halves are installed separately:
   desktop global config for the panel, remote server config for tools. Keep this
   matrix in both READMEs.
+- The web app served by `opencode serve` has no plugin-GUI bridge, so the panel
+  never mounts there: `mol_open` records the scene but `mol_capture` times out.
+  The viewer depends on the desktop app's local GUI-plugin host; document the
+  browser as tool-only rather than implying parity with the desktop.
 
 ### Session buckets and tab targeting
 

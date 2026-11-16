@@ -93,9 +93,16 @@ session's own server:
   desktop machine, so it is disabled for remote sessions. Use Ctrl+P file
   search, click a `.pdb`/`.cif` path in the conversation, or ask the agent to
   run `mol_open`; those paths are resolved on the session's server.
-- With `opencode serve` in a browser, the 2.3 web UI does not mount plugin GUI
-  bundles, so only the agent tools are available. Use the desktop app for the
-  Mol* panel.
+
+### Current limitation: the web UI is tool-only
+
+The Mol* panel depends on the **desktop app's local GUI-plugin host**. The
+OpenCode 2.3 web app served by `opencode serve` has no plugin-GUI bridge, so it
+never mounts `./gui-experimental`: there is no side panel, no viewer, and no
+capture target. The server half still works — `mol_open` records the scene and
+the `mol_*` tools run on the session's server — but `mol_capture` times out
+because no viewer exists to render it. Use the desktop app (local, or connected
+to a remote server) for the viewer; a browser session is tool-only.
 
 ## Tools
 
@@ -183,6 +190,10 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 - OpenCode tool results have no inline-image content type, so `mol_capture`
   returns the saved path (and a `file` reference) rather than attaching the PNG
   to the model context.
+- **A browser session is tool-only.** The viewer panel requires the desktop
+  app's local GUI-plugin host; the `opencode serve` web app has no plugin-GUI
+  bridge, so `mol_open` records the scene but no viewer mounts and `mol_capture`
+  times out. Use the desktop app for the Mol* panel.
 - The built-in file tree cannot open a structure: clicking a `.pdb` there opens
   the text editor. Use **Ctrl+P file search** (`/open`) or the pick-file command
   instead. A `FileViewer` for the `"text"` kind is ignored by the host (it only

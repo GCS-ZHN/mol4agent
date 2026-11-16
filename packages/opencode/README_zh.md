@@ -76,8 +76,14 @@ OpenCode 2.3 的窗口插件宿主只会从桌面端**内置 server**加载 GUI 
 - 「Open molecular structure」系统选文件读取的是**桌面机**上的文件，因此远程会话下
   会禁用。请改用 Ctrl+P 文件检索、点击对话中的 `.pdb`/`.cif` 路径，或让 agent 执行
   `mol_open`；这些方式都会把路径交给会话所属 server 解析。
-- 在浏览器中使用 `opencode serve` 时，2.3 的网页端不会挂载插件 GUI bundle，因此只有
-  agent 工具可用；Mol* 面板请使用桌面端。
+
+### 当前局限：网页端只有工具，没有 viewer
+
+Mol* 面板依赖**桌面端的本地 GUI 插件宿主**。`opencode serve` 提供的 OpenCode 2.3
+网页端没有 plugin-GUI bridge，不会挂载 `./gui-experimental`：没有侧栏、没有 viewer，
+也没有截图目标。server 部分仍然可用——`mol_open` 会在会话所属 server 上记录场景、
+`mol_*` 工具照常执行——但由于没有 viewer 渲染，`mol_capture` 会超时。查看结构请使用
+桌面端（本地，或连接远程 server）；浏览器会话只能使用工具。
 
 ## 工具
 
@@ -148,6 +154,9 @@ pnpm --filter @gcszhn/mol4agent-opencode build
 
 - OpenCode 的工具结果没有内联图片内容类型，因此 `mol_capture` 返回保存路径
   （加一个 `file` 引用），而不是把 PNG 附加到模型上下文。
+- **浏览器会话只有工具。** viewer 面板依赖桌面端的本地 GUI 插件宿主；`opencode
+  serve` 网页端没有 plugin-GUI bridge，`mol_open` 只会记录场景，不会挂载 viewer，
+  `mol_capture` 会超时。Mol* 面板请使用桌面端。
 - **内置文件树不能打开结构**：在文件树里点 `.pdb` 会打开文本编辑器。请用
   **Ctrl+P 文件检索**（即 `/open`）或选文件命令。注册 `"text"` kind 的
   `FileViewer` 会被宿主忽略（它只渲染 file view 自己不渲染的 kind）。

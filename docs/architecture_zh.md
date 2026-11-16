@@ -193,8 +193,9 @@ App；两者共享长轮询场景与 claim/deliver 截图会合。每个 `mcp-ex
 - **OpenCode 适配**：侧栏 Mol* viewer、`mol_*` 工具、RPC 场景更新、截图会合、
   选文件打开均已实现。需要 `@opencode/plugin` 2.2.0+（`./gui` 窗口 API，2.3.0
   验证）。远程（SSH）会话需在桌面端与 server 两端都安装插件：GUI 的每次 RPC 都
-  路由到会话所属 server，路径也在该 server 的命名空间解析。OpenCode 工具结果无
-  内联图片，`mol_capture` 返回保存路径；文件树点击不做拦截，请用 Ctrl+P 文件检索
-  （即 `/open`）打开（见包 README）。
+  路由到会话所属 server，路径也在该 server 的命名空间解析。`opencode serve` 提供的
+  网页端只有工具：它没有 plugin-GUI bridge，不会挂载 viewer，`mol_capture` 无法完成。
+  OpenCode 工具结果无内联图片，`mol_capture` 返回保存路径；文件树点击不做拦截，
+  请用 Ctrl+P 文件检索（即 `/open`）打开（见包 README）。
 
 下一步不是继续扩写本文，而是把新能力写进对应 package 的 README/AGENTS，并只在这里更新总体目标或分层的变化。
