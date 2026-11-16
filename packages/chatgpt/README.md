@@ -7,6 +7,9 @@ in the conversation and lets the agent operate it with `mol_*` tools.
 
 - **Agent-opened 3D page**: `mol_open` renders a structure in a conversation
   card (expandable to the side panel) instead of returning a wall of PDB text.
+- **Database fetch**: `mol_fetch` downloads PDB entries (PDB/mmCIF/BinaryCIF),
+  AlphaFold DB predictions, PubChem compounds, and ChEMBL molecules into the
+  workspace, so an agent can start from an entry id instead of a local file.
 - **File-tree preview**: `.pdb` / `.cif` / `.sdf` / ... files, including
   `.pdb.gz` / `.cif.gz` / `.sdf.gz` variants, open in the **Structure preview**
   side-panel tab by default (after Codex's one-time per-extension permission);
@@ -118,6 +121,7 @@ Model-facing tools:
 |---|---|---|
 | `mol_info` | `path` | Summarize chains, residues, atoms, ligands. Does not open a viewer. |
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å) in PDB-like files. |
+| `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
 | `mol_open` | `path`, `type?`, `color?`, `select?`, `focus?` | Open a scene, render the MCP App card, and optionally highlight/focus a selection. |
 | `mol_style` | `type?`, `color?`, `target?`, `colorParams?` | Replace the global representation, or add one to a selection. |
 | `mol_select` | `target`, `mode?`, `focus?` | Apply select/highlight interactivity. |
@@ -137,6 +141,32 @@ Selectors use the same JSON shapes as the DSH adapter:
 { "kind": "residues", "chain": "A", "start": 10, "end": 25 }
 { "kind": "residue", "chain": "A", "index": 42 }
 { "kind": "comp", "compId": "ATP" }
+```
+
+### Database sources
+
+| `source_db` | `entry_id` | Saved format |
+|---|---|---|
+| `rcsb-pdb` (default) | 4-character PDB id, e.g. `1crn` | `.pdb` |
+| `rcsb-cif` | 4-character PDB id, e.g. `1crn` | `.cif` (mmCIF) |
+| `rcsb-bcif` | 4-character PDB id, e.g. `1crn` | `.bcif` (BinaryCIF) |
+| `alphafold` | UniProt accession, e.g. `P00533` | `.pdb` |
+| `pubchem` | CID (`2244`) or compound name (`aspirin`) | `.sdf` (3D) |
+| `chembl` | ChEMBL id (`CHEMBL25`) or bare number (`25`) | `.sdf` |
+
+Entry ids are normalized and validated in core
+(`@gcszhn/mol4agent-core/sources`); the MCP server performs the HTTPS download,
+caps it at 64 MiB, times out after 30 s, and writes through a temporary file so
+a failed fetch leaves no partial structure. Existing targets are overwritten.
+AlphaFold file names are versioned, so the server resolves `0.pdbUrl` through
+the AlphaFold JSON API before downloading.
+
+`mol_fetch` examples:
+
+```json
+{ "entry_id": "1crn", "target_path": "fixtures/1crn.pdb" }
+{ "entry_id": "aspirin", "source_db": "pubchem", "target_path": "fixtures/" }
+{ "entry_id": "P00533", "source_db": "alphafold", "target_path": "egfr.pdb" }
 ```
 
 ## Resources
@@ -206,6 +236,11 @@ portable.
   `serverTools`; the README notes this fallback for restricted hosts.
 - BCIF renders but `mol_info` cannot summarize it from raw bytes yet.
 - `mol_interface` only parses PDB-like ATOM records.
+- `mol_fetch` needs outbound HTTPS from the MCP server host. Downloads are
+  capped at 64 MiB and time out after 30 s; a failed fetch does not write a
+  partial file. PubChem is requested as a 3D SDF (`record_type=3d`), so
+  compounds without a 3D conformer return HTTP 404. Downloaded bytes are stored
+  uncompressed, so a `.gz` target is rejected.
 - Files are capped at 64 MiB, including the decompressed size of `.gz` inputs;
   the browser fallback needs `DecompressionStream`, and WebGL is required.
 - No multi-model/trajectory switching UI; labels are supported by core but not
@@ -231,7 +266,7 @@ a capture, and checks the PNG.
 
 ## Files
 
-- Server: `src/{server,tools,scene,capture,paths,formats,selector,interface}.ts`, `src/host/gzip.ts`
+- Server: `src/{server,tools,scene,capture,paths,fetch,formats,selector,interface}.ts`, `src/host/gzip.ts`
 - App: `src/client/{index.html,main.ts,gzip.ts}`
 - Build: `scripts/build.mjs`
 - Install: `scripts/install-local.mjs`

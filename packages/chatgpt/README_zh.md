@@ -7,6 +7,8 @@ agent 通过 `mol_*` 工具直接操作它。
 
 - **agent 打开 3D 页面**：`mol_open` 在会话卡片（可展开到侧栏）里渲染结构，
   而不是把整份 PDB 文本塞回上下文。
+- **数据库抓取**：`mol_fetch` 可按条目 id 把 PDB 条目（PDB/mmCIF/BinaryCIF）、
+  AlphaFold DB 预测、PubChem 化合物和 ChEMBL 分子下载到工作区，不必先有本地文件。
 - **文件树预览**：`.pdb` / `.cif` / `.sdf` / ...（含 `.pdb.gz` / `.cif.gz` /
   `.sdf.gz` 等 gzip 变体）默认在侧栏的 **Structure preview** 标签页打开
   （Codex 首次会按扩展名询问一次）；**Open with** 仍可切回内置文本/代码查看器。
@@ -103,6 +105,7 @@ store 保留一个**活跃 agent scene** 和多个独立的 **file-viewer scene*
 |---|---|---|
 | `mol_info` | `path` | 汇总链/残基/原子/配体，不打开页面。 |
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 找两组链之间的界面残基（默认 8 Å），仅 PDB-like。 |
+| `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
 | `mol_open` | `path`、`type?`、`color?`、`select?`、`focus?` | 打开场景、渲染 MCP App 卡片，可选高亮/聚焦。 |
 | `mol_style` | `type?`、`color?`、`target?`、`colorParams?` | 替换全局表示，或给选择集叠加表示。 |
 | `mol_select` | `target`、`mode?`、`focus?` | 选择/高亮。 |
@@ -122,6 +125,30 @@ app/宿主专用内部工具：`mol_viewer_poll`、`mol_capture_deliver`、
 { "kind": "residues", "chain": "A", "start": 10, "end": 25 }
 { "kind": "residue", "chain": "A", "index": 42 }
 { "kind": "comp", "compId": "ATP" }
+```
+
+### 数据库来源
+
+| `source_db` | `entry_id` | 保存格式 |
+|---|---|---|
+| `rcsb-pdb`（默认） | 4 位 PDB id，例如 `1crn` | `.pdb` |
+| `rcsb-cif` | 4 位 PDB id，例如 `1crn` | `.cif`（mmCIF） |
+| `rcsb-bcif` | 4 位 PDB id，例如 `1crn` | `.bcif`（BinaryCIF） |
+| `alphafold` | UniProt accession，例如 `P00533` | `.pdb` |
+| `pubchem` | CID（`2244`）或化合物名（`aspirin`） | `.sdf`（3D） |
+| `chembl` | ChEMBL id（`CHEMBL25`）或纯数字（`25`） | `.sdf` |
+
+条目 id 由 core（`@gcszhn/mol4agent-core/sources`）负责规范化和校验；MCP server
+执行 HTTPS 下载，上限 64 MiB、30 秒超时，并通过临时文件原子写入，失败时不会
+留下半个结构文件。目标文件已存在时会覆盖。AlphaFold 文件名带版本号，server 会
+先经 AlphaFold JSON API 解析 `0.pdbUrl` 再下载。
+
+`mol_fetch` 示例：
+
+```json
+{ "entry_id": "1crn", "target_path": "fixtures/1crn.pdb" }
+{ "entry_id": "aspirin", "source_db": "pubchem", "target_path": "fixtures/" }
+{ "entry_id": "P00533", "source_db": "alphafold", "target_path": "egfr.pdb" }
 ```
 
 ## 资源
@@ -189,6 +216,10 @@ codex plugin add mol4agent@mol4agent-local
   受限宿主只能显示静态场景。
 - BCIF 可渲染，但 `mol_info` 暂不能从原始字节汇总。
 - `mol_interface` 只解析 PDB-like ATOM。
+- `mol_fetch` 需要 MCP server 所在机器能访问外网 HTTPS。下载上限 64 MiB、30 秒
+  超时；失败不会写半个文件。PubChem 以 3D SDF（`record_type=3d`）请求，没有 3D
+  构象的化合物会返回 HTTP 404。下载内容按原样保存（不解压），因此拒绝 `.gz`
+  目标路径。
 - 文件上限 64 MiB，`.gz` 解压后同样受 64 MiB 限制；宿主资源回退需要
   `DecompressionStream`，渲染需要 WebGL。
 - 没有多模型/轨迹切换 UI；core 支持 label，但这里没有暴露 label 工具。
@@ -212,7 +243,7 @@ MCP Apps 冒烟测试（无 Chrome 时跳过）。冒烟测试用官方 `AppBrid
 
 ## 文件
 
-- Server：`src/{server,tools,scene,capture,paths,formats,selector,interface}.ts`、`src/host/gzip.ts`
+- Server：`src/{server,tools,scene,capture,paths,fetch,formats,selector,interface}.ts`、`src/host/gzip.ts`
 - App：`src/client/{index.html,main.ts,gzip.ts}`
 - 构建：`scripts/build.mjs`
 - 安装：`scripts/install-local.mjs`
