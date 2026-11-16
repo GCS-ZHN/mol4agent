@@ -102,10 +102,13 @@ newly mounted card reconstructs its picture from a full snapshot.
 
 ### Capture rendezvous
 
-`mol_capture` enqueues a request and waits. The app claims it from the next
-poll, renders the viewport through core, and commits the PNG with
-`mol_capture_deliver`; the waiting tool then returns the image. Internal tools
-are marked `_meta.ui.visibility: ["app"]` so the model does not call them.
+`mol_capture` enqueues a request and waits. The agent tab opened by `mol_open`
+claims it from its next poll, renders the viewport through core, and commits the
+PNG with `mol_capture_deliver`; the waiting tool then returns the image.
+`mol_capture` deliberately has no viewer `_meta`, so the host never mounts a
+second card for a screenshot and the capture keeps the camera pose the human is
+looking at. Internal tools are marked `_meta.ui.visibility: ["app"]` so the
+model does not call them.
 
 ## Tools
 
@@ -196,9 +199,9 @@ portable.
 - **One active agent scene**: `mol_open` replaces the agent scene targeted by
   model tools. Older agent tabs and file tabs stay on their own bound scenes.
   `mol_capture` captures the active agent scene.
-- **Capture needs a viewer**: after a long tool sequence the original card can
-  unmount. Retry `mol_capture` once; its UI resource mounts a fresh viewer and
-  the retry renders. If the host blocks app→tool calls, the tool times out.
+- **Capture needs a viewer**: `mol_capture` uses the agent tab that `mol_open`
+  already mounted. Reopen the structure with `mol_open` if that tab was closed
+  and retry. If the host blocks app→tool calls, the tool times out.
 - **App→tool capability**: live updates and capture require the host to allow
   `serverTools`; the README notes this fallback for restricted hosts.
 - BCIF renders but `mol_info` cannot summarize it from raw bytes yet.

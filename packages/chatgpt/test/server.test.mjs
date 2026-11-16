@@ -82,6 +82,29 @@ test('lists the agent tools and the viewer resource', async t => {
   assert.ok(resources.some(resource => resource.uri === 'ui://mol4agent/viewer.html'))
 })
 
+test('mol_capture reuses the open viewer instead of mounting another one', async t => {
+  const { client } = await withClient(t)
+  const { tools } = await client.listTools()
+
+  const capture = tools.find(tool => tool.name === 'mol_capture')
+  assert.ok(capture)
+  assert.equal(
+    capture._meta?.['openai/outputTemplate'],
+    undefined,
+    'mol_capture must not publish a viewer template; that mounts a second App card per capture',
+  )
+  assert.equal(capture._meta?.ui?.resourceUri, undefined)
+
+  for (const name of ['mol_open', 'mol_view_file']) {
+    const tool = tools.find(candidate => candidate.name === name)
+    assert.equal(
+      tool?._meta?.['openai/outputTemplate'],
+      'ui://mol4agent/viewer.html',
+      `${name} must still publish the viewer template`,
+    )
+  }
+})
+
 test('summarizes a PDB and renders its chains', async t => {
   const { client } = await withClient(t)
   const result = await client.callTool({ name: 'mol_info', arguments: { path: fixture } })

@@ -20,11 +20,13 @@ Codex's MCP extension file viewer.
 - Keep scene isolation: `mol_open`/`mol_style`/... target the **active agent
   scene**; `mol_view_file` creates an independent **file** scene and never
   replaces the agent scene. Each app binds to its initial `sceneId`, ignores
-  scenes with another id, and polls with its own mode (`agent`/`file`/
-  `capture`). Never let a new `mol_open` hijack an older tab.
-- `mol_capture` captures the active agent scene. File tabs must not claim agent
-  captures; the capture app uses `mode: "capture"` and may claim any pending
-  agent capture.
+  scenes with another id, and polls with its own mode (`agent`/`file`). Never
+  let a new `mol_open` hijack an older tab.
+- `mol_capture` is a plain tool with **no** viewer `_meta`: the already-mounted
+  agent tab claims the pending capture through its normal long poll. Adding a
+  UI template mounts a second viewer per screenshot and resets the camera.
+  File tabs must not claim agent captures. `mol_viewer_poll` still accepts
+  `mode: "capture"` for older app instances, but no current page uses it.
 - A new model-facing tool is a cross-package change: update core semantics if
   needed, the DSH adapter and prompt, this adapter, and every relevant README in
   the same change. Transport-only app tools (`mol_viewer_poll`,
@@ -76,6 +78,9 @@ Codex's MCP extension file viewer.
 - `mol_capture` enqueues a `PendingCapture` and blocks; the app claims it from
   the long poll, renders, and commits with `mol_capture_deliver`. Do not replace
   this with file polling or a second HTTP server.
+- The claiming page is the agent tab opened by `mol_open`, so the capture uses
+  the camera pose the human is looking at. Only `mol_open` / `mol_view_file`
+  advertise the viewer resource; `mol_capture` returns an image block instead.
 - The app must call `mol_capture_fail` on a render/readback error so the tool
   rejects promptly instead of waiting for the timeout.
 - Validate the PNG signature and size on the server before saving. Captures go
