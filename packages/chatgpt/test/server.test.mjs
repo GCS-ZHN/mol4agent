@@ -44,6 +44,7 @@ test('lists the agent tools and the viewer resource', async t => {
     'mol_info',
     'mol_workspace',
     'mol_interface',
+    'mol_fetch',
     'mol_open',
     'mol_style',
     'mol_select',
@@ -113,6 +114,62 @@ test('summarizes a PDB and renders its chains', async t => {
   assert.match(text, /1crn\.pdb/)
   assert.match(text, /chains:/)
   assert.match(text, /residues:/)
+})
+
+test('mol_fetch downloads a database entry and opens the saved file', async t => {
+  const payload = await readFile(fixture)
+  const requests = []
+  const { client, workspace } = await withClient(t, {
+    fetchImpl: async input => {
+      requests.push(String(input))
+      return new Response(payload, { status: 200 })
+    },
+  })
+
+  const fetched = await client.callTool({
+    name: 'mol_fetch',
+    arguments: { entry_id: '1crn', target_path: 'models/1crn.pdb' },
+  })
+  assert.equal(fetched.isError, undefined)
+  const text = fetched.content.find(block => block.type === 'text')?.text ?? ''
+  assert.match(text, /RCSB PDB entry 1CRN/)
+  assert.match(text, /chains:/)
+  const target = join(workspace, 'models/1crn.pdb')
+  assert.equal(fetched.structuredContent?.path, target)
+  assert.equal(fetched.structuredContent?.format, 'pdb')
+  assert.deepEqual(requests, ['https://files.rcsb.org/download/1CRN.pdb'])
+  assert.deepEqual(new Uint8Array(await readFile(target)), new Uint8Array(payload))
+
+  const opened = await client.callTool({ name: 'mol_open', arguments: { path: target } })
+  assert.equal(opened.isError, undefined)
+  assert.equal(opened.structuredContent?.scene.label, '1crn.pdb')
+  assert.equal(opened.structuredContent?.scene.format, 'pdb')
+})
+
+test('mol_fetch rejects invalid entry ids and mismatched targets before downloading', async t => {
+  const requests = []
+  const { client } = await withClient(t, {
+    fetchImpl: async input => {
+      requests.push(String(input))
+      return new Response('unexpected', { status: 500 })
+    },
+  })
+
+  const badId = await client.callTool({
+    name: 'mol_fetch',
+    arguments: { entry_id: 'not-a-pdb-id', target_path: 'x.pdb' },
+  })
+  assert.equal(badId.isError, true)
+  assert.match(badId.content[0].text, /not a PDB entry id/)
+
+  const badTarget = await client.callTool({
+    name: 'mol_fetch',
+    arguments: { entry_id: '1crn', target_path: 'x.cif' },
+  })
+  assert.equal(badTarget.isError, true)
+  assert.match(badTarget.content[0].text, /maps to mmcif/)
+
+  assert.deepEqual(requests, [])
 })
 
 test('reports how the workspace root was resolved', async t => {

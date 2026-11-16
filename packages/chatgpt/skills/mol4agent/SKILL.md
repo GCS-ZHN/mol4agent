@@ -10,18 +10,23 @@ structure file as plain text, and do not drive the viewer with shell commands.
 
 ## Workflow
 
-1. `mol_info` first when you need chain ids, residue numbers, ligands, or atom
+1. If the user names a database entry instead of a local file, `mol_fetch`
+   downloads it: PDB ids (`1crn`), AlphaFold UniProt accessions (`P00533`),
+   PubChem CIDs/names (`2244`, `aspirin`), or ChEMBL ids (`CHEMBL25`). Pass
+   `source_db` when it is not a plain PDB entry, and use the returned path with
+   `mol_open`.
+2. `mol_info` first when you need chain ids, residue numbers, ligands, or atom
    counts. It does not open a page.
-2. `mol_open` **once per structure** with the path to show it. The viewer
+3. `mol_open` **once per structure** with the path to show it. The viewer
    appears as an MCP App card in the conversation, and the tool returns a
    compact summary instead of the file. Do not call `mol_open` again for the
    same path just to change the view: it replaces the active scene and resets
    the camera. Reuse the open scene with the tools below.
-3. Operate the open scene:
+4. Operate the open scene:
    - `mol_style` for representation/color; add `target` for a selection only.
    - `mol_select` to select/highlight; `mol_focus` to frame it.
    - `mol_measure` for distance/angle/dihedral.
-4. `mol_capture` to return a PNG from the existing viewer tab. It does not
+5. `mol_capture` to return a PNG from the existing viewer tab. It does not
    mount another card; the tab must still be open.
 
 ## Selectors
@@ -36,6 +41,21 @@ structure file as plain text, and do not drive the viewer with shell commands.
 ```
 
 ## Examples
+
+```json
+{ "name": "mol_fetch", "arguments": {
+  "entry_id": "1crn",
+  "target_path": "fixtures/1crn.pdb"
+} }
+```
+
+```json
+{ "name": "mol_fetch", "arguments": {
+  "entry_id": "P00533",
+  "source_db": "alphafold",
+  "target_path": "egfr.pdb"
+} }
+```
 
 ```json
 { "name": "mol_open", "arguments": {
@@ -70,6 +90,9 @@ Then style each returned range:
 ## Notes
 
 - Paths may be absolute or relative to the workspace.
+- `mol_fetch` saves uncompressed files, so the target suffix must match the
+  source format (`.pdb`, `.cif`, `.bcif`, or `.sdf`); a `.gz` target is
+  rejected. A directory target uses the source file name.
 - One scene is active at a time. Open each structure once, then adjust the
   current scene with `mol_style` / `mol_select` / `mol_focus` / `mol_measure` /
   `mol_capture`. Calling `mol_open` again for the same file restarts the scene

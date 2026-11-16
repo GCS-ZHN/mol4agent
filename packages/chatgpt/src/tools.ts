@@ -16,6 +16,7 @@ import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@model
 import { z } from 'zod'
 import {
   COLOR_THEMES,
+  Mol4AgentError,
   REPRESENTATION_TYPES,
   type MolCommand,
   type StyleSpec,
@@ -23,7 +24,9 @@ import {
   type StructureSummary,
 } from '@gcszhn/mol4agent-core/protocol'
 import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
+import { SOURCE_DATABASES, resolveSource, type ResolvedSource } from '@gcszhn/mol4agent-core/sources'
 import { CaptureHub } from './capture.ts'
+import { downloadMoleculeSource, FetchTargetError, resolveFetchTarget } from './fetch.ts'
 import { baseNameOf, formatOfFile, isBinaryFormat, isGzipFile, previewFileExtensions } from './formats.ts'
 import { gunzipBytes } from './host/gzip.ts'
 import { findInterfaceResidues, type InterfaceResult } from './interface.ts'
@@ -97,9 +100,12 @@ export interface MolToolOptions {
   readonly captures: CaptureHub
   readonly viewerHtml: string
   readonly maxFileBytes: number
+  readonly fetchTimeoutMs: number
   readonly captureTimeoutMs: number
   readonly captureWidth: number
   readonly captureHeight: number
+  /** Test seam for `mol_fetch`; defaults to the global `fetch`. */
+  readonly fetchImpl?: typeof fetch
 }
 
 /** Register every tool and resource the plugin exposes. */
@@ -246,6 +252,71 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       chainsB,
       cutoff: args.cutoff ?? 8,
     })))
+  })
+
+  server.registerTool('mol_fetch', {
+    title: 'Download a molecular structure',
+    description: 'Download a molecular structure from an online database and save it to a workspace path. '
+      + 'Use it when the user names a database entry instead of a local file: '
+      + 'PDB ids (1crn), AlphaFold UniProt accessions (P00533), '
+      + 'PubChem CIDs or names (2244, aspirin), or ChEMBL ids (CHEMBL25). '
+      + 'Returns the saved path and a structure summary; use mol_open with that path to display it.',
+    inputSchema: {
+      entry_id: z.string().min(1)
+        .describe('Entry id or compound name for source_db. rcsb-pdb/rcsb-cif/rcsb-bcif: 4-character '
+          + 'PDB id (1crn); alphafold: UniProt accession (P00533); pubchem: CID (2244) or compound '
+          + 'name (aspirin); chembl: ChEMBL id (CHEMBL25).'),
+      target_path: z.string().min(1)
+        .describe('Destination file path, absolute or relative to the workspace. A directory or a '
+          + 'trailing slash appends the source file name; a path without a suffix gets one.'),
+      source_db: z.enum(SOURCE_DATABASES).optional()
+        .describe('Source database. Defaults to rcsb-pdb.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  }, async (args, extra) => {
+    let source: ResolvedSource
+    try {
+      source = resolveSource({ entryId: args.entry_id, sourceDb: args.source_db })
+    } catch (error) {
+      if (error instanceof Mol4AgentError) throw new Error(error.message)
+      throw error
+    }
+    const root = await workspaceRoot(server, extra.signal)
+    let targetPath: string
+    try {
+      targetPath = await resolveFetchTarget(root, args.target_path, source)
+    } catch (error) {
+      if (error instanceof FetchTargetError) throw new Error(error.message)
+      throw error
+    }
+    const download = await downloadMoleculeSource({
+      source,
+      targetPath,
+      maxBytes: options.maxFileBytes,
+      timeoutMs: options.fetchTimeoutMs,
+      signal: extra.signal,
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    })
+    const file: ResolvedMoleculeFile = {
+      absolutePath: targetPath,
+      format: source.format,
+      label: baseNameOf(targetPath),
+      bytes: download.bytes,
+    }
+    return textResult(
+      `Downloaded ${source.description} from ${download.url}\n`
+      + `saved: ${targetPath} (${download.bytes.byteLength} bytes)\n\n`
+      + describeFile(file)
+      + `\n\nUse mol_open with path "${targetPath}" to display it.`,
+      {
+        path: targetPath,
+        sourceDb: source.sourceDb,
+        entryId: source.entryId,
+        format: source.format,
+        bytes: download.bytes.byteLength,
+        url: download.url,
+      },
+    )
   })
 
   registerAppTool(server, 'mol_open', {

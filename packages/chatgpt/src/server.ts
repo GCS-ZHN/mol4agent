@@ -14,11 +14,12 @@ import { CaptureHub } from './capture.ts'
 import { SceneStore } from './scene.ts'
 import { registerMolTools } from './tools.ts'
 
-export const VERSION = '0.1.1'
+export const VERSION = '0.2.0'
 
 const INSTRUCTIONS = `mol4agent provides an interactive 3D molecular viewer.
 
 - Use mol_info before choosing chains or residues; never read a whole PDB/mmCIF file as plain text.
+- Use mol_fetch when the user names a database entry instead of a local file; it downloads from RCSB PDB, AlphaFold DB, PubChem, or ChEMBL to target_path. Then call mol_open on the returned path.
 - Use mol_open to display a structure. The viewer appears in the conversation and stays live.
 - Use mol_style, mol_select, mol_focus, and mol_measure to operate the open structure.
 - Use mol_capture to return a PNG screenshot; the viewer must be open.
@@ -31,6 +32,8 @@ export async function createServer(options?: {
   readonly viewerHtml?: string
   readonly captureTimeoutMs?: number
   readonly maxFileBytes?: number
+  readonly fetchTimeoutMs?: number
+  readonly fetchImpl?: typeof fetch
 }): Promise<McpServer> {
   const viewerHtml = options?.viewerHtml ?? await readViewerHtml()
   const server = new McpServer(
@@ -43,9 +46,11 @@ export async function createServer(options?: {
     captures: new CaptureHub(),
     viewerHtml,
     maxFileBytes: options?.maxFileBytes ?? 64 * 1024 * 1024,
+    fetchTimeoutMs: options?.fetchTimeoutMs ?? readPositiveInt('MOL4AGENT_FETCH_TIMEOUT_MS', 30_000),
     captureTimeoutMs: options?.captureTimeoutMs ?? readPositiveInt('MOL4AGENT_CAPTURE_TIMEOUT_MS', 45_000),
     captureWidth: readPositiveInt('MOL4AGENT_CAPTURE_WIDTH', 1024),
     captureHeight: readPositiveInt('MOL4AGENT_CAPTURE_HEIGHT', 768),
+    ...(options?.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
   })
   return server
 }

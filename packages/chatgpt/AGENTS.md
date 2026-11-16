@@ -13,6 +13,10 @@ Codex's MCP extension file viewer.
 - `src/server.ts` + `src/tools.ts` are the only code that sees paths, chooses a
   `MolFormat`, reads bytes, writes captures, or stores scene state. Core receives
   `{ data, format, label }` only.
+- `mol_fetch` follows the same split: core `sources` validates the entry id and
+  returns a download plan, while `src/fetch.ts` performs the HTTPS download and
+  the atomic workspace write. It creates no scene; the caller runs `mol_open`
+  on the returned path.
 - The app (`src/client/`) owns Mol* and WebGL. It must not read files, import
   Node modules, or infer formats.
 - Mutating tools append JSON commands to `SceneStore` and wake the app's
