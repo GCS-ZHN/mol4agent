@@ -154,6 +154,8 @@ export type Mol4AgentErrorCode =
   | 'NO_STRUCTURE'
   | 'LOAD_FAILED'
   | 'CAPTURE_FAILED'
+  | 'UNSUPPORTED_SOURCE'
+  | 'INVALID_ENTRY_ID'
   | 'SUMMARY_UNSUPPORTED'
   | 'DISPOSED'
 
