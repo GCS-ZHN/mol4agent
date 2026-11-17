@@ -63,8 +63,16 @@ Selections are JSON, for example:
 `residues.range` is a comma-separated list of inclusive numeric intervals on the
 residue identifier: `auth_seq_id` by default, `label_seq_id` with `auth:false`.
 It is residue-level, not a sequence position; insertion codes share their base
-number, so `"100"` also matches `100A`/`100B`. The `schema` selector is the
-escape hatch for finer Mol* predicates.
+number, so `"100"` also matches `100A`/`100B`. To select one insertion-coded
+residue exactly, use the `schema` selector with `pdbx_PDB_ins_code` (the empty
+string means "no insertion code"):
+
+```json
+{"kind":"schema","schema":{"auth_asym_id":"H","auth_seq_id":100,"pdbx_PDB_ins_code":"A"}}
+```
+
+`residue_index` is the 0-based source order when a true sequence position is
+needed.
 
 ## Current limitations
 

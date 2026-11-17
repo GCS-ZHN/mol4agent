@@ -31,6 +31,13 @@ test('normalizes structural selectors and auth switches', () => {
     normalizeSelector({ kind: 'schema', schema: { label_comp_id: 'HEM' } }),
     { kind: 'schema', schema: { label_comp_id: 'HEM' } },
   )
+  assert.deepEqual(
+    normalizeSelector({
+      kind: 'schema',
+      schema: { auth_asym_id: 'H', auth_seq_id: 100, pdbx_PDB_ins_code: 'A' },
+    }),
+    { kind: 'schema', schema: { auth_asym_id: 'H', auth_seq_id: 100, pdbx_PDB_ins_code: 'A' } },
+  )
 })
 
 test('rejects malformed selectors with model-actionable errors', () => {
@@ -44,6 +51,7 @@ test('rejects malformed selectors with model-actionable errors', () => {
     [{ kind: 'residue', chain: 'A', index: Number.NaN }, /index/],
     [{ kind: 'residues', chain: 'A' }, /range/],
     [{ kind: 'residues', chain: 'A', range: '10-5' }, /start must be <= end/],
+    [{ kind: 'residues', chain: 'A', range: '100A' }, /invalid residue range segment/],
     [{ kind: 'residues', chain: 'A', start: 1, end: 9 }, /range/],
     [{ kind: 'comp' }, /compId/],
     [{ kind: 'schema' }, /schema/],

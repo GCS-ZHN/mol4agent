@@ -134,6 +134,18 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 { "kind": "comp", "compId": "ATP" }
 ```
 
+`range` 按数字残基编号选择，因此共享同一编号的插入码残基会被一起选中
+（`100`、`100A`、`100B` 都命中 `"100"`）。要精确选中某一个，用 `schema`
+选择器：
+
+```json
+{ "kind": "schema",
+  "schema": { "auth_asym_id": "H", "auth_seq_id": 100, "pdbx_PDB_ins_code": "A" } }
+```
+
+空字符串表示“无插入码”。需要真正的序列位置时用 `residue_index`（0-based
+源顺序）。
+
 界面操作流程：
 
 ```json

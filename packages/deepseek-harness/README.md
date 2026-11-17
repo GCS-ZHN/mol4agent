@@ -141,6 +141,18 @@ AlphaFold JSON API before downloading.
 { "kind": "comp", "compId": "ATP" }
 ```
 
+`range` selects by numeric residue id, so insertion-coded residues that share a
+number are all selected (`100`, `100A`, `100B` match `"100"`). To target one
+exactly, use the `schema` selector:
+
+```json
+{ "kind": "schema",
+  "schema": { "auth_asym_id": "H", "auth_seq_id": 100, "pdbx_PDB_ins_code": "A" } }
+```
+
+The empty string means "no insertion code". `residue_index` is the 0-based
+source order when you need a true sequence position instead.
+
 Interface workflow:
 
 ```json
