@@ -153,6 +153,10 @@ exactly, use the `schema` selector:
 The empty string means "no insertion code". `residue_index` is the 0-based
 source order when you need a true sequence position instead.
 
+Selector kinds are exclusive: `range` and `schema` are alternatives, and the
+adapter rejects a selector that mixes their top-level fields. To combine
+predicates, put all fields in one `schema` object.
+
 Interface workflow:
 
 ```json

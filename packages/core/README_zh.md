@@ -280,6 +280,10 @@ query 或 element schema。
 都是标识符命名空间。文件含插入码时，`label_seq_id` 是线性序号，不等于 author
 编号。
 
+selector kind 是互斥的，不能组合：不要把 `residues.range` 和 `schema` 混在一起。
+要把区间和其他 Mol* 谓词（例如 component id）组合，把全部字段放进一个
+`schema` 对象，Mol* 会对它们取交集。
+
 ```ts
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'
 

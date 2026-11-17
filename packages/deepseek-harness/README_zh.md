@@ -146,6 +146,9 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 空字符串表示“无插入码”。需要真正的序列位置时用 `residue_index`（0-based
 源顺序）。
 
+selector kind 是互斥的：`range` 和 `schema` 是二选一，混用顶层字段会被适配器
+拒绝。要组合谓词，把全部字段放进一个 `schema` 对象。
+
 界面操作流程：
 
 ```json

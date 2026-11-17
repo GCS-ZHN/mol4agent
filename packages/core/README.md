@@ -290,6 +290,10 @@ insertion code"):
 `label_seq_id` are identifier namespaces. With insertion codes, `label_seq_id`
 is a linear serial and does not equal the author number.
 
+Selector kinds are alternatives, not composable: do not mix `residues.range`
+with `schema`. To combine an interval with other Mol* predicates (for example a
+component id), put every field in one `schema` object; Mol* ANDs them.
+
 ```ts
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'
 

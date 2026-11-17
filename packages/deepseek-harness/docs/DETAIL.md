@@ -72,7 +72,8 @@ string means "no insertion code"):
 ```
 
 `residue_index` is the 0-based source order when a true sequence position is
-needed.
+needed. Selector kinds are alternatives; mixing `range` with `schema` is
+rejected. Combine predicates inside one `schema` object.
 
 ## Current limitations
 
