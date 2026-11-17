@@ -40,7 +40,7 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-本包已发布到 npm（`@gcszhn/mol4agent-core@0.3.0`）；在 monorepo 内 pnpm 会链接
+本包已发布到 npm（`@gcszhn/mol4agent-core@0.4.0`）；在 monorepo 内 pnpm 会链接
 workspace 版本。`molstar` 和 `react` 是 peer dependencies。DSH 适配包把 Mol*
 打进单个 client bundle；普通 web 应用可以直接使用本包。
 
@@ -172,7 +172,7 @@ interface StructureData {
 { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } }
 { op: 'represent', style: { type: 'ball-and-stick', color: 'element-symbol' } }
 { op: 'select', target: { kind: 'ligand' }, mode: 'highlight', focus: true }
-{ op: 'select', target: { kind: 'residues', chain: 'A', start: 10, end: 25 } }
+{ op: 'select', target: { kind: 'residues', chain: 'A', range: '10-25, 40' } }
 { op: 'focus', target: { kind: 'chain', chain: 'B' } }
 { op: 'camera', action: 'reset' }
 { op: 'background', color: '#101418' }
@@ -248,9 +248,15 @@ query 或 element schema。
 | `{ kind: 'ion' }` | 离子 |
 | `{ kind: 'chain', chain }` | 一条链 |
 | `{ kind: 'residue', chain?, index, auth? }` | 一个残基；`auth` 使用 author 编号 |
-| `{ kind: 'residues', chain?, start, end, auth? }` | 闭区间残基范围 |
+| `{ kind: 'residues', chain?, range, auth? }` | 闭区间残基范围；`range` 为 `"12"`、`"5-10"`，或逗号列表 `"1, 5-10, 20"` |
 | `{ kind: 'comp', compId }` | 指定 component id 的所有残基 |
 | `{ kind: 'schema', schema }` | 底层 `StructureElement.Schema` 子集 |
+
+`residues` 选择器用单个 `range` 字符串取代 `start`/`end`：逗号分隔的闭区间段
+（`12`、`5-10`），例如 `"1, 5-10, 20"`。段会被排序与合并，重叠或相邻的输入会
+归一化。单段编译为一个 element schema；不连续段编译为 `SchemaItems`，由 Mol*
+在 style、select、focus、measure、label 中取并集。`range` 很省 token：一次
+`mol_style` 调用即可覆盖一条链的所有界面片段。
 
 `schema` 字段：`auth_asym_id`、`label_asym_id`、`auth_seq_id`、`label_seq_id`、
 `label_comp_id`、`auth_comp_id`、`beg_auth_seq_id`、`end_auth_seq_id`、
@@ -261,7 +267,7 @@ query 或 element schema。
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'
 
 const compiled = compileSelector({ kind: 'ligand' })
-const schema = selectorSchema({ kind: 'residues', chain: 'A', start: 10, end: 25 })
+const schema = selectorSchema({ kind: 'residues', chain: 'A', range: '10-25, 40' })
 ```
 
 ## 摘要
@@ -358,7 +364,7 @@ const png = await viewer.capture({
 // 某段界面残基：红色球棍
 { op: 'represent',
   style: { type: 'ball-and-stick', color: 'uniform', colorParams: { value: 0xff0000 } },
-  target: { kind: 'residues', chain: 'A', start: 28, end: 54 } }
+  target: { kind: 'residues', chain: 'A', range: '28-54' } }
 ```
 
 全局 `cartoon` 使用 `polymer-and-ligand` preset；`colorParams` 会传入它的

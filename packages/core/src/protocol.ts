@@ -105,6 +105,10 @@ export interface ElementSchema {
  * Adapters pass these through unchanged; core compiles them to Mol* selection
  * queries or schemas. This shape is the stable part of the agent-facing
  * contract, so adding a variant is a protocol change.
+ *
+ * `residues.range` is a compact, token-efficient residue-range expression:
+ * comma-separated segments, each `12` or `5-10` (inclusive). One selector can
+ * therefore cover several disjoint interface patches in a single tool call.
  */
 export type StructureSelector =
   | { readonly kind: 'all' }
@@ -116,9 +120,95 @@ export type StructureSelector =
   | { readonly kind: 'ion' }
   | { readonly kind: 'chain'; readonly chain: string }
   | { readonly kind: 'residue'; readonly chain?: string; readonly index: number; readonly auth?: boolean }
-  | { readonly kind: 'residues'; readonly chain?: string; readonly start: number; readonly end: number; readonly auth?: boolean }
+  | { readonly kind: 'residues'; readonly chain?: string; readonly range: string; readonly auth?: boolean }
   | { readonly kind: 'comp'; readonly compId: string }
   | { readonly kind: 'schema'; readonly schema: ElementSchema }
+
+/** One inclusive residue segment of a `residues` selector. */
+export interface ResidueRange {
+  readonly start: number
+  readonly end: number
+}
+
+/**
+ * Several element schemas that Mol* unions (`StructureElement.SchemaItems`).
+ * Used when one selector denotes disjoint residue ranges.
+ */
+export interface ElementSchemaItems {
+  readonly items: readonly ElementSchema[]
+}
+
+/** A compiled schema selector: one item or a union of items. */
+export type StructureElementSchema = ElementSchema | ElementSchemaItems
+
+/**
+ * Parse a residue-range expression such as `"1, 5-10, 20"`.
+ *
+ * Segments are inclusive and may be negative (`"-5--1"`). The result is sorted
+ * and merged, so overlapping or adjacent input describes the same residues with
+ * fewer tokens. Throws an `Error` with a model-facing message when malformed.
+ */
+export function parseResidueRanges(range: string): ResidueRange[] {
+  if (typeof range !== 'string' || range.trim() === '') {
+    throw new Error('selector "range" must be a non-empty string like "1, 5-10, 20"')
+  }
+  const segments: ResidueRange[] = []
+  for (const raw of range.split(',')) {
+    const token = raw.trim()
+    if (token === '') {
+      throw new Error(`invalid residue range "${range}": empty segment; use "1, 5-10, 20"`)
+    }
+    const single = /^[+-]?\d+$/u.exec(token)
+    if (single !== null) {
+      const value = integerOf(single[0]!, token)
+      segments.push({ start: value, end: value })
+      continue
+    }
+    const span = /^([+-]?\d+)\s*-\s*([+-]?\d+)$/u.exec(token)
+    if (span === null) {
+      throw new Error(`invalid residue range segment "${token}"; use "12" or "5-10"`)
+    }
+    const start = integerOf(span[1]!, token)
+    const end = integerOf(span[2]!, token)
+    if (start > end) {
+      throw new Error(`invalid residue range segment "${token}": start must be <= end`)
+    }
+    segments.push({ start, end })
+  }
+  return mergeResidueRanges(segments)
+}
+
+/** Render segments in the canonical form `parseResidueRanges` accepts. */
+export function formatResidueRanges(ranges: readonly ResidueRange[]): string {
+  return mergeResidueRanges(ranges)
+    .map(range => range.start === range.end ? String(range.start) : `${range.start}-${range.end}`)
+    .join(',')
+}
+
+/** Parse and canonicalize a range string, e.g. `"1, 5 - 10, 20"` -> `"1,5-10,20"`. */
+export function normalizeResidueRange(range: string): string {
+  return formatResidueRanges(parseResidueRanges(range))
+}
+
+function integerOf(text: string, token: string): number {
+  const value = Number(text)
+  if (!Number.isSafeInteger(value)) throw new Error(`invalid residue range segment "${token}": not an integer`)
+  return value
+}
+
+function mergeResidueRanges(ranges: readonly ResidueRange[]): ResidueRange[] {
+  const sorted = [...ranges].sort((left, right) => left.start - right.start || left.end - right.end)
+  const merged: ResidueRange[] = []
+  for (const range of sorted) {
+    const last = merged.at(-1)
+    if (last !== undefined && range.start <= last.end + 1) {
+      merged[merged.length - 1] = { start: last.start, end: Math.max(last.end, range.end) }
+    } else {
+      merged.push(range)
+    }
+  }
+  return merged
+}
 
 /**
  * One replayable viewer command.

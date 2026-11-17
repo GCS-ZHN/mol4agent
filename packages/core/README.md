@@ -40,7 +40,7 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-The package is published on npm as `@gcszhn/mol4agent-core@0.3.0`; inside this
+The package is published on npm as `@gcszhn/mol4agent-core@0.4.0`; inside this
 monorepo, pnpm links the workspace copy instead. `molstar` and `react` are peer
 dependencies. The DSH adapter bundles Mol* into a single client script; a plain
 web app can use the package directly.
@@ -175,7 +175,7 @@ Examples:
 { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } }
 { op: 'represent', style: { type: 'ball-and-stick', color: 'element-symbol' } }
 { op: 'select', target: { kind: 'ligand' }, mode: 'highlight', focus: true }
-{ op: 'select', target: { kind: 'residues', chain: 'A', start: 10, end: 25 } }
+{ op: 'select', target: { kind: 'residues', chain: 'A', range: '10-25, 40' } }
 { op: 'focus', target: { kind: 'chain', chain: 'B' } }
 { op: 'camera', action: 'reset' }
 { op: 'background', color: '#101418' }
@@ -253,9 +253,17 @@ compiles them to Mol* selection queries or element schemas.
 | `{ kind: 'ion' }` | Ions |
 | `{ kind: 'chain', chain }` | One chain |
 | `{ kind: 'residue', chain?, index, auth? }` | One residue; `auth` selects author numbering |
-| `{ kind: 'residues', chain?, start, end, auth? }` | Inclusive residue range |
+| `{ kind: 'residues', chain?, range, auth? }` | Inclusive residue ranges; `range` is `"12"`, `"5-10"`, or a comma list like `"1, 5-10, 20"` |
 | `{ kind: 'comp', compId }` | All residues with a component id |
 | `{ kind: 'schema', schema }` | Low-level subset of `StructureElement.Schema` |
+
+A `residues` selector uses one `range` string instead of `start`/`end`:
+comma-separated inclusive segments (`12`, `5-10`) such as `"1, 5-10, 20"`.
+Segments are sorted and merged, so overlapping or adjacent input is
+canonicalized. One segment compiles to a plain element schema; disjoint segments
+compile to `SchemaItems`, which Mol* unions for style, select, focus, measure,
+and label. `range` is token-efficient: one `mol_style` call can cover every
+interface patch of a chain.
 
 `schema` fields: `auth_asym_id`, `label_asym_id`, `auth_seq_id`, `label_seq_id`,
 `label_comp_id`, `auth_comp_id`, `beg_auth_seq_id`, `end_auth_seq_id`,
@@ -266,7 +274,7 @@ compiles them to Mol* selection queries or element schemas.
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'
 
 const compiled = compileSelector({ kind: 'ligand' })
-const schema = selectorSchema({ kind: 'residues', chain: 'A', start: 10, end: 25 })
+const schema = selectorSchema({ kind: 'residues', chain: 'A', range: '10-25, 40' })
 ```
 
 ## Summaries
@@ -363,10 +371,10 @@ Per-selection styling is additive:
 ```ts
 // gray cartoon for the rest
 { op: 'represent', style: { type: 'cartoon', color: 'uniform', colorParams: { value: 0x808080 } } }
-// red sticks for one interface range
+// red sticks for one chain's interface ranges
 { op: 'represent',
   style: { type: 'ball-and-stick', color: 'uniform', colorParams: { value: 0xff0000 } },
-  target: { kind: 'residues', chain: 'A', start: 28, end: 54 } }
+  target: { kind: 'residues', chain: 'A', range: '28-54' } }
 ```
 
 A global `cartoon` uses the `polymer-and-ligand` preset; `colorParams` is passed
