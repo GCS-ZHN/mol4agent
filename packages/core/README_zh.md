@@ -282,7 +282,9 @@ query 或 element schema。
 
 selector kind 是互斥的，不能组合：不要把 `residues.range` 和 `schema` 混在一起。
 要把区间和其他 Mol* 谓词（例如 component id）组合，把全部字段放进一个
-`schema` 对象，Mol* 会对它们取交集。
+`schema` 对象，Mol* 会对它们取交集。`schema` 对象也接受 Mol* 的
+`{ items: [...] }` 形式，一次查询即可并集多个 schema item；`residues.range`
+只是常见数字区间场景的简写。
 
 ```ts
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'

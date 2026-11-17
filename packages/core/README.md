@@ -292,7 +292,10 @@ is a linear serial and does not equal the author number.
 
 Selector kinds are alternatives, not composable: do not mix `residues.range`
 with `schema`. To combine an interval with other Mol* predicates (for example a
-component id), put every field in one `schema` object; Mol* ANDs them.
+component id), put every field in one `schema` object; Mol* ANDs them. The
+`schema` object also accepts Mol*'s `{ items: [...] }` form, which unions
+several schema items in one query; `residues.range` is the shorthand for the
+common numeric-interval case.
 
 ```ts
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'

@@ -93,6 +93,14 @@ test('passes insertion-code and residue-index schema fields through', () => {
   )
 })
 
+test('passes schema item unions through', () => {
+  const items = [
+    { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 3 },
+    { auth_asym_id: 'A', beg_auth_seq_id: 35, end_auth_seq_id: 38 },
+  ]
+  assert.deepEqual(selectorSchema({ kind: 'schema', schema: { items } }), { items })
+})
+
 function pdbAtom(serial: number, seq: number, insCode: string, x: number): string {
   return 'ATOM  '
     + String(serial).padStart(5) + ' '
@@ -168,4 +176,19 @@ test('engine: schema insertion code and residue index select one residue exactly
   assert.deepEqual(select({ auth_asym_id: 'A', auth_seq_id: 1, pdbx_PDB_ins_code: 'A' }), ['1A'])
   assert.deepEqual(select({ auth_asym_id: 'A', auth_seq_id: 1, pdbx_PDB_ins_code: 'B' }), ['1B'])
   assert.deepEqual(select({ auth_asym_id: 'A', residue_index: 1 }), ['1A'])
+})
+
+test('engine: schema item unions select disjoint ranges in one query', async () => {
+  const structure = await loadInsertionCodeFixture()
+  const elements = selectorSchema({
+    kind: 'schema',
+    schema: {
+      items: [
+        { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 1 },
+        { auth_asym_id: 'A', beg_auth_seq_id: 4, end_auth_seq_id: 4 },
+      ],
+    },
+  })
+  assert.ok(elements !== undefined)
+  assert.deepEqual(residueLabels(structure, elements), ['1', '1A', '1B', '4'])
 })

@@ -105,6 +105,17 @@ export interface ElementSchema {
 }
 
 /**
+ * Several element schemas that Mol* unions (`StructureElement.SchemaItems`).
+ * Used when one selector denotes disjoint residue ranges.
+ */
+export interface ElementSchemaItems {
+  readonly items: readonly ElementSchema[]
+}
+
+/** One flat schema item or a union of items. */
+export type StructureElementSchema = ElementSchema | ElementSchemaItems
+
+/**
  * A selection an agent can express without knowing atom indices.
  *
  * Adapters pass these through unchanged; core compiles them to Mol* selection
@@ -131,24 +142,13 @@ export type StructureSelector =
   | { readonly kind: 'residue'; readonly chain?: string; readonly index: number; readonly auth?: boolean }
   | { readonly kind: 'residues'; readonly chain?: string; readonly range: string; readonly auth?: boolean }
   | { readonly kind: 'comp'; readonly compId: string }
-  | { readonly kind: 'schema'; readonly schema: ElementSchema }
+  | { readonly kind: 'schema'; readonly schema: StructureElementSchema }
 
 /** One inclusive residue segment of a `residues` selector. */
 export interface ResidueRange {
   readonly start: number
   readonly end: number
 }
-
-/**
- * Several element schemas that Mol* unions (`StructureElement.SchemaItems`).
- * Used when one selector denotes disjoint residue ranges.
- */
-export interface ElementSchemaItems {
-  readonly items: readonly ElementSchema[]
-}
-
-/** A compiled schema selector: one item or a union of items. */
-export type StructureElementSchema = ElementSchema | ElementSchemaItems
 
 /**
  * Parse a residue-range expression such as `"1, 5-10, 20"`.
