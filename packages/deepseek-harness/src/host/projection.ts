@@ -12,6 +12,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { MolCommand, StyleSpec, StructureSelector } from '@gcszhn/mol4agent-core/protocol'
 import { baseNameOf, formatOfFile } from '../formats.ts'
 import { normalizeSelector } from '../selector.ts'
+import { canonicalTabPath } from '../tab-path.ts'
 import {
   EMPTY_MOL_STATE,
   PROJECTION_KEY,
@@ -149,7 +150,11 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
 function openScene(state: MolSessionState, args: Record<string, unknown>, callId: string): MolSessionState {
   const requested = typeof args.path === 'string' ? args.path : undefined
   if (requested === undefined) return state
-  const path = isAbsolute(requested) ? requested : state.cwd === undefined ? requested : resolve(state.cwd, requested)
+  // `resolve` returns the Host-native spelling (`D:\work\x.pdb` on Windows);
+  // the tab key must match the client's `/`-separated address path instead.
+  const path = canonicalTabPath(
+    isAbsolute(requested) ? requested : state.cwd === undefined ? requested : resolve(state.cwd, requested),
+  )
   const format = formatOfFile(path)
   if (format === undefined) return state
   const target = args.select === undefined ? undefined : selectorOf(args.select)
@@ -177,7 +182,9 @@ function openScene(state: MolSessionState, args: Record<string, unknown>, callId
 
 function tabOf(state: MolSessionState, args: Record<string, unknown>): MolSceneState | undefined {
   const requested = typeof args.tab === 'string' ? args.tab : undefined
-  const key = requested ?? state.active
+  // Agents may echo the native spelling they got from a shell or an `@`
+  // reference; both spellings address the same tab.
+  const key = requested === undefined ? state.active : canonicalTabPath(requested)
   if (key === null) return undefined
   return state.tabs[key]
 }

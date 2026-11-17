@@ -14,7 +14,7 @@ export const PROJECTION_KEY = 'mol4agent'
 export interface MolSceneState {
   /** Changes when the agent opens a file anew; drives a reload on the client. */
   readonly sceneKey: string
-  /** Absolute path in the session's execution world. */
+  /** Canonical tab-page id: the `/`-separated absolute path (`D:/work/a.pdb`). */
   readonly path: string
   readonly format: MolFormat
   readonly label: string
@@ -35,9 +35,9 @@ export interface MolPendingCapture {
 /** Whole client-visible projection value. */
 export interface MolSessionState {
   readonly revision: number
-  /** Session working directory captured at projection init; Host-only path resolution. */
+  /** Session working directory captured at projection init, in the Host's native spelling. */
   readonly cwd?: string
-  /** Tab page id (absolute path) to its independent viewer scene. */
+  /** Canonical tab-page id to its independent viewer scene. */
   readonly tabs: Readonly<Record<string, MolSceneState>>
   /** Last tab opened by mol_open; tools default to it when tab is omitted. */
   readonly active: string | null

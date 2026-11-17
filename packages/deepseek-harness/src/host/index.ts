@@ -8,6 +8,7 @@
  * @module @gcszhn/mol4agent-deepseekharness
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { canonicalTabPath } from '../tab-path.ts'
 import { CaptureHub } from './capture.ts'
 import { registerCaptureCommand } from './commands.ts'
 import { MOL_PROMPT } from './prompt.ts'
@@ -28,7 +29,7 @@ export async function apply(ctx: Context): Promise<void> {
     hub,
     sceneOf: (session, tab) => {
       const state = projection.stateOf(session)
-      const key = tab ?? state.active
+      const key = tab === undefined ? state.active : canonicalTabPath(tab)
       return key === null ? undefined : state.tabs[key]
     },
     maxFileBytes: 64 * 1024 * 1024,

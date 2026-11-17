@@ -95,3 +95,18 @@ export class CaptureHub {
 function captureKey(sessionId: SessionId, callId: string): string {
   return `${String(sessionId)}:${callId}`
 }
+
+/**
+ * A filesystem-safe file name for a persisted capture.
+ *
+ * DSH attachment ids look like `sha256:7dc1…`. `:` is illegal in a Windows
+ * file name, and `writeFile` does not fail there: it writes the PNG into an
+ * NTFS alternate data stream, leaving the reported path a zero-byte file.
+ * Keep only alphanumerics, and take the tail so the digest still identifies
+ * the image. The `mol4agent-` prefix also keeps Windows device names away.
+ */
+export function captureFileName(attachmentId: unknown, timestamp: number): string {
+  const safeId = String(attachmentId).replace(/[^a-zA-Z0-9]/gu, '')
+  const suffix = safeId.slice(-12) || 'image'
+  return `mol4agent-${String(timestamp)}-${suffix}.png`
+}

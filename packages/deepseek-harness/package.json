@@ -1,6 +1,6 @@
 {
   "name": "@gcszhn/mol4agent-deepseekharness",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "DeepSeek Harness adapter: molecular document preview, agent-driven viewer commands, and PNG capture.",
   "exports": {

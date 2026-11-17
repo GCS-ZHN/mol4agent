@@ -26,9 +26,10 @@ import {
 import { SOURCE_DATABASES, resolveSource, type ResolvedSource } from '@gcszhn/mol4agent-core/sources'
 import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
 import { baseNameOf } from '../formats.ts'
+import { canonicalTabPath } from '../tab-path.ts'
 import { normalizeSelector } from '../selector.ts'
 import type { MolSceneState, MolSessionState } from '../state.ts'
-import type { CaptureHub } from './capture.ts'
+import { captureFileName, type CaptureHub } from './capture.ts'
 import { downloadMoleculeSource, FetchTargetError, resolveFetchTarget } from './fetch.ts'
 import { findInterfaceResidues, type InterfaceResult } from './interface.ts'
 import { resolveMoleculeFile, type ResolvedMoleculeFile } from './paths.ts'
@@ -44,7 +45,8 @@ export interface MolToolOptions {
   readonly captureHeight: number
 }
 
-const TAB_HELP = 'Tab page id returned by mol_open (its absolute path). Defaults to the active tab.'
+const TAB_HELP = 'Tab page id returned by mol_open (its `/`-separated absolute path). '
+  + 'Defaults to the active tab; either separator addresses the same page.'
 
 const SELECTOR_HELP =
   'A StructureSelector object. Examples: {"kind":"ligand"}, {"kind":"protein"}, '
@@ -178,16 +180,17 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
         label: baseNameOf(targetPath),
         bytes: download.bytes,
       }
+      const tabPath = canonicalTabPath(targetPath)
       return `Downloaded ${source.description} from ${download.url}\n`
-        + `saved: ${targetPath} (${download.bytes.byteLength} bytes)\n\n`
+        + `saved: ${tabPath} (${download.bytes.byteLength} bytes)\n\n`
         + describeFile(file)
-        + `\n\nUse mol_open with path "${targetPath}" to display it.`
+        + `\n\nUse mol_open with path "${tabPath}" to display it.`
     },
   }))
 
   ctx.tools.register(defineTool({
     name: 'mol_open',
-    description: 'Open a molecular structure in a new or existing tab page (keyed by its absolute path) and make it the active tab. '
+    description: 'Open a molecular structure in a new or existing tab page (keyed by its canonical `/`-separated absolute path) and make it the active tab. '
       + 'The page opens automatically and the result includes the tab page id. Optionally set the representation/color and highlight a selection.',
     parameters: {
       path: { type: 'string', required: true, description: 'Structure file path, absolute or relative to the session working directory.' },
@@ -205,7 +208,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       const agent = requireAgent(exec)
       const file = await resolveMoleculeFile(ctx, agent, args.path, options.maxFileBytes, exec.signal)
       if (args.select !== undefined) assertSelector(args.select)
-      return `${describeFile(file)}\n\n<viewer>Opened in the sidebar preview. Tab page: ${escapeAttribute(file.absolutePath)}. Pass this path as tab to operate this page after opening another.</viewer>`
+      return `${describeFile(file)}\n\n<viewer>Opened in the sidebar preview. Tab page: ${escapeAttribute(canonicalTabPath(file.absolutePath))}. Pass this path as tab to operate this page after opening another.</viewer>`
     },
   }))
 
@@ -398,7 +401,7 @@ async function persistCapture(
     const cwd = await ctx.workingDirectory.ensure(agent, signal)
     const directory = join(cwd, '.mol4agent', 'captures')
     await mkdir(directory, { recursive: true })
-    const file = join(directory, `mol4agent-${Date.now()}-${String(ref.attachmentId).slice(0, 8)}.png`)
+    const file = join(directory, captureFileName(ref.attachmentId, Date.now()))
     await writeFile(file, stored.data)
     return file
   } catch (reason) {
@@ -488,7 +491,7 @@ function describeSelector(value: unknown): string {
 }
 
 function describeFile(file: ResolvedMoleculeFile): string {
-  const head = `<structure path="${escapeAttribute(file.absolutePath)}" format="${file.format}" bytes="${file.bytes.byteLength}">`
+  const head = `<structure path="${escapeAttribute(canonicalTabPath(file.absolutePath))}" format="${file.format}" bytes="${file.bytes.byteLength}">`
   let summary: StructureSummary
   try {
     summary = summarizeStructure({ data: file.bytes, format: file.format, label: file.label })

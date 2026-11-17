@@ -1,0 +1,9 @@
+# Normalize text checkouts so a Windows checkout matches POSIX. Without this,
+# `core.autocrlf` writes CRLF into the fixtures and the gzip round-trip tests
+# (which compare raw bytes with their LF-compressed siblings) fail on Windows.
+* text=auto eol=lf
+
+# Molecular fixtures are data: keep their bytes exactly as committed. Several
+# tests compare a fixture with its gzip sibling byte for byte, and parsers see
+# the same input on every platform.
+fixtures/** -text
