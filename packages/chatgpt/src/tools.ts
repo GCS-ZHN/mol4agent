@@ -18,6 +18,8 @@ import {
   COLOR_THEMES,
   Mol4AgentError,
   REPRESENTATION_TYPES,
+  formatColor,
+  parseColor,
   type MolCommand,
   type StyleSpec,
   type StructureSelector,
@@ -91,7 +93,8 @@ const styleFields = {
   color: z.enum(COLOR_THEMES).optional()
     .describe('Color theme. Defaults to chain-id when no style is given.'),
   colorParams: colorParamsSchema.optional()
-    .describe('Color theme params. For uniform color pass {"value":16711680}.'),
+    .describe('Color theme params. For a uniform color pass {"value":"red"}, '
+      + '{"value":"#ff0000"}, or {"value":16711680}.'),
 }
 
 /** Runtime dependencies shared by the tool handlers. */
@@ -919,16 +922,21 @@ function styleOf(args: {
   } = {}
   if (args.type !== undefined) style.type = args.type
   if (args.color !== undefined) style.color = args.color
-  if (args.colorParams !== undefined) style.colorParams = { value: args.colorParams.value }
+  // Normalize here so the stored command and every app replay carry the
+  // resolved 24-bit colour, and a bad value fails the tool before it mutates
+  // the scene (core rejects it later too, but only inside the viewer).
+  if (args.colorParams !== undefined) style.colorParams = { value: parseColor(args.colorParams.value) }
   return Object.keys(style).length === 0 ? { type: 'cartoon', color: 'chain-id' } : style
 }
 
 function describeStyle(args: {
   readonly type?: StyleSpec['type']
   readonly color?: StyleSpec['color']
+  readonly colorParams?: { readonly value: string | number }
   readonly target?: unknown
 }): string {
-  const style = [args.type ?? 'cartoon', args.color ?? 'chain-id'].join(' / ')
+  const color = args.colorParams === undefined ? '' : ` ${formatColor(parseColor(args.colorParams.value))}`
+  const style = [args.type ?? 'cartoon', args.color ?? 'chain-id'].join(' / ') + color
   if (args.target === undefined) return `Applied ${style} to the whole structure.`
   return `Applied ${style} to ${describeSelector(normalizeSelector(args.target))}.`
 }

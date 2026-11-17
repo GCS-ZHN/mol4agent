@@ -26,6 +26,9 @@ structure file as plain text, and do not drive the viewer with shell commands.
    - `mol_style` for representation/color; add `target` for a selection only.
    - `mol_select` to select/highlight; `mol_focus` to frame it.
    - `mol_measure` for distance/angle/dihedral.
+   - `colorParams.value` only applies to `uniform`; it accepts a CSS name
+     (`red`), hex (`#ff0000`), or an integer (`16711680`). Invalid colours are
+     rejected and the result echoes the resolved hex.
 5. `mol_capture` to return a PNG from the existing viewer tab. It does not
    mount another card; the tab must still be open.
 
@@ -82,7 +85,7 @@ Then style each returned range:
 { "name": "mol_style", "arguments": {
   "type": "ball-and-stick",
   "color": "uniform",
-  "colorParams": { "value": 16711680 },
+  "colorParams": { "value": "red" },
   "target": { "kind": "residues", "chain": "A", "start": 28, "end": 54 }
 } }
 ```

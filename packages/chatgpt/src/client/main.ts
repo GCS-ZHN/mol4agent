@@ -24,7 +24,7 @@ interface PollResult {
 const MAX_STRUCTURE_BYTES = 64 * 1024 * 1024
 
 const app = new App(
-  { name: 'mol4agent', version: '0.2.0' },
+  { name: 'mol4agent', version: '0.3.0' },
   { availableDisplayModes: ['inline', 'fullscreen'] },
   { autoResize: true },
 )

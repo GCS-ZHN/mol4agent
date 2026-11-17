@@ -106,8 +106,8 @@ store 保留一个**活跃 agent scene** 和多个独立的 **file-viewer scene*
 | `mol_info` | `path` | 汇总链/残基/原子/配体，不打开页面。 |
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 找两组链之间的界面残基（默认 8 Å），仅 PDB-like。 |
 | `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
-| `mol_open` | `path`、`type?`、`color?`、`select?`、`focus?` | 打开场景、渲染 MCP App 卡片，可选高亮/聚焦。 |
-| `mol_style` | `type?`、`color?`、`target?`、`colorParams?` | 替换全局表示，或给选择集叠加表示。 |
+| `mol_open` | `path`、`type?`、`color?`、`colorParams?`、`select?`、`focus?` | 打开场景、渲染 MCP App 卡片，可选高亮/聚焦。 |
+| `mol_style` | `type?`、`color?`、`target?`、`colorParams?` | 替换全局表示，或给选择集叠加表示。`colorParams.value` 只对 `uniform` 生效，接受 CSS 颜色名（`"red"`）、十六进制（`"#ff0000"`）或整数（`16711680`）；非法颜色会被拒绝，结果会回显解析后的十六进制。 |
 | `mol_select` | `target`、`mode?`、`focus?` | 选择/高亮。 |
 | `mol_focus` | `target?` | 聚焦选择集或整体。 |
 | `mol_measure` | `kind`、`targets` | 距离（2）/角度（3）/二面角（4）。 |
@@ -116,6 +116,10 @@ store 保留一个**活跃 agent scene** 和多个独立的 **file-viewer scene*
 
 app/宿主专用内部工具：`mol_viewer_poll`、`mol_capture_deliver`、
 `mol_capture_fail`，以及文件树入口 `mol_view_file`。
+
+`color` 选择 Mol* 颜色主题；`colorParams.value` 只影响 `uniform` 主题。
+除 CSS 颜色名和十六进制字符串外，还接受 `0x`/裸十六进制、`rgb()`/`rgba()`
+和 24 位整数。完整形式见[core 颜色参考](../core/README_zh.md#颜色)。
 
 选择器与 DSH 适配器完全一致：
 
