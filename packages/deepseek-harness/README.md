@@ -70,7 +70,7 @@ away.
 | Tool | Parameters | Behavior |
 |---|---|---|
 | `mol_info` | `path` | Summarize chains, residues, atoms, ligands. Does not open a viewer or change the scene. |
-| `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å, 0 < cutoff ≤ 30) in PDB-like files. Returns ranges for `mol_style`/`mol_focus`. |
+| `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å, 0 < cutoff ≤ 30) in PDB-like files. Returns one compact per-chain range usable by `mol_style`/`mol_focus`. |
 | `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
 | `mol_open` | `path`, `type?`, `color?`, `colorParams?`, `select?`, `focus?` | Create/update the tab page keyed by its canonical `/`-separated absolute path and make it active. Emits `represent` and optionally `select`/`focus`; the tab page id is that path. |
 | `mol_style` | `tab?`, `type?`, `color?`, `target?`, `colorParams?` | Append `represent` to the tab (`tab` defaults to active). Without `target` it replaces the scene representation; with `target` it adds a representation to that selection only. `colorParams.value` applies to `uniform` and accepts a CSS name (`"red"`), hex (`"#ff0000"`), or an integer (`16711680`); invalid colours are rejected and the result echoes the resolved hex. |
@@ -136,7 +136,7 @@ AlphaFold JSON API before downloading.
 ```json
 { "kind": "ligand" }
 { "kind": "chain", "chain": "A" }
-{ "kind": "residues", "chain": "A", "start": 10, "end": 25 }
+{ "kind": "residues", "chain": "A", "range": "10-25, 40" }
 { "kind": "residue", "chain": "A", "index": 42 }
 { "kind": "comp", "compId": "ATP" }
 ```
@@ -154,11 +154,12 @@ Interface workflow:
 ```json
 { "type": "ball-and-stick", "color": "uniform",
   "colorParams": { "value": 16711680 },
-  "target": { "kind": "residues", "chain": "A", "start": 28, "end": 54 } }
+  "target": { "kind": "residues", "chain": "A", "range": "28-54" } }
 ```
 
-Call the last command once per returned range, then `mol_focus` on a central
-range.
+A `range` is a comma-separated list of inclusive segments (`12`, `5-10`),
+so style each interface chain with one command and then `mol_focus` on a
+central chain range.
 
 `mol_capture` returns:
 
@@ -378,10 +379,10 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 (the DSH Plugin manager does this when installing/enabling a bundle), then
 restart DSH.
 
-npm form (0.3.0, published):
+npm form (0.4.0, published):
 
 ```sh
-dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.3.0
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.4.0
 ```
 
 The current Desktop `desktop` profile is installed via `plugin_manager` and
@@ -414,7 +415,7 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
   conformer return HTTP 404. Downloaded bytes are stored uncompressed, so a
   `.gz` target is rejected.
 - An 8 Å cutoff can produce a large interface (7CZD A/B: 91 residues); lower
-  the cutoff or focus a single range for a cleaner figure.
+  the cutoff or focus a single chain range for a cleaner figure.
 - A tab page id is the canonical `/`-separated absolute path. Reopening the same path (either separator spelling) updates that tab
   (new `sceneKey`) rather than creating a second tab with the same DSH resource.
 - The tab cache keeps two viewers; closing a tab does not immediately free its

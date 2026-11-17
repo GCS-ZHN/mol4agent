@@ -129,7 +129,7 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 ```json
 { "kind": "ligand" }
 { "kind": "chain", "chain": "A" }
-{ "kind": "residues", "chain": "A", "start": 10, "end": 25 }
+{ "kind": "residues", "chain": "A", "range": "10-25, 40" }
 { "kind": "residue", "chain": "A", "index": 42 }
 { "kind": "comp", "compId": "ATP" }
 ```
@@ -147,10 +147,11 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 ```json
 { "type": "ball-and-stick", "color": "uniform",
   "colorParams": { "value": 16711680 },
-  "target": { "kind": "residues", "chain": "A", "start": 28, "end": 54 } }
+  "target": { "kind": "residues", "chain": "A", "range": "28-54" } }
 ```
 
-对返回的每个区间调用最后一条命令，然后对一个中心区间调用 `mol_focus`。
+`range` 是逗号分隔的闭区间段（`12`、`5-10`），因此每条界面链只需一次
+`mol_style`，再对一个中心链范围调用 `mol_focus`。
 
 `mol_capture` 返回：
 
@@ -356,10 +357,10 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 `dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理），然后重启
 DSH。
 
-npm 形式（0.3.0，已发布）：
+npm 形式（0.4.0，已发布）：
 
 ```sh
-dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.3.0
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.4.0
 ```
 
 当前 Desktop `desktop` profile 已通过 `plugin_manager` 安装，并启用为

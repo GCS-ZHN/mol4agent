@@ -56,7 +56,7 @@ Selections are JSON, for example:
 ```json
 {"kind":"ligand"}
 {"kind":"chain","chain":"A"}
-{"kind":"residues","chain":"A","start":10,"end":25}
+{"kind":"residues","chain":"A","range":"10-25, 40"}
 {"kind":"comp","compId":"ATP"}
 ```
 

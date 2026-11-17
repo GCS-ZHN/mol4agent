@@ -5,7 +5,7 @@
  *
  * @module @gcszhn/mol4agent-deepseekharness/selector
  */
-import type { StructureSelector } from '@gcszhn/mol4agent-core/protocol'
+import { normalizeResidueRange, type StructureSelector } from '@gcszhn/mol4agent-core/protocol'
 
 const KINDS = new Set([
   'all',
@@ -50,8 +50,7 @@ export function normalizeSelector(value: unknown): StructureSelector {
       return {
         kind,
         ...(candidate.chain === undefined ? {} : { chain: requiredString(candidate.chain, 'chain') }),
-        start: requiredNumber(candidate.start, 'start'),
-        end: requiredNumber(candidate.end, 'end'),
+        range: normalizeResidueRange(requiredString(candidate.range, 'range')),
         ...(candidate.auth === undefined ? {} : { auth: candidate.auth === true }),
       }
     case 'comp':

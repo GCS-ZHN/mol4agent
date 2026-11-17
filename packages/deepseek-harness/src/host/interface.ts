@@ -7,6 +7,7 @@
  *
  * @module @gcszhn/mol4agent-deepseekharness/host/interface
  */
+import { formatResidueRanges, type ResidueRange } from '@gcszhn/mol4agent-core/protocol'
 
 export interface InterfaceResidue {
   readonly chain: string
@@ -16,8 +17,8 @@ export interface InterfaceResidue {
 
 export interface InterfaceRange {
   readonly chain: string
-  readonly start: number
-  readonly end: number
+  /** Canonical residue-range expression, e.g. `"26-33,40"`. */
+  readonly range: string
 }
 
 export interface InterfaceResult {
@@ -119,14 +120,16 @@ function minimumDistanceSquared(a: Residue, b: Residue): number {
 }
 
 function mergeRanges(residues: readonly InterfaceResidue[]): InterfaceRange[] {
-  const ranges: InterfaceRange[] = []
+  const byChain = new Map<string, ResidueRange[]>()
   for (const residue of residues) {
-    const last = ranges.at(-1)
-    if (last !== undefined && last.chain === residue.chain && last.end + 1 === residue.index) {
-      ranges[ranges.length - 1] = { chain: last.chain, start: last.start, end: residue.index }
+    const segments = byChain.get(residue.chain) ?? []
+    const last = segments.at(-1)
+    if (last !== undefined && last.end + 1 === residue.index) {
+      segments[segments.length - 1] = { start: last.start, end: residue.index }
     } else {
-      ranges.push({ chain: residue.chain, start: residue.index, end: residue.index })
+      segments.push({ start: residue.index, end: residue.index })
     }
+    byChain.set(residue.chain, segments)
   }
-  return ranges
+  return [...byChain].map(([chain, segments]) => ({ chain, range: formatResidueRanges(segments) }))
 }

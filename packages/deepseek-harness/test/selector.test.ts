@@ -19,8 +19,12 @@ test('normalizes structural selectors and auth switches', () => {
     { kind: 'residue', index: 42, auth: true },
   )
   assert.deepEqual(
-    normalizeSelector({ kind: 'residues', chain: 'A', start: 10, end: 25 }),
-    { kind: 'residues', chain: 'A', start: 10, end: 25 },
+    normalizeSelector({ kind: 'residues', chain: 'A', range: '10-25' }),
+    { kind: 'residues', chain: 'A', range: '10-25' },
+  )
+  assert.deepEqual(
+    normalizeSelector({ kind: 'residues', chain: 'A', range: ' 20, 5 - 10, 1 ' }),
+    { kind: 'residues', chain: 'A', range: '1,5-10,20' },
   )
   assert.deepEqual(normalizeSelector({ kind: 'comp', compId: 'ATP' }), { kind: 'comp', compId: 'ATP' })
   assert.deepEqual(
@@ -38,7 +42,9 @@ test('rejects malformed selectors with model-actionable errors', () => {
     [{ kind: 'chain', chain: '' }, /chain/],
     [{ kind: 'residue', chain: 'A' }, /index/],
     [{ kind: 'residue', chain: 'A', index: Number.NaN }, /index/],
-    [{ kind: 'residues', chain: 'A', start: 1 }, /end/],
+    [{ kind: 'residues', chain: 'A' }, /range/],
+    [{ kind: 'residues', chain: 'A', range: '10-5' }, /start must be <= end/],
+    [{ kind: 'residues', chain: 'A', start: 1, end: 9 }, /range/],
     [{ kind: 'comp' }, /compId/],
     [{ kind: 'schema' }, /schema/],
   ]
