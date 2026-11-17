@@ -157,9 +157,9 @@ Interface workflow:
   "target": { "kind": "residues", "chain": "A", "range": "28-54" } }
 ```
 
-A `range` is a comma-separated list of inclusive segments (`12`, `5-10`),
-so style each interface chain with one command and then `mol_focus` on a
-central chain range.
+A `range` is a comma-separated list of inclusive numeric residue ids (`12`,
+`5-10`; `auth_seq_id`, or `label_seq_id` with `auth:false`), so style each
+interface chain with one command and then `mol_focus` on a central chain range.
 
 `mol_capture` returns:
 

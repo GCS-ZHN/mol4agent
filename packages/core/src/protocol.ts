@@ -106,9 +106,13 @@ export interface ElementSchema {
  * queries or schemas. This shape is the stable part of the agent-facing
  * contract, so adding a variant is a protocol change.
  *
- * `residues.range` is a compact, token-efficient residue-range expression:
- * comma-separated segments, each `12` or `5-10` (inclusive). One selector can
- * therefore cover several disjoint interface patches in a single tool call.
+ * `residues.range` is a compact, token-efficient expression of inclusive
+ * numeric residue-identifier intervals: comma-separated segments, each `12`
+ * or `5-10` (both ends included). It compares `auth_seq_id` by default, or
+ * `label_seq_id` with `auth: false`. The selection is residue-level, not a
+ * sequence position or atom index: `"1"` means "the residue numbered 1", and
+ * insertion codes share their base number. One selector can therefore cover
+ * several disjoint interface patches in a single tool call.
  */
 export type StructureSelector =
   | { readonly kind: 'all' }
@@ -144,7 +148,9 @@ export type StructureElementSchema = ElementSchema | ElementSchemaItems
 /**
  * Parse a residue-range expression such as `"1, 5-10, 20"`.
  *
- * Segments are inclusive and may be negative (`"-5--1"`). The result is sorted
+ * Segments are inclusive numeric residue identifiers (default `auth_seq_id`,
+ * or `label_seq_id` when the selector sets `auth: false`), not 0-based
+ * sequence positions. They may be negative (`"-5--1"`). The result is sorted
  * and merged, so overlapping or adjacent input describes the same residues with
  * fewer tokens. Throws an `Error` with a model-facing message when malformed.
  */

@@ -253,17 +253,24 @@ compiles them to Mol* selection queries or element schemas.
 | `{ kind: 'ion' }` | Ions |
 | `{ kind: 'chain', chain }` | One chain |
 | `{ kind: 'residue', chain?, index, auth? }` | One residue; `auth` selects author numbering |
-| `{ kind: 'residues', chain?, range, auth? }` | Inclusive residue ranges; `range` is `"12"`, `"5-10"`, or a comma list like `"1, 5-10, 20"` |
+| `{ kind: 'residues', chain?, range, auth? }` | Inclusive numeric intervals on the residue identifier (`auth_seq_id`, or `label_seq_id` with `auth: false`); `range` is `"12"`, `"5-10"`, or a comma list like `"1, 5-10, 20"` |
 | `{ kind: 'comp', compId }` | All residues with a component id |
 | `{ kind: 'schema', schema }` | Low-level subset of `StructureElement.Schema` |
 
-A `residues` selector uses one `range` string instead of `start`/`end`:
-comma-separated inclusive segments (`12`, `5-10`) such as `"1, 5-10, 20"`.
-Segments are sorted and merged, so overlapping or adjacent input is
-canonicalized. One segment compiles to a plain element schema; disjoint segments
-compile to `SchemaItems`, which Mol* unions for style, select, focus, measure,
-and label. `range` is token-efficient: one `mol_style` call can cover every
-interface patch of a chain.
+A `residues` selector uses one `range` string instead of `start`/`end`.
+`range` is a comma-separated list of **inclusive numeric intervals on the
+residue identifier**: `auth_seq_id` by default, or `label_seq_id` with
+`auth: false`. `12` is one number; `5-10` includes both 5 and 10. The selection
+is residue-level and numeric, not a 0-based sequence position: `"1"` selects
+every atom of the residue numbered 1 (not the first atom), and author numbering
+may start at 0, be negative, or skip values. Input is sorted and merged, so
+overlapping or adjacent segments are canonicalized. One segment compiles to a
+plain element schema; disjoint segments compile to `SchemaItems`, which Mol*
+unions for style, select, focus, measure, and label. `range` is not a sequence
+position: insertion codes share their base number (100, 100A, and 100B all match
+`"100"`); use the `schema` selector when you need a finer Mol* predicate.
+`range` is token-efficient: one `mol_style` call can cover every interface patch
+of a chain.
 
 `schema` fields: `auth_asym_id`, `label_asym_id`, `auth_seq_id`, `label_seq_id`,
 `label_comp_id`, `auth_comp_id`, `beg_auth_seq_id`, `end_auth_seq_id`,

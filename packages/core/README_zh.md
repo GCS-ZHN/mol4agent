@@ -248,14 +248,19 @@ query 或 element schema。
 | `{ kind: 'ion' }` | 离子 |
 | `{ kind: 'chain', chain }` | 一条链 |
 | `{ kind: 'residue', chain?, index, auth? }` | 一个残基；`auth` 使用 author 编号 |
-| `{ kind: 'residues', chain?, range, auth? }` | 闭区间残基范围；`range` 为 `"12"`、`"5-10"`，或逗号列表 `"1, 5-10, 20"` |
+| `{ kind: 'residues', chain?, range, auth? }` | 残基标识的闭区间数字范围（默认 `auth_seq_id`，`auth: false` 时用 `label_seq_id`）；`range` 为 `"12"`、`"5-10"`，或逗号列表 `"1, 5-10, 20"` |
 | `{ kind: 'comp', compId }` | 指定 component id 的所有残基 |
 | `{ kind: 'schema', schema }` | 底层 `StructureElement.Schema` 子集 |
 
-`residues` 选择器用单个 `range` 字符串取代 `start`/`end`：逗号分隔的闭区间段
-（`12`、`5-10`），例如 `"1, 5-10, 20"`。段会被排序与合并，重叠或相邻的输入会
-归一化。单段编译为一个 element schema；不连续段编译为 `SchemaItems`，由 Mol*
-在 style、select、focus、measure、label 中取并集。`range` 很省 token：一次
+`residues` 选择器用单个 `range` 字符串取代 `start`/`end`。`range` 是
+**残基标识的闭区间数字范围**，逗号分隔：默认比较 `auth_seq_id`，`auth: false`
+时比较 `label_seq_id`。`12` 是单个编号；`5-10` 两端都包含（5 和 10 都选中）。
+选择是残基级、数字比较，不是 0-based 的序列位置：`"1"` 表示“编号为 1 的残基的
+全部原子”，不是第 1 个原子；author 编号可以从 0、负数开始，也可以跳号。输入会
+排序合并，重叠或相邻段会被归一化。单段编译为一个 element schema；不连续段编译
+为 `SchemaItems`，由 Mol* 在 style、select、focus、measure、label 中取并集。
+`range` 不是序列位置：插入码共享基础编号（100、100A、100B 都会命中 `"100"`）；
+需要更精细的 Mol* 谓词时用 `schema` 选择器。`range` 很省 token：一次
 `mol_style` 调用即可覆盖一条链的所有界面片段。
 
 `schema` 字段：`auth_asym_id`、`label_asym_id`、`auth_seq_id`、`label_seq_id`、

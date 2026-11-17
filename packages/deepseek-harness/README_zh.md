@@ -150,8 +150,9 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
   "target": { "kind": "residues", "chain": "A", "range": "28-54" } }
 ```
 
-`range` 是逗号分隔的闭区间段（`12`、`5-10`），因此每条界面链只需一次
-`mol_style`，再对一个中心链范围调用 `mol_focus`。
+`range` 是逗号分隔的闭区间残基编号（`12`、`5-10`；默认 `auth_seq_id`，
+`auth:false` 时用 `label_seq_id`），因此每条界面链只需一次 `mol_style`，再对
+一个中心链范围调用 `mol_focus`。
 
 `mol_capture` 返回：
 
