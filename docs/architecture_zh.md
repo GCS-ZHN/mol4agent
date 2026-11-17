@@ -49,7 +49,7 @@ R1–R5 是验收基线；任何一个 harness 适配器都必须满足，而不
 以下是所有带文档预览面的适配器都必须满足的验收要求；适配器特有 API 和限制留在各自 README。
 
 - **侧边栏可视化**：通过 harness 文件预览打开的受支持分子文件，在宿主右侧边栏用官方 Mol* UI 渲染，不另开窗口，也不做自定义 app shell；agent 主动打开时该页面自动显示。
-- **tab 页面级状态**：一个预览 tab 就是一个独立 viewer 实例和一个独立 scene。其 tab 页面 id（DSH 中为绝对路径）拥有自己的命令、pending capture、相机、表示、measurement 和控制面板状态。切换 tab 只 reattach/保留 viewer，不得重新读文件、重新挂载 viewer、把命令复制到别的 tab，或把截图投递给别的 tab。只有宿主主题等全局服务共享；适配器可以限制保留的 viewer 数（DSH：LRU 2），淘汰时不得影响活动 tab。
+- **tab 页面级状态**：一个预览 tab 就是一个独立 viewer 实例和一个独立 scene。其 tab 页面 id（DSH 中为规范化的 `/` 分隔绝对路径）拥有自己的命令、pending capture、相机、表示、measurement 和控制面板状态。切换 tab 只 reattach/保留 viewer，不得重新读文件、重新挂载 viewer、把命令复制到别的 tab，或把截图投递给别的 tab。只有宿主主题等全局服务共享；适配器可以限制保留的 viewer 数（DSH：LRU 2），淘汰时不得影响活动 tab。
 - **人工打开与预览模式**：受支持的分子文件默认结构预览；宿主原有 **Open with** 可把该 tab 切到纯文本/代码（BCIF 等纯二进制格式没有文本回退），切回结构预览时不能丢失该 tab 的 viewer 状态。人打开的文件不能被不同路径的 agent tab 悄悄替换。
 - **agent 打开**：`mol_open` 按结构路径创建或更新 tab 页面，设为活动 agent tab，并返回 tab 页面 id；页面无需人点击即打开。样式/选择/聚焦/测量/截图工具接受该 id，缺省使用活动 agent tab；操作一个 tab 不得改变另一个 tab，截图会激活目标 tab。
 - **人机共存**：人工打开和 agent 打开共用同一个预览 body 和 scene 模型。重新打开同一路径更新该 tab（新的 scene key）；打开不同路径创建独立 tab。agent 操作始终是 `mol_*` 工具调用，不是页面级代码注入。

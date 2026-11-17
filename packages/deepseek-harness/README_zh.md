@@ -67,7 +67,7 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | `mol_info` | `path` | 摘要链、残基、原子、配体。不打开 viewer，也不改变场景。 |
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 在 PDB-like 文件中找两个链组之间的界面残基（默认 8 Å，0 < cutoff ≤ 30），返回可用于 `mol_style`/`mol_focus` 的区间。 |
 | `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
-| `mol_open` | `path`、`type?`、`color?`、`select?`、`focus?` | 按绝对路径创建/更新 tab 页面并设为活动 tab；发出 `represent`，可选 `select`/`focus`。tab 页面 id 即绝对路径。 |
+| `mol_open` | `path`、`type?`、`color?`、`select?`、`focus?` | 按规范化（canonical）的 `/` 分隔绝对路径创建/更新 tab 页面并设为活动 tab；发出 `represent`，可选 `select`/`focus`。tab 页面 id 即该路径。 |
 | `mol_style` | `tab?`、`type?`、`color?`、`target?`、`colorParams?` | 给指定 tab（默认活动 tab）追加 `represent`。不传 `target` 替换整个场景表示；传 `target` 只给该选择添加表示。`colorParams` 可传 `{"value": 16711680}` 表示 uniform 红色。 |
 | `mol_select` | `tab?`、`target`、`mode?`、`focus?` | 追加 `select`；`mode` 为 `select` 或 `highlight`。 |
 | `mol_focus` | `tab?`、`target?` | 追加 `focus`；不传 target 聚焦整个结构。 |
@@ -76,6 +76,11 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 
 `path` 是绝对路径，或相对 session 工作目录；`target_path` 规则相同。文件
 上限 64 MiB；gzip 解压后同样限制 64 MiB。
+
+tab 页面 id 在所有平台上都是规范化（`/` 分隔）的绝对路径：
+`mol_open`/`mol_fetch` 回显 `D:/work/5jds.pdb`，`tab` 既接受该形式，也接受
+Windows 原生的 `D:\work\5jds.pdb`。路径 key 的不变量见
+[Session projection](#session-projection)。
 
 ### 数据库来源
 
@@ -190,13 +195,13 @@ interface MolSessionState {
   revision: number
   cwd?: string
   tabs: Record<string, {
-    sceneKey: string   // `${absolutePath}#${callId}`
-    path: string
+    sceneKey: string   // `${canonicalPath}#${callId}`
+    path: string       // 规范化的 `/` 分隔绝对路径
     format: MolFormat
     label: string
     commands: MolCommand[]
   }>
-  active: string | null   // 绝对路径
+  active: string | null   // 规范化的 `/` 分隔绝对路径
   pending: Record<string, {
     callId: string
     path?: string
@@ -217,13 +222,21 @@ interface MolSessionState {
 - `tool/result` 清除对应的 pending 截图项并递增 `revision`；其他结果保持状态
   不变。
 - 相对路径基于 projection 初始化时捕获的 `cwd` 解析。
+- tab key 必须**规范化**：`/` 分隔、盘符大写的绝对路径
+  （`D:/work/5jds.pdb`）。DSH resource 地址和 Sidebar tab 注册表在所有平台上
+  都用 `/` 分隔，body 也从地址反推路径；若用 Host 原生的 Windows 写法
+  （`D:\work\5jds.pdb`）做 `tabs`/`active` 的 key，所有 scene 工具查找和
+  截图都会静默 miss。`openScene`、`tabOf`、Host 工具侧的 scene 查找和 body
+  都通过 `canonicalTabPath`（`src/tab-path.ts`）规范化，`mol_open`/`mol_fetch`
+  也回显该形式。
 - projection 可重放：只存路径和 JSON 命令，不存字节。
 - agent 重新打开该 tab 时 `sceneKey` 变化；只有该 tab 重新加载结构（清掉旧
   measurement/选择样式）并重置自己的命令游标，其他 tab 不受影响。
 
-client 通过 `props.useProjection('mol4agent')` 选择自己的 `tabs[path]`，并通过
-`remote.workspaceFiles.readBytes` 单独读文件字节，然后调用
-`@gcszhn/mol4agent-core`，传入 `{ data, format, label }`。
+client 通过 `props.useProjection('mol4agent')` 选择自己的 `tabs[path]`，其中
+`path` 是资源地址解析结果经 `canonicalTabPath()` 规范化后的值；文件字节另经
+`remote.workspaceFiles.readBytes` 读取，然后调用 `@gcszhn/mol4agent-core`，
+传入 `{ data, format, label }`。
 
 ## 文档预览
 
@@ -286,6 +299,11 @@ sequenceDiagram
 会缓冲 30 秒。内部命令注册为 `input: { attachments: true }`、
 `recordInput: false`。
 
+body 不会在首帧就截图：它先等待画布完成布局、representation 就绪，再在 PNG
+仍只有背景色时重试（Windows/ANGLE 在 `mol_open` 之后可能先呈现一帧空画面）。
+截图 report 会带上 `visibleContent`；应用 scene 时观察到的命令失败会以
+`applyErrors` 写进 `diagnostics`，因此工具的乐观提示无法掩盖客户端拒绝。
+
 ## Viewer 行为
 
 - **官方 Mol* UI**：`createPluginUI` + `DefaultPluginUISpec`。viewer 打进
@@ -297,9 +315,10 @@ sequenceDiagram
   `showControls` 为 true 时渲染这些 region。
 - **主题**：Mol* 皮肤和画布背景跟随 DSH 的 `theme/change`。
 - **tab 作用域**：每个文档 tab 有独立 viewer、缓存和 projection scene。
-  `mol_open` 返回 tab 页面 id（绝对路径）；给 `mol_style`/`mol_select`/
-  `mol_focus`/`mol_measure`/`mol_capture` 传 `tab` 即可独立操作该 tab；省略
-  `tab` 使用最后打开的 tab。切换 tab 保留所有 viewer 状态；截图会激活目标 tab。
+  `mol_open` 返回 tab 页面 id（规范化的 `/` 分隔绝对路径）；给
+  `mol_style`/`mol_select`/`mol_focus`/`mol_measure`/`mol_capture` 传 `tab`
+  即可独立操作该 tab；省略 `tab` 使用最后打开的 tab。切换 tab 保留所有 viewer
+  状态；截图会激活目标 tab。
 - **tab 缓存**：预览卸载时把整个 Mol* 容器停到隐藏 holder；同一个 tab 重新
   mount 时 reattach + resize，而不是重新读文件。保留最近 2 个 tab；插件卸载
   时统一 dispose。
@@ -337,10 +356,10 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 `dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理），然后重启
 DSH。
 
-npm 形式（0.2.0，已发布）：
+npm 形式（0.2.1，已发布）：
 
 ```sh
-dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.2.0
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.2.1
 ```
 
 当前 Desktop `desktop` profile 已通过 `plugin_manager` 安装，并启用为
@@ -371,8 +390,8 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.2.0
   目标会被拒绝。
 - 8 Å cutoff 可能产生很大的界面（7CZD A/B：91 个残基）；想要更干净的图可
   降低 cutoff 或只聚焦一个区间。
-- tab 页面 id 是绝对路径；重新打开同一路径会更新该 tab（新的 `sceneKey`），
-  不会为同一 DSH resource 创建第二个 tab。
+- tab 页面 id 是规范化的 `/` 分隔绝对路径；以任一分隔符重新打开同一路径都会
+  更新该 tab（新的 `sceneKey`），不会为同一 DSH resource 创建第二个 tab。
 - tab 缓存保留 2 个 viewer；关闭 tab 不会立刻释放缓存（由 LRU 或插件卸载
   回收）。
 - session 恢复时，已经存在的 tab 不会自动打开；用 header 上的 chip。

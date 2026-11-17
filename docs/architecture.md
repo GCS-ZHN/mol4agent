@@ -78,8 +78,9 @@ surface; adapter-specific APIs and limits stay in that adapter's README.
   Mol* UI, not in a separate window or a custom app shell. An agent-initiated
   open reveals that page proactively.
 - **Tab-page state.** One preview tab is one independent viewer instance and one
-  scene. Its tab page id (for DSH: the absolute path) owns its commands, pending
-  captures, camera, representations, measurements, and control-panel state.
+  scene. Its tab page id (for DSH: the canonical `/`-separated absolute path)
+  owns its commands, pending captures, camera, representations, measurements,
+  and control-panel state.
   Switching tabs reattaches/preserves its viewer; it must not reload the file,
   remount the viewer, copy commands into another tab, or deliver a capture as
   another tab's. Only host services such as the light/dark theme are shared. An

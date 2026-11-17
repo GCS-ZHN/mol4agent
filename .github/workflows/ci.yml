@@ -63,3 +63,49 @@ jobs:
 
       - name: Build OpenCode adapter
         run: pnpm --filter @gcszhn/mol4agent-opencode build
+
+  # Windows is its own failure class: separators, drive letters, and file-name
+  # rules differ from POSIX. Issue #13 was a projection tab key written as
+  # `D:\…` while the client derived `D:/…` from the resource address, so every
+  # viewer command and screenshot silently missed. This job keeps the core and
+  # DSH adapter honest on Windows; the ChatGPT/OpenCode suites assert POSIX
+  # server namespaces and a macOS Chrome binary, so they stay on Linux.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core
+        run: pnpm --filter @gcszhn/mol4agent-core build
+
+      - name: Typecheck
+        run: |
+          pnpm --filter @gcszhn/mol4agent-core typecheck
+          pnpm --filter @gcszhn/mol4agent-deepseekharness typecheck
+          pnpm --filter @gcszhn/mol4agent-chatgpt typecheck
+          pnpm --filter @gcszhn/mol4agent-opencode typecheck
+
+      - name: Core tests
+        run: pnpm --filter @gcszhn/mol4agent-core test
+
+      - name: DSH adapter tests
+        run: pnpm --filter @gcszhn/mol4agent-deepseekharness test
+
+      - name: Build DSH adapter
+        run: pnpm --filter @gcszhn/mol4agent-deepseekharness build

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
 import { resolveSource } from '@gcszhn/mol4agent-core/sources'
 import {
@@ -11,7 +11,10 @@ import {
   resolveFetchTarget,
 } from '../src/host/fetch.ts'
 
-const CWD = '/workspace/project'
+// A real absolute cwd on the running platform, so `resolve`/`join` produce the
+// same native spelling the Host returns on POSIX and Windows.
+const CWD = resolve('/workspace/project')
+const inCwd = (...segments: string[]): string => join(CWD, ...segments)
 
 async function withTempDir<T>(run: (directory: string) => Promise<T>): Promise<T> {
   const directory = await mkdtemp(join(tmpdir(), 'mol4agent-fetch-'))
@@ -32,17 +35,17 @@ function textFetch(body: string): typeof fetch {
 
 test('resolves target paths, directory targets, and missing suffixes', async () => {
   const pdb = resolveSource({ entryId: '1crn' })
-  assert.equal(await resolveFetchTarget(CWD, 'models/1crn.pdb', pdb), '/workspace/project/models/1crn.pdb')
-  assert.equal(await resolveFetchTarget(CWD, 'models/1crn', pdb), '/workspace/project/models/1crn.pdb')
-  assert.equal(await resolveFetchTarget(CWD, 'models/', pdb), '/workspace/project/models/1CRN.pdb')
+  assert.equal(await resolveFetchTarget(CWD, 'models/1crn.pdb', pdb), inCwd('models', '1crn.pdb'))
+  assert.equal(await resolveFetchTarget(CWD, 'models/1crn', pdb), inCwd('models', '1crn.pdb'))
+  assert.equal(await resolveFetchTarget(CWD, 'models/', pdb), inCwd('models', '1CRN.pdb'))
   assert.equal(await resolveFetchTarget(CWD, '/tmp/1atp.ent', pdb), '/tmp/1atp.ent')
 
   const cif = resolveSource({ entryId: '1crn', sourceDb: 'rcsb-cif' })
-  assert.equal(await resolveFetchTarget(CWD, 'x.mmcif', cif), '/workspace/project/x.mmcif')
-  assert.equal(await resolveFetchTarget(CWD, 'x', cif), '/workspace/project/x.cif')
+  assert.equal(await resolveFetchTarget(CWD, 'x.mmcif', cif), inCwd('x.mmcif'))
+  assert.equal(await resolveFetchTarget(CWD, 'x', cif), inCwd('x.cif'))
 
   const bcif = resolveSource({ entryId: '1crn', sourceDb: 'rcsb-bcif' })
-  assert.equal(await resolveFetchTarget(CWD, 'x.bcif', bcif), '/workspace/project/x.bcif')
+  assert.equal(await resolveFetchTarget(CWD, 'x.bcif', bcif), inCwd('x.bcif'))
 
   await withTempDir(async directory => {
     assert.equal(await resolveFetchTarget(CWD, directory, pdb), join(directory, '1CRN.pdb'))

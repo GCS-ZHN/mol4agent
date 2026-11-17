@@ -37,9 +37,13 @@ semantics.
   `sidebar.right.tab.document` keyed by the implementation id.
 - Keep path parsing and format mapping in this adapter; core only receives bytes
   plus format. Do not add path logic to core for a preview feature.
-- The projection is keyed by **tab page id (absolute path)**: `mol_open` adds or
-  replaces `tabs[path]` and sets `active`; scene tools fold into `args.tab`
-  (default `active`). Never reintroduce a single session-wide `scene`.
+- The projection is keyed by **canonical tab page id**: the `/`-separated
+  absolute path (`D:/work/x.pdb`), matching DSH resource addresses on every
+  platform. `mol_open` adds or replaces `tabs[path]` and sets `active`; scene
+  tools fold into `args.tab` (default `active`). Canonicalize the key, every
+  lookup, and the tool echo through `canonicalTabPath` (`src/tab-path.ts`); a
+  Host-native Windows spelling (`D:\work\x.pdb`) makes every command and
+  screenshot miss silently. Never reintroduce a single session-wide `scene`.
 - The body selects `tabs[path]` for its own tab; do not let one tab apply another
   tab's commands. Capture pending carries the target `path`; the bridge activates
   that tab and only its body delivers.
@@ -56,6 +60,10 @@ semantics.
   file or recreate the viewer. Plugin unload disposes cached viewers.
 - `viewer.load()` clears the previous structure; do not skip that on new scenes
   or reloads.
+- Capture only after a laid-out canvas has a representation, and retry a PNG
+  that holds only the background: Windows/ANGLE can present a blank first frame
+  right after `mol_open`. Surface apply failures through the capture report
+  instead of leaving them in the console.
 - Client changes need a page refresh; Host changes need a DSH restart or a bundle
   reload. Do not claim live HMR without the dev watcher.
 

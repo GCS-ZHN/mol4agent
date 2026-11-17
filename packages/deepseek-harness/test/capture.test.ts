@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CaptureHub } from '../src/host/capture.ts'
+import { CaptureHub, captureFileName } from '../src/host/capture.ts'
 
 const session = 'session' as never
 const ref = { attachmentId: 1 } as never
@@ -42,4 +42,17 @@ test('dispose clears early deliveries', () => {
   hub.dispose()
   assert.equal(hub.deliver(session, 'early', ref), true)
   hub.dispose()
+})
+
+test('builds a Windows-safe capture file name from an attachment id', () => {
+  const digest = '7dc1a1b2c3d4e5f6'
+  const name = captureFileName(`sha256:${digest}`, 1794897007162)
+
+  assert.equal(name, `mol4agent-1794897007162-${digest.slice(-12)}.png`)
+  assert.match(name, /^mol4agent-\d+-[a-z0-9]+\.png$/u)
+  // `:` would turn the file into an NTFS alternate data stream on Windows.
+  for (const illegal of [':', '/', '\\', '?', '*', '"', '<', '>', '|']) {
+    assert.equal(name.includes(illegal), false, illegal)
+  }
+  assert.ok(captureFileName(undefined, 42).endsWith('.png'))
 })

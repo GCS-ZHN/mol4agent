@@ -72,7 +72,7 @@ away.
 | `mol_info` | `path` | Summarize chains, residues, atoms, ligands. Does not open a viewer or change the scene. |
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å, 0 < cutoff ≤ 30) in PDB-like files. Returns ranges for `mol_style`/`mol_focus`. |
 | `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
-| `mol_open` | `path`, `type?`, `color?`, `select?`, `focus?` | Create/update the tab page keyed by the absolute path and make it active. Emits `represent` and optionally `select`/`focus`; the tab page id is the path. |
+| `mol_open` | `path`, `type?`, `color?`, `select?`, `focus?` | Create/update the tab page keyed by its canonical `/`-separated absolute path and make it active. Emits `represent` and optionally `select`/`focus`; the tab page id is that path. |
 | `mol_style` | `tab?`, `type?`, `color?`, `target?`, `colorParams?` | Append `represent` to the tab (`tab` defaults to active). Without `target` it replaces the scene representation; with `target` it adds a representation to that selection only. `colorParams` carries e.g. `{"value": 16711680}` for uniform red. |
 | `mol_select` | `tab?`, `target`, `mode?`, `focus?` | Append `select`. `mode` is `select` or `highlight`. |
 | `mol_focus` | `tab?`, `target?` | Append `focus`; target omitted frames the whole structure. |
@@ -81,6 +81,11 @@ away.
 
 `path` is absolute or relative to the session working directory. `target_path`
 follows the same rule. Files are limited to 64 MiB.
+
+Tab page ids are canonical (`/`-separated) absolute paths on every platform:
+`mol_open`/`mol_fetch` echo `D:/work/5jds.pdb`, and `tab` accepts either that
+form or a native `D:\work\5jds.pdb`. The path-key invariant is described in
+[Session projection](#session-projection).
 
 ### Database sources
 
@@ -199,13 +204,13 @@ interface MolSessionState {
   revision: number
   cwd?: string
   tabs: Record<string, {
-    sceneKey: string   // `${absolutePath}#${callId}`
-    path: string
+    sceneKey: string   // `${canonicalPath}#${callId}`
+    path: string       // canonical `/`-separated absolute path
     format: MolFormat
     label: string
     commands: MolCommand[]
   }>
-  active: string | null   // absolute path
+  active: string | null   // canonical `/`-separated absolute path
   pending: Record<string, {
     callId: string
     path?: string
@@ -228,15 +233,24 @@ interface MolSessionState {
   results leave state unchanged.
 - Relative paths are resolved against `cwd` captured when the projection is
   initialized.
+- Tab keys are **canonical**: the `/`-separated absolute path with an uppercase
+  drive letter (`D:/work/5jds.pdb`). DSH resource addresses and the Sidebar tab
+  registry are `/`-separated on every platform, and the body derives its path
+  from the address; keying `tabs`/`active` with a Host-native Windows spelling
+  (`D:\work\5jds.pdb`) makes every scene-tool lookup and screenshot miss
+  silently. `openScene`, `tabOf`, the tool-side scene lookup, and the body all
+  canonicalize through `canonicalTabPath` (`src/tab-path.ts`), and `mol_open` /
+  `mol_fetch` echo that form back to the agent.
 - The projection is replayable: it stores paths and JSON commands, never bytes.
 - `sceneKey` changes when the agent opens that tab again. Only that tab reloads
   the structure (clearing old measurements/selection styles) and resets its
   applied-command cursor; other tabs are untouched.
 
 The client selects `tabs[path]` for its own tab with
-`props.useProjection('mol4agent')`. It reads the file bytes separately through
-`remote.workspaceFiles.readBytes`, then calls `@gcszhn/mol4agent-core` with
-`{ data, format, label }`.
+`props.useProjection('mol4agent')`, where `path` is `canonicalTabPath()` of the
+path parsed from its resource address. It reads the file bytes separately
+through `remote.workspaceFiles.readBytes`, then calls
+`@gcszhn/mol4agent-core` with `{ data, format, label }`.
 
 ## Document preview
 
@@ -300,6 +314,13 @@ sequenceDiagram
 the tool starts waiting are buffered for 30 s. The internal command is registered
 with `input: { attachments: true }` and `recordInput: false`.
 
+The body does not capture on the first render: it waits for a laid-out canvas
+with a representation, then retries while the PNG still holds only the
+background (Windows/ANGLE can present a blank frame right after `mol_open`).
+The capture report carries `visibleContent`; command failures observed while
+applying a scene travel back as `applyErrors`, so an optimistic tool message
+cannot hide a client-side rejection.
+
 ## Viewer behavior
 
 - **Official Mol* UI**: `createPluginUI` + `DefaultPluginUISpec`. The viewer is
@@ -313,10 +334,11 @@ with `input: { attachments: true }` and `recordInput: false`.
 - **Theme**: the Mol* skin and canvas background follow DSH's
   `theme/change` event.
 - **Tab scope**: each document tab has its own viewer, cache, and projection
-  scene. `mol_open` returns the tab page id (absolute path); pass `tab` to
-  `mol_style`/`mol_select`/`mol_focus`/`mol_measure`/`mol_capture` to target that
-  tab independently. Omitting `tab` uses the last-opened tab. Switching tabs
-  preserves all viewer state; capture activates its target tab.
+  scene. `mol_open` returns the tab page id (canonical `/`-separated absolute
+  path); pass `tab` to `mol_style`/`mol_select`/`mol_focus`/`mol_measure`/
+  `mol_capture` to target that tab independently. Omitting `tab` uses the
+  last-opened tab. Switching tabs preserves all viewer state; capture activates
+  its target tab.
 - **Tab cache**: an unmounted preview parks its whole Mol* container in a hidden
   holder; remounting the same tab reattaches and resizes instead of re-reading
   the file. The two most recent tabs are kept; plugin unload disposes them.
@@ -356,10 +378,10 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 (the DSH Plugin manager does this when installing/enabling a bundle), then
 restart DSH.
 
-npm form (0.2.0, published):
+npm form (0.2.1, published):
 
 ```sh
-dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.2.0
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.2.1
 ```
 
 The current Desktop `desktop` profile is installed via `plugin_manager` and
@@ -393,7 +415,7 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
   `.gz` target is rejected.
 - An 8 Å cutoff can produce a large interface (7CZD A/B: 91 residues); lower
   the cutoff or focus a single range for a cleaner figure.
-- A tab page id is the absolute path. Reopening the same path updates that tab
+- A tab page id is the canonical `/`-separated absolute path. Reopening the same path (either separator spelling) updates that tab
   (new `sceneKey`) rather than creating a second tab with the same DSH resource.
 - The tab cache keeps two viewers; closing a tab does not immediately free its
   cached viewer (it is evicted by the LRU or plugin unload).

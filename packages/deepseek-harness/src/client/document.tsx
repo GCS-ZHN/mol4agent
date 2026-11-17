@@ -16,7 +16,9 @@ import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type { MolFormat, MolViewer } from '@gcszhn/mol4agent-core'
 import { baseNameOf, formatOfFile, isGzipFile } from '../formats.ts'
 import type { MolPendingCapture, MolSessionState } from '../state.ts'
+import { canonicalTabPath } from '../tab-path.ts'
 import { sessionPathOf } from './address.ts'
+import { captureVisible } from './capture.ts'
 import { loadMolCore } from './core-loader.ts'
 import { gunzipBytes } from './gzip.ts'
 import { putCachedViewer, takeCachedViewer } from './viewer-cache.ts'
@@ -59,7 +61,9 @@ export function MolBody(props: MolBodyProps): ReactNode {
   const { tab } = props.useTabInfo()
   const meta = props.useResource<'file'>(props.resourceAddress)
   const projection = props.useProjection('mol4agent') as MolSessionState | undefined
-  const path = useMemo(() => sessionPathOf(props.resourceAddress) ?? '', [props.resourceAddress])
+  // The resource address is the only path spelling DSH guarantees on every
+  // platform; canonicalize it to the same `/` form the Host projection keys.
+  const path = useMemo(() => canonicalTabPath(sessionPathOf(props.resourceAddress) ?? ''), [props.resourceAddress])
   const format = useMemo(() => (path === '' ? undefined : formatOfFile(path)), [path])
   const version = meta.value?.version
   const revision = props.content.kind === 'renderer' ? props.content.revision : -1
@@ -71,6 +75,7 @@ export function MolBody(props: MolBodyProps): ReactNode {
   const pendingReload = useRef(false)
   const loaded = useRef<LoadedMark>(EMPTY_MARK)
   const handledCaptures = useRef(new Set<string>())
+  const applyFailures = useRef<string[]>([])
   const applyChain = useRef<Promise<void>>(Promise.resolve())
   const tRef = useRef(props.t)
   tRef.current = props.t
@@ -235,6 +240,7 @@ export function MolBody(props: MolBodyProps): ReactNode {
           const firstScene = loaded.current.sceneKey === undefined
           loaded.current.sceneKey = scene.sceneKey
           loaded.current.applied = 0
+          applyFailures.current = []
           // A new scene is a fresh open: reload the bytes so old measurements,
           // selection components, and styles do not leak into the new scene.
           // The first scene after a viewer mount is already loaded, so skip it.
@@ -248,13 +254,19 @@ export function MolBody(props: MolBodyProps): ReactNode {
           const command = scene.commands[index]
           if (command === undefined) continue
           const result = await viewer.execute(command)
-          if (!result.ok) console.warn('[mol4agent]', result.message)
+          if (!result.ok) {
+            applyFailures.current.push(`${command.op}: ${result.message}`)
+            console.warn('[mol4agent]', result.message)
+          }
         }
         loaded.current.applied = scene.commands.length
         const diagnostics = viewer.diagnostics?.()
         if (diagnostics !== undefined && diagnostics.representations === 0) {
           const fallback = await viewer.execute({ op: 'represent', style: { type: 'cartoon', color: 'chain-id' } })
-          if (!fallback.ok) console.warn('[mol4agent] fallback representation failed', fallback.message)
+          if (!fallback.ok) {
+            applyFailures.current.push(`fallback represent: ${fallback.message}`)
+            console.warn('[mol4agent] fallback representation failed', fallback.message)
+          }
         }
       })
       .catch(reason => { console.warn('[mol4agent] scene apply failed', reason) })
@@ -272,7 +284,7 @@ export function MolBody(props: MolBodyProps): ReactNode {
       void (async () => {
         try {
           await applyChain.current
-          const png = await viewer.capture({
+          const capture = await captureVisible(viewer, {
             width: request.width,
             height: request.height,
             transparent: request.transparent,
@@ -284,9 +296,11 @@ export function MolBody(props: MolBodyProps): ReactNode {
             scenePath: scene.path,
             applied: loaded.current.applied,
             commands: scene.commands.length,
+            visibleContent: capture.visible,
+            ...(applyFailures.current.length === 0 ? {} : { applyErrors: [...applyFailures.current] }),
             ...(viewer.diagnostics?.() ?? {}),
           }
-          await props.deliverCapture(callId, png, report)
+          await props.deliverCapture(callId, capture.png, report)
         } catch (reason) {
           console.warn('[mol4agent] screenshot failed', reason)
         }
