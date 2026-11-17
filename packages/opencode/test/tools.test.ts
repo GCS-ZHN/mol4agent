@@ -5,11 +5,13 @@ import { fileURLToPath } from 'node:url'
 import type { StructureSummary } from '@gcszhn/mol4agent-core/protocol'
 import { findInterfaceResidues } from '../src/interface.ts'
 import {
+  assertColorParams,
   describeFile,
   describeSelector,
   describeStyle,
   escapeAttribute,
   formatInterface,
+  resolvedColorOf,
   styleOf,
   summarizeSafely,
   tabOf,
@@ -24,20 +26,56 @@ test('styleOf defaults to cartoon / chain-id', () => {
   assert.deepEqual(styleOf({}), { type: 'cartoon', color: 'chain-id' })
 })
 
-test('styleOf keeps only the given fields', () => {
-  assert.deepEqual(styleOf({ type: 'ball-and-stick' }), { type: 'ball-and-stick' })
-  assert.deepEqual(styleOf({ color: 'element-symbol' }), { color: 'element-symbol' })
+test('styleOf normalizes colorParams values to 24-bit integers', () => {
   assert.deepEqual(
     styleOf({ type: 'spacefill', color: 'uniform', colorParams: { value: 0x336699 } }),
     { type: 'spacefill', color: 'uniform', colorParams: { value: 0x336699 } },
   )
+  assert.deepEqual(
+    styleOf({ color: 'uniform', colorParams: { value: 'red' } }),
+    { color: 'uniform', colorParams: { value: 0xff0000 } },
+  )
+  assert.deepEqual(
+    styleOf({ color: 'uniform', colorParams: { value: '#ff0000' } }),
+    { color: 'uniform', colorParams: { value: 0xff0000 } },
+  )
+  assert.deepEqual(
+    styleOf({ color: 'uniform', colorParams: { value: 'rgb(0, 0, 255)' } }),
+    { color: 'uniform', colorParams: { value: 0x0000ff } },
+  )
+})
+
+test('styleOf rejects unparseable colors and empty colorParams', () => {
+  assert.throws(
+    () => styleOf({ color: 'uniform', colorParams: { value: 'not-a-colour' } }),
+    /invalid color "not-a-colour"/u,
+  )
+  assert.deepEqual(styleOf({ color: 'uniform', colorParams: {} }), { color: 'uniform' })
 })
 
 test('styleOf copies colorParams instead of sharing the object', () => {
   const params = { value: 'red' }
   const style = styleOf({ colorParams: params })
   assert.notEqual(style.colorParams, params)
-  assert.deepEqual(style.colorParams, { value: 'red' })
+  assert.deepEqual(style.colorParams, { value: 0xff0000 })
+})
+
+test('assertColorParams validates the object shape and the color value', () => {
+  assert.doesNotThrow(() => assertColorParams({}))
+  assert.doesNotThrow(() => assertColorParams({ value: 'lightgrey' }))
+  assert.doesNotThrow(() => assertColorParams({ value: 16711680 }))
+  assert.throws(() => assertColorParams(null), /colorParams must be an object/u)
+  assert.throws(() => assertColorParams('red'), /colorParams must be an object/u)
+  assert.throws(() => assertColorParams(['red']), /colorParams must be an object/u)
+  assert.throws(() => assertColorParams({ value: 'nope' }), /invalid color "nope"/u)
+})
+
+test('resolvedColorOf returns the normalized hex for a colorParams value', () => {
+  assert.equal(resolvedColorOf({ value: 'red' }), '#ff0000')
+  assert.equal(resolvedColorOf({ value: '#00F' }), '#0000ff')
+  assert.equal(resolvedColorOf({}), undefined)
+  assert.equal(resolvedColorOf(undefined), undefined)
+  assert.equal(resolvedColorOf(null), undefined)
 })
 
 test('describeStyle reports the whole structure or the normalized target', () => {
@@ -51,6 +89,25 @@ test('describeStyle reports the whole structure or the normalized target', () =>
     'Applied cartoon / chain-id to residues A26-33.',
   )
   assert.throws(() => describeStyle({ target: { kind: 'nope' } }))
+})
+
+test('describeStyle echoes the resolved color', () => {
+  assert.equal(
+    describeStyle({ color: 'uniform', colorParams: { value: 'red' }, target: { kind: 'polymer' } }),
+    'Applied cartoon / uniform #ff0000 to polymer.',
+  )
+  assert.equal(
+    describeStyle({ type: 'cartoon', color: 'uniform', colorParams: { value: 0xb0b0b0 } }),
+    'Applied cartoon / uniform #b0b0b0 to the whole structure.',
+  )
+  assert.equal(
+    describeStyle({ color: 'uniform', colorParams: {}, target: { kind: 'polymer' } }),
+    'Applied cartoon / uniform to polymer.',
+  )
+  assert.throws(
+    () => describeStyle({ color: 'uniform', colorParams: { value: 'not-a-colour' } }),
+    /invalid color "not-a-colour"/u,
+  )
 })
 
 test('describeSelector covers each selector shape', () => {
