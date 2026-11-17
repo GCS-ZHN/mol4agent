@@ -289,6 +289,56 @@ test('rejects selectors that cannot match the structure', async t => {
   assert.match(badOpen.content[0].text, /chain "Z" does not exist/)
 })
 
+test('normalizes colour params and rejects unparseable colours', async t => {
+  const { client } = await withClient(t)
+  const opened = await client.callTool({
+    name: 'mol_open',
+    arguments: { path: fixture, color: 'uniform', colorParams: { value: 'red' } },
+  })
+  assert.equal(opened.isError, undefined)
+  const scene = opened.structuredContent?.scene
+  assert.deepEqual(scene.commands[0], {
+    op: 'represent',
+    style: { color: 'uniform', colorParams: { value: 0xff0000 } },
+  })
+
+  const styled = await client.callTool({
+    name: 'mol_style',
+    arguments: {
+      type: 'cartoon',
+      color: 'uniform',
+      colorParams: { value: '#00ff00' },
+      target: { kind: 'polymer' },
+    },
+  })
+  assert.equal(styled.isError, undefined)
+  assert.match(styled.content[0].text, /Applied cartoon \/ uniform #00ff00 to polymer\./)
+  const next = styled.structuredContent?.scene
+  assert.deepEqual(next.commands.at(-1).style.colorParams, { value: 0x00ff00 })
+
+  const badStyle = await client.callTool({
+    name: 'mol_style',
+    arguments: { color: 'uniform', colorParams: { value: 'not-a-colour' } },
+  })
+  assert.equal(badStyle.isError, true)
+  assert.match(badStyle.content[0].text, /invalid color "not-a-colour"/)
+
+  // The rejected call must not append a command or bump the revision.
+  const after = await client.callTool({
+    name: 'mol_style',
+    arguments: { type: 'cartoon' },
+  })
+  assert.equal(after.structuredContent?.scene.revision, next.revision + 1)
+  assert.equal(after.structuredContent?.scene.commands.length, next.commands.length + 1)
+
+  const badOpen = await client.callTool({
+    name: 'mol_open',
+    arguments: { path: fixture, color: 'uniform', colorParams: { value: 'not-a-colour' } },
+  })
+  assert.equal(badOpen.isError, true)
+  assert.match(badOpen.content[0].text, /invalid color "not-a-colour"/)
+})
+
 test('opens an SDF and reports unsupported summaries gracefully', async t => {
   const { client } = await withClient(t)
   const opened = await client.callTool({ name: 'mol_open', arguments: { path: aspirin } })

@@ -122,8 +122,8 @@ Model-facing tools:
 | `mol_info` | `path` | Summarize chains, residues, atoms, ligands. Does not open a viewer. |
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å) in PDB-like files. |
 | `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
-| `mol_open` | `path`, `type?`, `color?`, `select?`, `focus?` | Open a scene, render the MCP App card, and optionally highlight/focus a selection. |
-| `mol_style` | `type?`, `color?`, `target?`, `colorParams?` | Replace the global representation, or add one to a selection. |
+| `mol_open` | `path`, `type?`, `color?`, `colorParams?`, `select?`, `focus?` | Open a scene, render the MCP App card, and optionally highlight/focus a selection. |
+| `mol_style` | `type?`, `color?`, `target?`, `colorParams?` | Replace the global representation, or add one to a selection. `colorParams.value` applies to `uniform` and accepts a CSS name (`"red"`), hex (`"#ff0000"`), or an integer (`16711680`); invalid colours are rejected and the result echoes the resolved hex. |
 | `mol_select` | `target`, `mode?`, `focus?` | Apply select/highlight interactivity. |
 | `mol_focus` | `target?` | Focus a selection or the whole structure. |
 | `mol_measure` | `kind`, `targets` | Add a distance (2), angle (3), or dihedral (4) measurement. |
@@ -132,6 +132,11 @@ Model-facing tools:
 
 App/host-only internal tools: `mol_viewer_poll`, `mol_capture_deliver`,
 `mol_capture_fail`, and `mol_view_file` (the file-tree entrypoint).
+
+`color` selects the Mol* colour theme; `colorParams.value` only affects the
+`uniform` theme. Besides CSS names and hex strings it accepts `0x`/bare hex,
+`rgb()`/`rgba()`, and 24-bit integers. See the
+[core colour reference](../core/README.md#colours) for the full list.
 
 Selectors use the same JSON shapes as the DSH adapter:
 

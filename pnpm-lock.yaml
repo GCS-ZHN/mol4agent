@@ -11,7 +11,7 @@ importers:
   packages/chatgpt:
     dependencies:
       '@gcszhn/mol4agent-core':
-        specifier: workspace:^
+        specifier: workspace:>=0.3.0 <1.0.0
         version: link:../core
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.5
