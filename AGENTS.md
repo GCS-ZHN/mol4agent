@@ -62,8 +62,10 @@ are in its AGENTS playbook.
 
 ### Core dependency and bundled adapters
 
-- Adapters declare core as `workspace:^`, never `workspace:*`; publishing
-  rewrites it to `^x.y.z`. DSH's build-time core dependency uses
+- Adapters declare core with the workspace protocol, never `workspace:*`:
+  `workspace:^` normally, or an explicit `workspace:>=x.y.z <1.0.0` when the
+  release depends on a newer core capability. Publishing rewrites either form
+  to the corresponding normal range. DSH's build-time core dependency uses
   `workspace:>=0.2.0 <1.0.0` (published as `>=0.2.0 <1.0.0`) so its bundle can
   be built against any 0.x core. Other published dependencies use ranges too,
   except host-provided peer APIs that must pin the host version.

@@ -95,13 +95,28 @@ Mol* 面板依赖**桌面端的本地 GUI 插件宿主**。`opencode serve` 提�
 | `mol_interface` | 寻找两组链之间的界面残基（PDB 类 ATOM 文件） |
 | `mol_fetch` | 下载数据库条目（`entry_id`、`target_path`、`source_db?`）并保存到会话所属 server |
 | `mol_open` | 在侧边栏打开结构并设为活动场景 |
-| `mol_style` | 修改表示/颜色；带 `target` 时叠加式着色某个选区 |
+| `mol_style` | 修改表示/颜色；带 `target` 时叠加式着色某个选区。`colorParams.value` 只对 `uniform` 生效（CSS 名称、十六进制或整数） |
 | `mol_select` | 选择/高亮（可同时聚焦）某个选区 |
 | `mol_focus` | 聚焦某个选区或整个结构 |
 | `mol_measure` | 添加距离(2)/角度(3)/二面角(4)测量 |
 | `mol_capture` | 把视口渲染成 PNG 保存到 `.mol4agent/captures/` |
 
 selector 与其他适配器使用相同的 JSON 形状，见 [README.md](README.md)。
+
+### 颜色
+
+`color` 选择 Mol* 的颜色**主题**（`chain-id`、`element-symbol` 等）；
+`colorParams.value` 只对 `uniform` 主题生效。单独写 `color: "uniform"` 只是
+主题名，不是具体颜色。
+
+`colorParams.value` 接受 CSS 颜色名（`"red"`、`"lightgrey"`）、十六进制
+（`"#f00"`、`"#ff000080"`）、`0x` 或裸十六进制（`"0xB0B0B0"`）、
+`rgb()`/`rgba()`，或 24 位整数（`16711680`）。alpha 会被接受但忽略。无法解析
+的值会在场景更新前被拒绝，`mol_style` 会回显解析后的十六进制颜色，例如
+`Applied cartoon / uniform #ff0000 to polymer.`。
+
+常用值：红 `0xff0000`、蓝 `0x0000ff`、白 `0xffffff`、灰 `0x808080`、
+浅灰 `0xd3d3d3`。
 
 ### 数据库来源
 

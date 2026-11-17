@@ -115,7 +115,7 @@ to a remote server) for the viewer; a browser session is tool-only.
 | `mol_interface` | Find interface residues between two chain groups (PDB-like ATOM files). |
 | `mol_fetch` | Download a database entry (`entry_id`, `target_path`, `source_db?`) and save it on the session's server. |
 | `mol_open` | Open a structure in the side panel and make it the active scene. |
-| `mol_style` | Change representation/color; with `target`, style a selection additively. |
+| `mol_style` | Change representation/color; with `target`, style a selection additively. `colorParams.value` applies to `uniform` (CSS name, hex, or integer). |
 | `mol_select` | Select/highlight (and optionally focus) a selection. |
 | `mol_focus` | Focus a selection or the whole structure. |
 | `mol_measure` | Add a distance (2), angle (3), or dihedral (4) measurement. |
@@ -130,6 +130,21 @@ Selectors are the same JSON shapes as the other adapters:
 {"kind":"residue","chain":"A","index":42}
 {"kind":"comp","compId":"ATP"}
 ```
+
+### Colours
+
+`color` selects a Mol* colour **theme** (`chain-id`, `element-symbol`, ...).
+`colorParams.value` only affects the `uniform` theme; `color: "uniform"` alone
+is a theme name, not a colour.
+
+`colorParams.value` accepts a CSS colour name (`"red"`, `"lightgrey"`), hex
+(`"#f00"`, `"#ff000080"`), `0x`/bare hex (`"0xB0B0B0"`), `rgb()`/`rgba()`, or a
+24-bit integer (`16711680`). Alpha is accepted but ignored. A value that cannot
+be parsed is rejected before the scene changes, and `mol_style` echoes the
+resolved hex, for example `Applied cartoon / uniform #ff0000 to polymer.`
+
+Common values: red `0xff0000`, blue `0x0000ff`, white `0xffffff`, grey
+`0x808080`, light grey `0xd3d3d3`.
 
 ### Database sources
 

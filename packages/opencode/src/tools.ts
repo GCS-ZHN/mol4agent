@@ -8,6 +8,8 @@
 import {
   COLOR_THEMES,
   REPRESENTATION_TYPES,
+  formatColor,
+  parseColor,
   type MolFormat,
   type StyleSpec,
   type StructureSelector,
@@ -67,7 +69,10 @@ export const STYLE_SCHEMA = {
   color: { enum: COLOR_THEMES },
   colorParams: {
     type: 'object',
-    properties: { value: {} },
+    description:
+      'Optional color theme params. colorParams.value applies only to color "uniform" and accepts '
+      + 'a CSS name ("red"), hex ("#ff0000"), or a 24-bit integer (16711680).',
+    properties: { value: { description: 'Color value; invalid values are rejected.' } },
     additionalProperties: false,
   },
 }
@@ -84,25 +89,49 @@ export function tabOf(input: unknown): string | undefined {
 export function styleOf(args: {
   readonly type?: StyleSpec['type']
   readonly color?: StyleSpec['color']
-  readonly colorParams?: { readonly value: string | number }
+  readonly colorParams?: { readonly value?: string | number }
 }): StyleSpec {
   const style: {
     type?: StyleSpec['type']
     color?: StyleSpec['color']
-    colorParams?: { value: string | number }
+    colorParams?: { value: number }
   } = {}
   if (args.type !== undefined) style.type = args.type
   if (args.color !== undefined) style.color = args.color
-  if (args.colorParams !== undefined) style.colorParams = { value: args.colorParams.value }
+  if (args.colorParams?.value !== undefined) {
+    // Normalize once here so the scene log and core both see a 24-bit value;
+    // an invalid colour throws before any scene command is appended.
+    style.colorParams = { value: parseColor(args.colorParams.value) }
+  }
   return Object.keys(style).length === 0 ? { type: 'cartoon', color: 'chain-id' } : style
+}
+
+/** Validate an agent-supplied colorParams object (shape plus parseable value). */
+export function assertColorParams(value: unknown): void {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('colorParams must be an object like {"value": 16711680}')
+  }
+  const candidate = value as Record<string, unknown>
+  if (candidate.value !== undefined) parseColor(candidate.value)
+}
+
+/** Resolved `#rrggbb` for a validated colorParams object, when it carries a value. */
+export function resolvedColorOf(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const candidate = value as Record<string, unknown>
+  if (candidate.value === undefined) return undefined
+  return formatColor(parseColor(candidate.value))
 }
 
 export function describeStyle(args: {
   readonly type?: StyleSpec['type']
   readonly color?: StyleSpec['color']
+  readonly colorParams?: { readonly value?: string | number }
   readonly target?: unknown
 }): string {
+  const color = resolvedColorOf(args.colorParams)
   const style = [args.type ?? 'cartoon', args.color ?? 'chain-id'].join(' / ')
+    + (color === undefined ? '' : ` ${color}`)
   if (args.target === undefined) return `Applied ${style} to the whole structure.`
   return `Applied ${style} to ${describeSelector(normalizeSelector(args.target))}.`
 }

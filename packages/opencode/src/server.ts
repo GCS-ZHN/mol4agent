@@ -28,6 +28,7 @@ import {
   MEASUREMENT_KINDS,
   SELECTOR_SCHEMA,
   STYLE_SCHEMA,
+  assertColorParams,
   describeFile,
   describeSelector,
   describeStyle,
@@ -349,11 +350,12 @@ export default Plugin.define({
             path: string
             type?: string
             color?: string
-            colorParams?: { value: string | number }
+            colorParams?: { value?: string | number }
             select?: unknown
             focus?: boolean
           }
           const cwd = await sessionDirectory(context.sessionID)
+          if (args.colorParams !== undefined) assertColorParams(args.colorParams)
           const style = styleOf({ type: args.type as never, color: args.color as never, colorParams: args.colorParams })
           const file = await resolveMoleculeFile(cwd, args.path, MAX_FILE_BYTES, context.signal)
           const commands: MolCommand[] = [{ op: 'represent', style }]
@@ -396,12 +398,13 @@ export default Plugin.define({
           const args = input as {
             type?: string
             color?: string
-            colorParams?: { value: string | number }
+            colorParams?: { value?: string | number }
             target?: unknown
             tab?: string
           }
           const tab = tabOf(args)
           const scene = requireScene(context.sessionID, 'style', tab)
+          if (args.colorParams !== undefined) assertColorParams(args.colorParams)
           const target = args.target === undefined ? undefined : normalizeSelector(args.target)
           const record = recordOf(scene)
           if (target !== undefined && record !== undefined) {
@@ -413,7 +416,14 @@ export default Plugin.define({
             ...(target === undefined ? {} : { target }),
           })
           emitScene(context.sessionID)
-          return { content: describeStyle({ type: args.type as never, color: args.color as never, target }) }
+          return {
+            content: describeStyle({
+              type: args.type as never,
+              color: args.color as never,
+              colorParams: args.colorParams,
+              target,
+            }),
+          }
         },
       })
 

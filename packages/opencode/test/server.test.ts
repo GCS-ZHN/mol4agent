@@ -139,3 +139,63 @@ test('openPath fails clearly when the session workspace is unknown', async () =>
   assert.equal(result.ok, false)
   assert.match(result.error ?? '', /could not resolve the workspace directory for session session-1/u)
 })
+
+interface SceneSnapshot {
+  revision: number
+  commands: Array<{ op: string; style?: { colorParams?: { value?: unknown } } }>
+}
+
+interface SceneStoreLike {
+  active(sessionID: string): string | null
+  snapshot(sessionID: string, path: string | null): SceneSnapshot | null
+}
+
+function sceneStore(): SceneStoreLike {
+  const g = globalThis as unknown as Record<string, unknown>
+  return g['__mol4agent_opencode_state__store'] as SceneStoreLike
+}
+
+test('mol_open and mol_style normalize colors before storing the command', async () => {
+  const cwd = await workspace()
+  const tools = await startTools(cwd)
+  const open = tools.get('mol_open')
+  const style = tools.get('mol_style')
+  assert.ok(open !== undefined && style !== undefined)
+  const context = { sessionID: 'session-colour', signal: new AbortController().signal }
+
+  await open.execute({ path: 'example/1crn.pdb', type: 'cartoon', color: 'uniform', colorParams: { value: 'red' } }, context)
+  let snapshot = sceneStore().snapshot('session-colour', null)
+  assert.equal(snapshot?.commands[0]?.style?.colorParams?.value, 0xff0000)
+
+  const styled = await style.execute({ type: 'cartoon', color: 'uniform', colorParams: { value: '#00f' } }, context)
+  assert.equal(styled.content, 'Applied cartoon / uniform #0000ff to the whole structure.')
+  snapshot = sceneStore().snapshot('session-colour', null)
+  assert.equal(snapshot?.commands[1]?.style?.colorParams?.value, 0x0000ff)
+})
+
+test('an invalid color is rejected before it reaches the scene log', async () => {
+  const cwd = await workspace()
+  const tools = await startTools(cwd)
+  const open = tools.get('mol_open')
+  const style = tools.get('mol_style')
+  assert.ok(open !== undefined && style !== undefined)
+  const context = { sessionID: 'session-bad-colour', signal: new AbortController().signal }
+
+  await assert.rejects(
+    open.execute({ path: 'example/1crn.pdb', color: 'uniform', colorParams: { value: 'not-a-colour' } }, context),
+    /invalid color "not-a-colour"/u,
+  )
+  assert.equal(sceneStore().active('session-bad-colour'), null)
+
+  await open.execute({ path: 'example/1crn.pdb', color: 'uniform', colorParams: { value: 'red' } }, context)
+  const before = sceneStore().snapshot('session-bad-colour', null)?.revision
+  await assert.rejects(
+    style.execute({ color: 'uniform', colorParams: { value: 'not-a-colour' } }, context),
+    /invalid color "not-a-colour"/u,
+  )
+  assert.equal(sceneStore().snapshot('session-bad-colour', null)?.revision, before)
+  await assert.rejects(
+    style.execute({ color: 'uniform', colorParams: 'red' as never }, context),
+    /colorParams must be an object/u,
+  )
+})
