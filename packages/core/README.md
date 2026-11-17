@@ -272,10 +272,23 @@ position: insertion codes share their base number (100, 100A, and 100B all match
 `range` is token-efficient: one `mol_style` call can cover every interface patch
 of a chain.
 
-`schema` fields: `auth_asym_id`, `label_asym_id`, `auth_seq_id`, `label_seq_id`,
-`label_comp_id`, `auth_comp_id`, `beg_auth_seq_id`, `end_auth_seq_id`,
-`beg_label_seq_id`, `end_label_seq_id`, `label_atom_id`, `auth_atom_id`,
-`type_symbol`.
+`schema` fields: `auth_asym_id`, `label_asym_id`, `label_entity_id`,
+`auth_seq_id`, `label_seq_id`, `residue_index` (0-based source order),
+`pdbx_PDB_ins_code`, `label_comp_id`, `auth_comp_id`, `beg_auth_seq_id`,
+`end_auth_seq_id`, `beg_label_seq_id`, `end_label_seq_id`, `label_atom_id`,
+`auth_atom_id`, `type_symbol`.
+
+Insertion-coded residues share `auth_seq_id`, so `residues.range` selects all of
+them. Target one exactly with `pdbx_PDB_ins_code` (the empty string means "no
+insertion code"):
+
+```ts
+{ kind: 'schema', schema: { auth_asym_id: 'H', auth_seq_id: 100, pdbx_PDB_ins_code: 'A' } }
+```
+
+`residue_index` is the only true 0-based sequence position; `auth_seq_id` and
+`label_seq_id` are identifier namespaces. With insertion codes, `label_seq_id`
+is a linear serial and does not equal the author number.
 
 ```ts
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'

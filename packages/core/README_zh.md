@@ -263,10 +263,22 @@ query 或 element schema。
 需要更精细的 Mol* 谓词时用 `schema` 选择器。`range` 很省 token：一次
 `mol_style` 调用即可覆盖一条链的所有界面片段。
 
-`schema` 字段：`auth_asym_id`、`label_asym_id`、`auth_seq_id`、`label_seq_id`、
-`label_comp_id`、`auth_comp_id`、`beg_auth_seq_id`、`end_auth_seq_id`、
-`beg_label_seq_id`、`end_label_seq_id`、`label_atom_id`、`auth_atom_id`、
-`type_symbol`。
+`schema` 字段：`auth_asym_id`、`label_asym_id`、`label_entity_id`、
+`auth_seq_id`、`label_seq_id`、`residue_index`（0-based 源顺序）、
+`pdbx_PDB_ins_code`、`label_comp_id`、`auth_comp_id`、`beg_auth_seq_id`、
+`end_auth_seq_id`、`beg_label_seq_id`、`end_label_seq_id`、`label_atom_id`、
+`auth_atom_id`、`type_symbol`。
+
+插入码残基共享 `auth_seq_id`，所以 `residues.range` 会把它们一起选中。要精确
+选中某一个，用 `pdbx_PDB_ins_code`（空字符串表示“无插入码”）：
+
+```ts
+{ kind: 'schema', schema: { auth_asym_id: 'H', auth_seq_id: 100, pdbx_PDB_ins_code: 'A' } }
+```
+
+`residue_index` 才是真正的 0-based 序列位置；`auth_seq_id` 和 `label_seq_id`
+都是标识符命名空间。文件含插入码时，`label_seq_id` 是线性序号，不等于 author
+编号。
 
 ```ts
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'

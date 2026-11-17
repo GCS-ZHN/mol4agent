@@ -86,8 +86,13 @@ export interface StyleSpec {
 export interface ElementSchema {
   readonly auth_asym_id?: string
   readonly label_asym_id?: string
+  readonly label_entity_id?: string
   readonly auth_seq_id?: number
   readonly label_seq_id?: number
+  /** 0-based residue index in the source model: a true sequence position. */
+  readonly residue_index?: number
+  /** PDB insertion code; the empty string means "no insertion code". */
+  readonly pdbx_PDB_ins_code?: string
   readonly label_comp_id?: string
   readonly auth_comp_id?: string
   readonly beg_auth_seq_id?: number
