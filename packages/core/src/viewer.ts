@@ -35,13 +35,14 @@ import {
   type StructureSummary,
 } from './protocol.ts'
 import { compileSelector, selectorSchema } from './select.ts'
+import { formatColor, parseColor } from './color.ts'
 
 let globalComponentSeq = 0
 
 export interface MolViewerOptions {
   readonly container: HTMLElement
   readonly theme?: 'light' | 'dark'
-  readonly background?: string
+  readonly background?: string | number
 }
 
 export interface ViewerDiagnostics {
@@ -74,6 +75,11 @@ export interface MolViewer {
 
 /** Create the official Mol* viewer inside `options.container`. */
 export async function createMolViewer(options: MolViewerOptions): Promise<MolViewer> {
+  let theme = options.theme ?? 'dark'
+  const themeBackground = (): string => (theme === 'dark' ? '#101418' : '#ffffff')
+  // Validate adapter-provided background before mounting anything.
+  const background = resolveColor(options.background ?? themeBackground())
+
   const host = document.createElement('div')
   host.style.cssText = 'position:relative;width:100%;height:100%;min-height:0;overflow:hidden;'
   options.container.appendChild(host)
@@ -82,9 +88,6 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
   // a real box for its UI and camera; wait for one, then keep following resizes.
   await waitForHostSize(host, 3000)
 
-  let theme = options.theme ?? 'dark'
-  const themeBackground = (): string => (theme === 'dark' ? '#101418' : '#ffffff')
-  const background = options.background ?? themeBackground()
   const themeStyle = document.createElement('style')
   themeStyle.dataset.mol4agentTheme = theme
   themeStyle.textContent = theme === 'dark' ? darkCss : lightCss
@@ -123,7 +126,7 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
     host.remove()
     throw error
   }
-  plugin.canvas3d?.setProps({ renderer: { backgroundColor: toColor(background) } })
+  plugin.canvas3d?.setProps({ renderer: { backgroundColor: Color(background) } })
 
   let pendingFocus: Structure | undefined
   const focusLoaded = (): void => {
@@ -268,7 +271,7 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
       themeStyle.dataset.mol4agentTheme = next
       themeStyle.textContent = next === 'dark' ? darkCss : lightCss
       plugin.canvas3d?.setProps({
-        renderer: { backgroundColor: toColor(themeBackground()) },
+        renderer: { backgroundColor: Color(resolveColor(themeBackground())) },
       })
       plugin.canvas3d?.requestDraw()
     },
@@ -283,6 +286,9 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
       if (helper === undefined) throw new Mol4AgentError('CAPTURE_FAILED', 'viewport screenshot helper is unavailable')
       const width = captureOptions?.width ?? 1024
       const height = captureOptions?.height ?? 768
+      const captureBackground = captureOptions?.background === undefined
+        ? undefined
+        : resolveColor(captureOptions.background)
       const previousBackground = plugin.canvas3d?.props.renderer.backgroundColor
       try {
         helper.behaviors.values.next({
@@ -290,8 +296,8 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
           resolution: { name: 'custom', params: { width, height } },
           transparent: captureOptions?.transparent ?? false,
         } as never)
-        if (captureOptions?.background !== undefined && plugin.canvas3d !== undefined) {
-          plugin.canvas3d.setProps({ renderer: { backgroundColor: toColor(captureOptions.background) } })
+        if (captureBackground !== undefined && plugin.canvas3d !== undefined) {
+          plugin.canvas3d.setProps({ renderer: { backgroundColor: Color(captureBackground) } })
         }
         const uri = await helper.getImageDataUri()
         const comma = uri.indexOf(',')
@@ -348,6 +354,13 @@ async function executeCommand(
       if (style.color !== undefined && !(COLOR_THEMES as readonly string[]).includes(style.color)) {
         return invalid(command.op, `unknown colour theme "${style.color}"; supported: ${COLOR_THEMES.join(', ')}`)
       }
+      // Normalize once, before touching the scene: a bad color must fail the
+      // command instead of reaching Mol* and painting the structure black.
+      const resolvedColor = style.colorParams?.value === undefined
+        ? undefined
+        : resolveColor(style.colorParams.value)
+      const colorParams = resolvedColor === undefined ? undefined : { value: resolvedColor }
+      const colorSuffix = resolvedColor === undefined ? '' : ` ${formatColor(resolvedColor)}`
       const structures = plugin.managers.structure.hierarchy.current.structures
       if (structures.length === 0) {
         return { ok: false, op: command.op, code: 'NO_STRUCTURE', message: 'no structure is loaded' }
@@ -369,7 +382,7 @@ async function executeCommand(
           const rep = await plugin.builders.structure.representation.addRepresentation(component as never, {
             type: (style.type ?? 'ball-and-stick') as never,
             color: (style.color ?? 'uniform') as never,
-            ...(style.colorParams === undefined ? {} : { colorParams: style.colorParams as never }),
+            ...(colorParams === undefined ? {} : { colorParams: colorParams as never }),
           }, { tag: 'mol4agent-selection' } as never)
           if (rep !== undefined) targeted += 1
         }
@@ -385,7 +398,7 @@ async function executeCommand(
         return {
           ok: true,
           op: command.op,
-          message: `applied ${style.type ?? 'ball-and-stick'} / ${style.color ?? 'uniform'} to ${command.target.kind}`,
+          message: `applied ${style.type ?? 'ball-and-stick'} / ${style.color ?? 'uniform'}${colorSuffix} to ${command.target.kind}`,
         }
       }
 
@@ -404,7 +417,7 @@ async function executeCommand(
             {
               theme: {
                 globalName: style.color ?? 'chain-id',
-                ...(style.colorParams === undefined ? {} : { globalColorParams: { value: style.colorParams.value } }),
+                ...(colorParams === undefined ? {} : { globalColorParams: colorParams }),
               },
             } as never,
           )
@@ -426,7 +439,7 @@ async function executeCommand(
           const rep = await plugin.builders.structure.representation.addRepresentation(component as never, {
             type: (style.type ?? 'cartoon') as never,
             color: (style.color ?? 'chain-id') as never,
-            ...(style.colorParams === undefined ? {} : { colorParams: style.colorParams as never }),
+            ...(colorParams === undefined ? {} : { colorParams: colorParams as never }),
           })
           if (rep !== undefined) added += 1
         }
@@ -450,7 +463,7 @@ async function executeCommand(
         console.warn('[mol4agent] could not remove the previous representation', reason)
       }
       plugin.canvas3d?.requestDraw()
-      return { ok: true, op: command.op, message: `applied ${style.type ?? 'cartoon'} / ${style.color ?? 'chain-id'}` }
+      return { ok: true, op: command.op, message: `applied ${style.type ?? 'cartoon'} / ${style.color ?? 'chain-id'}${colorSuffix}` }
     }
 
     case 'select': {
@@ -490,10 +503,10 @@ async function executeCommand(
       if (plugin.canvas3d === undefined) {
         return { ok: false, op: command.op, code: 'INVALID_COMMAND', message: 'canvas is unavailable' }
       }
-      const color = command.color === 'theme' ? toColor(theme === 'dark' ? '#101418' : '#ffffff') : toColor(command.color)
-      plugin.canvas3d.setProps({ renderer: { backgroundColor: color } })
+      const color = resolveColor(command.color === 'theme' ? (theme === 'dark' ? '#101418' : '#ffffff') : command.color)
+      plugin.canvas3d.setProps({ renderer: { backgroundColor: Color(color) } })
       plugin.canvas3d.requestDraw()
-      return { ok: true, op: command.op, message: `background ${command.color}` }
+      return { ok: true, op: command.op, message: `background ${formatColor(color)}` }
     }
 
     case 'measure': {
@@ -559,12 +572,12 @@ function invalid(op: MolCommand['op'], message: string): CommandResult {
   return { ok: false, op, code: 'INVALID_COMMAND', message }
 }
 
-function toColor(value: string): Color {
-  const trimmed = value.trim()
-  if (/^#[0-9a-f]{6}$/iu.test(trimmed) || /^#[0-9a-f]{8}$/iu.test(trimmed)) {
-    return Color(Number.parseInt(trimmed.slice(1), 16))
+function resolveColor(value: unknown): number {
+  try {
+    return parseColor(value)
+  } catch (error) {
+    throw new Mol4AgentError('INVALID_COMMAND', error instanceof Error ? error.message : String(error))
   }
-  return Color(0xffffff)
 }
 
 function decodeBase64(value: string): Uint8Array {

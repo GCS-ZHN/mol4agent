@@ -21,6 +21,8 @@ import {
   COLOR_THEMES,
   Mol4AgentError,
   REPRESENTATION_TYPES,
+  formatColor,
+  parseColor,
   type StructureSummary,
 } from '@gcszhn/mol4agent-core/protocol'
 import { SOURCE_DATABASES, resolveSource, type ResolvedSource } from '@gcszhn/mol4agent-core/sources'
@@ -196,6 +198,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       path: { type: 'string', required: true, description: 'Structure file path, absolute or relative to the session working directory.' },
       type: { type: 'string', enum: REPRESENTATION_TYPES, description: 'Representation type. Defaults to cartoon.' },
       color: { type: 'string', enum: COLOR_THEMES, description: 'Color theme. Defaults to chain-id.' },
+      colorParams: { type: 'json', description: 'Optional color theme params. For a uniform color pass {"value": "red"}, {"value": "#ff0000"}, or {"value": 16711680}.' },
       select: { type: 'json', description: `Optional selection to highlight after loading. ${SELECTOR_HELP}` },
       focus: { type: 'boolean', description: 'Focus the camera on the selection (or the whole structure when no selection is given).' },
     },
@@ -208,6 +211,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       const agent = requireAgent(exec)
       const file = await resolveMoleculeFile(ctx, agent, args.path, options.maxFileBytes, exec.signal)
       if (args.select !== undefined) assertSelector(args.select)
+      if (args.colorParams !== undefined) assertColorParams(args.colorParams)
       return `${describeFile(file)}\n\n<viewer>Opened in the sidebar preview. Tab page: ${escapeAttribute(canonicalTabPath(file.absolutePath))}. Pass this path as tab to operate this page after opening another.</viewer>`
     },
   }))
@@ -221,7 +225,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       type: { type: 'string', enum: REPRESENTATION_TYPES, description: 'Representation type, e.g. cartoon or ball-and-stick.' },
       color: { type: 'string', enum: COLOR_THEMES, description: 'Color theme, e.g. chain-id, element-symbol, residue-name.' },
       target: { type: 'json', description: `Optional selection to style additively; the rest of the structure keeps its representation. ${SELECTOR_HELP}` },
-      colorParams: { type: 'json', description: 'Optional color theme params. For a uniform color pass {"value": 16711680} (0xff0000).' },
+      colorParams: { type: 'json', description: 'Optional color theme params. For a uniform color pass {"value": "red"}, {"value": "#ff0000"}, or {"value": 16711680}.' },
     },
     isConcurrencySafe: () => false,
     output: {
@@ -233,7 +237,9 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       const scene = requireScene(options, agent, args.tab, 'styling it')
       if (args.target !== undefined) assertSelector(args.target)
       if (args.colorParams !== undefined) assertColorParams(args.colorParams)
+      const color = resolvedColorOf(args.colorParams)
       const style = [args.type ?? 'cartoon', args.color ?? 'chain-id'].join(' / ')
+        + (color === undefined ? '' : ` ${color}`)
       const scope = args.target === undefined ? scene.label : `${scene.label} (${describeSelector(args.target)})`
       return `Applied ${style} to ${scope}.`
     },
@@ -457,9 +463,21 @@ function assertSelector(value: unknown): void {
 function assertColorParams(value: unknown): void {
   if (typeof value !== 'object' || value === null) throw new ToolArgsError(['colorParams must be an object like {"value": 16711680}'])
   const candidate = value as Record<string, unknown>
-  if (candidate.value !== undefined && typeof candidate.value !== 'number' && typeof candidate.value !== 'string') {
-    throw new ToolArgsError(['colorParams.value must be a number or a color string'])
+  if (candidate.value !== undefined) {
+    try {
+      parseColor(candidate.value)
+    } catch (error) {
+      throw new ToolArgsError([error instanceof Error ? error.message : String(error)])
+    }
   }
+}
+
+/** Resolved `#rrggbb` for a validated colorParams object, when it carries a value. */
+function resolvedColorOf(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const candidate = value as Record<string, unknown>
+  if (candidate.value === undefined) return undefined
+  return formatColor(parseColor(candidate.value))
 }
 
 function formatInterface(label: string, result: InterfaceResult): string {

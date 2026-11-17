@@ -40,7 +40,7 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-The package is published on npm as `@gcszhn/mol4agent-core@0.2.0`; inside this
+The package is published on npm as `@gcszhn/mol4agent-core@0.3.0`; inside this
 monorepo, pnpm links the workspace copy instead. `molstar` and `react` are peer
 dependencies. The DSH adapter bundles Mol* into a single client script; a plain
 web app can use the package directly.
@@ -61,7 +61,7 @@ Package `exports` point at `lib`, and the npm `files` allowlist includes only
 | Import | Exports |
 |---|---|
 | `@gcszhn/mol4agent-core` | `createMolViewer`, protocol types, format helpers, source helpers, `summarizeStructure`, `compileSelector`, `selectorSchema` |
-| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`, `StructureData`, `MolCommand`, `StructureSelector`, `StructureSummary`, `Mol4AgentError`, and the `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` guards |
+| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`, `StructureData`, `MolCommand`, `StructureSelector`, `StructureSummary`, `Mol4AgentError`, `parseColor` / `formatColor` / `COLOR_SYNTAX`, and the `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` guards |
 | `@gcszhn/mol4agent-core/parse` | `summarizeStructure`, `summarizePdbLike`, `summarizeCif`, `summarizeSdf`, `summarizeMol2`, `summarizeXyz`, `summarizeGro` |
 | `@gcszhn/mol4agent-core/sources` | `SOURCE_DATABASES`, `SOURCE_DATABASE_INFO`, `resolveSource`, `normalizeSourceDb`, `readSourceIndexField`, and the `isSourceDatabase` guard |
 | `@gcszhn/mol4agent-core/react` | `Mol4AgentViewer`, `Mol4AgentViewerHandle`, `Mol4AgentScene` |
@@ -96,7 +96,7 @@ stylesheet once per viewer and removes it on `dispose()`.
 |---|---|---|
 | `container` | `HTMLElement` | Host element; the viewer fills it with `position:relative;width:100%;height:100%` |
 | `theme` | `'light' \| 'dark'` | Initial Mol* skin and canvas background |
-| `background` | `string` | Optional explicit canvas background |
+| `background` | `string \| number` | Optional explicit canvas background (same colour syntax as `colorParams.value`) |
 
 ### `MolViewer`
 
@@ -165,7 +165,7 @@ can be stored in a session log, then replayed after `load()`.
 | `clear-selection` | `mode?` | Clear select/highlight interactivity |
 | `focus` | optional `target` | Focus camera on the selection or the whole structure |
 | `camera` | `action: 'reset'` | Reset the camera |
-| `background` | `color: string \| 'theme'` | Set the canvas background |
+| `background` | `color: string \| number \| 'theme'` | Set the canvas background |
 | `measure` | `kind: 'distance' \| 'angle' \| 'dihedral'`, `targets` 2/3/4 | Add a measurement |
 | `label` | `target`, optional `text` | Add a 3D label |
 
@@ -198,6 +198,32 @@ Examples:
   quality?: 'low' | 'medium' | 'high' | 'auto' // reserved; Mol* auto quality is used
 }
 ```
+
+### Colours
+
+`color` selects a Mol* colour **theme** (`chain-id`, `element-symbol`, ...).
+`colorParams.value` only affects the `uniform` theme; `color: "uniform"` alone
+is a theme name, not a colour.
+
+`colorParams.value` accepts one of:
+
+| Form | Examples |
+|---|---|
+| CSS colour name (case-insensitive) | `red`, `lightgrey`, `rebeccapurple` |
+| Hex, optionally with alpha | `#f00`, `#ff0000`, `#ff000080`, `#f008` |
+| `0x` or bare hex | `0xB0B0B0`, `B0B0B0` |
+| `rgb()` / `rgba()` | `rgb(255, 0, 0)`, `rgb(100%, 0%, 0%)`, `rgba(255, 0, 0, 0.5)` |
+| 24-bit integer | `16711680`, `0xff0000` |
+
+Alpha is accepted but ignored because Mol* colours and the canvas are opaque.
+The `background` command and `capture({ background })` accept the same forms
+(the command additionally accepts `'theme'`). Values that cannot be parsed
+return `INVALID_COMMAND` instead of silently rendering black; a successful
+`represent` echoes the resolved hex, for example
+`Applied cartoon / uniform #ff0000 to polymer.`
+
+Common values: red `0xff0000`, blue `0x0000ff`, white `0xffffff`, grey
+`0x808080`, light grey `0xd3d3d3`.
 
 ### `CommandResult`
 
@@ -321,7 +347,7 @@ const png = await viewer.capture({
   width: 1024,       // optional; default 1024
   height: 768,       // optional; default 768
   transparent: true, // optional
-  background: '#101418', // optional
+  background: '#101418', // optional; colour names and integers also work
 })
 ```
 

@@ -10,6 +10,7 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { MolCommand, StyleSpec, StructureSelector } from '@gcszhn/mol4agent-core/protocol'
+import { parseColor } from '@gcszhn/mol4agent-core/protocol'
 import { baseNameOf, formatOfFile } from '../formats.ts'
 import { normalizeSelector } from '../selector.ts'
 import { canonicalTabPath } from '../tab-path.ts'
@@ -77,9 +78,11 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
       if (tab === undefined) return state
       const target = args.target === undefined ? undefined : selectorOf(args.target)
       if (args.target !== undefined && target === undefined) return state
+      const style = styleOf(args)
+      if (style === undefined) return state
       const command: MolCommand = {
         op: 'represent',
-        style: styleOf(args),
+        style,
         ...(target === undefined ? {} : { target }),
       }
       return withCommands(state, tab.path, [...tab.commands, command])
@@ -159,7 +162,9 @@ function openScene(state: MolSessionState, args: Record<string, unknown>, callId
   if (format === undefined) return state
   const target = args.select === undefined ? undefined : selectorOf(args.select)
   if (args.select !== undefined && target === undefined) return state
-  const commands: MolCommand[] = [{ op: 'represent', style: styleOf(args) }]
+  const style = styleOf(args)
+  if (style === undefined) return state
+  const commands: MolCommand[] = [{ op: 'represent', style }]
   if (target !== undefined) {
     commands.push({ op: 'select', target, mode: 'highlight', ...(args.focus === true ? { focus: true } : {}) })
   } else if (args.focus === true) {
@@ -199,7 +204,7 @@ function withCommands(state: MolSessionState, key: string, commands: MolCommand[
   }
 }
 
-function styleOf(args: Record<string, unknown>): StyleSpec {
+function styleOf(args: Record<string, unknown>): StyleSpec | undefined {
   const style: {
     type?: StyleSpec['type']
     color?: StyleSpec['color']
@@ -209,8 +214,14 @@ function styleOf(args: Record<string, unknown>): StyleSpec {
   if (typeof args.color === 'string') style.color = args.color as StyleSpec['color']
   if (typeof args.colorParams === 'object' && args.colorParams !== null) {
     const candidate = args.colorParams as Record<string, unknown>
-    if (typeof candidate.value === 'string' || typeof candidate.value === 'number') {
-      style.colorParams = { value: candidate.value }
+    if (candidate.value !== undefined) {
+      // A projection must never throw: an invalid colour leaves the tool call
+      // folded out, and the Host tool reports the validation error.
+      try {
+        style.colorParams = { value: parseColor(candidate.value) }
+      } catch {
+        return undefined
+      }
     }
   }
   return Object.keys(style).length === 0 ? { type: 'cartoon', color: 'chain-id' } : style

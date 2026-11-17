@@ -48,7 +48,7 @@ export class SourceFetchError extends Error {
   }
 }
 
-const USER_AGENT = 'mol4agent-dsh/0.2.1 (+https://github.com/GCS-ZHN/mol4agent)'
+const USER_AGENT = 'mol4agent-dsh/0.3.0 (+https://github.com/GCS-ZHN/mol4agent)'
 const DEFAULT_TIMEOUT_MS = 30_000
 const INDEX_MAX_BYTES = 2 * 1024 * 1024
 

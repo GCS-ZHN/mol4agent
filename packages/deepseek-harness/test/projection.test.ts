@@ -75,6 +75,34 @@ test('a tab argument in either separator spelling hits the same tab', () => {
   assert.equal(state.tabs[key('a.pdb')]?.commands.length, 2)
 })
 
+test('normalizes named colour params and rejects unresolvable colours', () => {
+  let state = init()
+  state = definition.apply(state, call('mol_open', {
+    path: 'a.pdb',
+    color: 'uniform',
+    colorParams: { value: 'red' },
+  }, 'a'))
+  const style = state.tabs[key('a.pdb')]?.commands[0]
+  if (style?.op !== 'represent') assert.fail('expected a represent command')
+  assert.equal(style.style.colorParams?.value, 0xff0000)
+
+  const before = state
+  state = definition.apply(state, call('mol_style', {
+    tab: key('a.pdb'),
+    color: 'uniform',
+    colorParams: { value: 'not-a-colour' },
+  }, 'bad-style'))
+  assert.equal(state, before)
+
+  const fresh = init()
+  const unchanged = definition.apply(fresh, call('mol_open', {
+    path: 'b.pdb',
+    color: 'uniform',
+    colorParams: { value: 'not-a-colour' },
+  }, 'bad-open'))
+  assert.equal(unchanged, fresh)
+})
+
 test('capture targets the requested tab and clears on result', () => {
   let state = init()
   state = definition.apply(state, call('mol_open', { path: 'a.pdb' }, 'a'))

@@ -40,7 +40,7 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-本包已发布到 npm（`@gcszhn/mol4agent-core@0.2.0`）；在 monorepo 内 pnpm 会链接
+本包已发布到 npm（`@gcszhn/mol4agent-core@0.3.0`）；在 monorepo 内 pnpm 会链接
 workspace 版本。`molstar` 和 `react` 是 peer dependencies。DSH 适配包把 Mol*
 打进单个 client bundle；普通 web 应用可以直接使用本包。
 
@@ -59,7 +59,7 @@ Package `exports` 指向 `lib`，npm `files` 只包含 `lib` 和 README；`src/`
 | Import | 导出 |
 |---|---|
 | `@gcszhn/mol4agent-core` | `createMolViewer`、协议类型、format 辅助函数、source 辅助函数、`summarizeStructure`、`compileSelector`、`selectorSchema` |
-| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`、`StructureData`、`MolCommand`、`StructureSelector`、`StructureSummary`、`Mol4AgentError`，以及 `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` 守卫 |
+| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`、`StructureData`、`MolCommand`、`StructureSelector`、`StructureSummary`、`Mol4AgentError`、`parseColor` / `formatColor` / `COLOR_SYNTAX`，以及 `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` 守卫 |
 | `@gcszhn/mol4agent-core/parse` | `summarizeStructure`、`summarizePdbLike`、`summarizeCif`、`summarizeSdf`、`summarizeMol2`、`summarizeXyz`、`summarizeGro` |
 | `@gcszhn/mol4agent-core/sources` | `SOURCE_DATABASES`、`SOURCE_DATABASE_INFO`、`resolveSource`、`normalizeSourceDb`、`readSourceIndexField`，以及 `isSourceDatabase` 守卫 |
 | `@gcszhn/mol4agent-core/react` | `Mol4AgentViewer`、`Mol4AgentViewerHandle`、`Mol4AgentScene` |
@@ -94,7 +94,7 @@ viewer.dispose()
 |---|---|---|
 | `container` | `HTMLElement` | 宿主元素；viewer 用 `position:relative;width:100%;height:100%` 填满 |
 | `theme` | `'light' \| 'dark'` | 初始 Mol* 皮肤和画布背景 |
-| `background` | `string` | 可选，显式指定画布背景 |
+| `background` | `string \| number` | 可选，显式指定画布背景（颜色语法同 `colorParams.value`） |
 
 ### `MolViewer`
 
@@ -162,7 +162,7 @@ interface StructureData {
 | `clear-selection` | `mode?` | 清除 select/highlight 交互 |
 | `focus` | 可选 `target` | 聚焦选择或整个结构 |
 | `camera` | `action: 'reset'` | 重置镜头 |
-| `background` | `color: string \| 'theme'` | 设置画布背景 |
+| `background` | `color: string \| number \| 'theme'` | 设置画布背景 |
 | `measure` | `kind: 'distance' \| 'angle' \| 'dihedral'`，`targets` 2/3/4 个 | 添加测量 |
 | `label` | `target`，可选 `text` | 添加 3D 标签 |
 
@@ -195,6 +195,30 @@ interface StructureData {
   quality?: 'low' | 'medium' | 'high' | 'auto' // 预留；当前使用 Mol* auto quality
 }
 ```
+
+### 颜色
+
+`color` 选择 Mol* 的颜色**主题**（`chain-id`、`element-symbol` 等）；
+`colorParams.value` 只对 `uniform` 主题生效。单独写 `color: "uniform"` 只是主题
+名，不是具体颜色。
+
+`colorParams.value` 接受以下形式：
+
+| 形式 | 示例 |
+|---|---|
+| CSS 颜色名（大小写不敏感） | `red`、`lightgrey`、`rebeccapurple` |
+| 十六进制，可带 alpha | `#f00`、`#ff0000`、`#ff000080`、`#f008` |
+| `0x` 或裸十六进制 | `0xB0B0B0`、`B0B0B0` |
+| `rgb()` / `rgba()` | `rgb(255, 0, 0)`、`rgb(100%, 0%, 0%)`、`rgba(255, 0, 0, 0.5)` |
+| 24 位整数 | `16711680`、`0xff0000` |
+
+alpha 会被接受但忽略，因为 Mol* 颜色与画布都是不透明的。`background` 命令与
+`capture({ background })` 接受相同形式（命令还额外接受 `'theme'`）。无法解析的
+值返回 `INVALID_COMMAND`，不会再静默渲染成黑色；成功的 `represent` 会回显解析后
+的十六进制颜色，例如 `Applied cartoon / uniform #ff0000 to polymer.`。
+
+常用值：红 `0xff0000`、蓝 `0x0000ff`、白 `0xffffff`、灰 `0x808080`、
+浅灰 `0xd3d3d3`。
 
 ### `CommandResult`
 
