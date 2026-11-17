@@ -155,7 +155,8 @@ source order when you need a true sequence position instead.
 
 Selector kinds are exclusive: `range` and `schema` are alternatives, and the
 adapter rejects a selector that mixes their top-level fields. To combine
-predicates, put all fields in one `schema` object.
+predicates, put all fields in one `schema` object; to union disjoint predicates,
+pass `schema: { "items": [...] }` (one query, one component).
 
 Interface workflow:
 

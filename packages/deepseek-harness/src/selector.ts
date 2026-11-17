@@ -5,7 +5,11 @@
  *
  * @module @gcszhn/mol4agent-deepseekharness/selector
  */
-import { normalizeResidueRange, type StructureSelector } from '@gcszhn/mol4agent-core/protocol'
+import {
+  normalizeResidueRange,
+  type StructureElementSchema,
+  type StructureSelector,
+} from '@gcszhn/mol4agent-core/protocol'
 
 const KINDS = new Set([
   'all',
@@ -84,7 +88,7 @@ export function normalizeSelector(value: unknown): StructureSelector {
       if (typeof candidate.schema !== 'object' || candidate.schema === null || Array.isArray(candidate.schema)) {
         throw new Error('"schema" selector needs a schema object')
       }
-      return { kind, schema: candidate.schema as Record<string, string | number> }
+      return { kind, schema: candidate.schema as StructureElementSchema }
     case 'all':
     case 'polymer':
     case 'protein':

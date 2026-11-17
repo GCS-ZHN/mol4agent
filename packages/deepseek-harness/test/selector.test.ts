@@ -38,6 +38,14 @@ test('normalizes structural selectors and auth switches', () => {
     }),
     { kind: 'schema', schema: { auth_asym_id: 'H', auth_seq_id: 100, pdbx_PDB_ins_code: 'A' } },
   )
+  const items = [
+    { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 3 },
+    { auth_asym_id: 'A', beg_auth_seq_id: 35, end_auth_seq_id: 38 },
+  ]
+  assert.deepEqual(
+    normalizeSelector({ kind: 'schema', schema: { items } }),
+    { kind: 'schema', schema: { items } },
+  )
 })
 
 test('rejects malformed selectors with model-actionable errors', () => {

@@ -147,7 +147,8 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 源顺序）。
 
 selector kind 是互斥的：`range` 和 `schema` 是二选一，混用顶层字段会被适配器
-拒绝。要组合谓词，把全部字段放进一个 `schema` 对象。
+拒绝。要组合谓词，把全部字段放进一个 `schema` 对象；要并集不连续谓词，传
+`schema: { "items": [...] }`（一次查询、一个 component）。
 
 界面操作流程：
 
