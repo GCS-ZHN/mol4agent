@@ -138,7 +138,7 @@ export type MolCommand =
   | { readonly op: 'clear-selection'; readonly mode?: 'select' | 'highlight' }
   | { readonly op: 'focus'; readonly target?: StructureSelector }
   | { readonly op: 'camera'; readonly action: 'reset' }
-  | { readonly op: 'background'; readonly color: string | 'theme' }
+  | { readonly op: 'background'; readonly color: string | number | 'theme' }
   | {
     readonly op: 'measure'
     readonly kind: 'distance' | 'angle' | 'dihedral'
@@ -211,13 +211,19 @@ export interface CaptureOptions {
   readonly width?: number
   readonly height?: number
   readonly transparent?: boolean
-  readonly background?: string
+  readonly background?: string | number
 }
 
 /** Narrow a parsed JSON value to a command op without validating every field. */
 export function isMolCommandOp(value: unknown): value is MolCommand['op'] {
   return typeof value === 'string' && COMMAND_OPS.has(value as MolCommand['op'])
 }
+
+/**
+ * Colour parsing is part of the agent-facing protocol: adapters use the same
+ * accepted syntax to validate tool arguments and echo the resolved value.
+ */
+export { COLOR_SYNTAX, formatColor, parseColor } from './color.ts'
 
 const COMMAND_OPS = new Set<MolCommand['op']>([
   'represent',
