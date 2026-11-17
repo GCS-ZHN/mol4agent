@@ -129,10 +129,26 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 ```json
 { "kind": "ligand" }
 { "kind": "chain", "chain": "A" }
-{ "kind": "residues", "chain": "A", "start": 10, "end": 25 }
+{ "kind": "residues", "chain": "A", "range": "10-25, 40" }
 { "kind": "residue", "chain": "A", "index": 42 }
 { "kind": "comp", "compId": "ATP" }
 ```
+
+`range` 按数字残基编号选择，因此共享同一编号的插入码残基会被一起选中
+（`100`、`100A`、`100B` 都命中 `"100"`）。要精确选中某一个，用 `schema`
+选择器：
+
+```json
+{ "kind": "schema",
+  "schema": { "auth_asym_id": "H", "auth_seq_id": 100, "pdbx_PDB_ins_code": "A" } }
+```
+
+空字符串表示“无插入码”。需要真正的序列位置时用 `residue_index`（0-based
+源顺序）。
+
+selector kind 是互斥的：`range` 和 `schema` 是二选一，混用顶层字段会被适配器
+拒绝。要组合谓词，把全部字段放进一个 `schema` 对象；要并集不连续谓词，传
+`schema: { "items": [...] }`（一次查询、一个 component）。
 
 界面操作流程：
 
@@ -147,10 +163,12 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 ```json
 { "type": "ball-and-stick", "color": "uniform",
   "colorParams": { "value": 16711680 },
-  "target": { "kind": "residues", "chain": "A", "start": 28, "end": 54 } }
+  "target": { "kind": "residues", "chain": "A", "range": "28-54" } }
 ```
 
-对返回的每个区间调用最后一条命令，然后对一个中心区间调用 `mol_focus`。
+`range` 是逗号分隔的闭区间残基编号（`12`、`5-10`；默认 `auth_seq_id`，
+`auth:false` 时用 `label_seq_id`），因此每条界面链只需一次 `mol_style`，再对
+一个中心链范围调用 `mol_focus`。
 
 `mol_capture` 返回：
 
@@ -356,10 +374,10 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 `dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理），然后重启
 DSH。
 
-npm 形式（0.3.0，已发布）：
+npm 形式（0.4.0，已发布）：
 
 ```sh
-dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.3.0
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.4.0
 ```
 
 当前 Desktop `desktop` profile 已通过 `plugin_manager` 安装，并启用为

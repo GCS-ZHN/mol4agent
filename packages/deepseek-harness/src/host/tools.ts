@@ -52,7 +52,7 @@ const TAB_HELP = 'Tab page id returned by mol_open (its `/`-separated absolute p
 
 const SELECTOR_HELP =
   'A StructureSelector object. Examples: {"kind":"ligand"}, {"kind":"protein"}, '
-  + '{"kind":"chain","chain":"A"}, {"kind":"residues","chain":"A","start":10,"end":25}, '
+  + '{"kind":"chain","chain":"A"}, {"kind":"residues","chain":"A","range":"10-25, 40"}, '
   + '{"kind":"residue","chain":"A","index":42}, {"kind":"comp","compId":"ATP"}'
 
 /** Register every molecule tool on the context. */
@@ -79,7 +79,7 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
   ctx.tools.register(defineTool({
     name: 'mol_interface',
     description: 'Find interface residues between two chain groups within a distance cutoff (default 8 A). '
-      + 'Returns residue ranges usable as mol_style targets. Currently supports PDB-like ATOM files (pdb/pdbqt/pqr).',
+      + 'Returns one compact residue range per chain, usable directly as a mol_style target. Currently supports PDB-like ATOM files (pdb/pdbqt/pqr).',
     parameters: {
       path: { type: 'string', required: true, description: 'Path to the structure file, absolute or relative to the session working directory.' },
       chainsA: {
@@ -484,13 +484,15 @@ function formatInterface(label: string, result: InterfaceResult): string {
   if (result.residues.length === 0) {
     return `No interface residues within ${result.cutoff} A for ${label}.`
   }
-  const ranges = result.ranges.map(range => range.start === range.end
-    ? `chain ${range.chain}: ${range.start}`
-    : `chain ${range.chain}: ${range.start}-${range.end}`)
-  return `Interface of ${label} at ${result.cutoff} A: ${result.residues.length} residues, ${result.ranges.length} ranges (${result.contactPairs} residue pairs).\n`
+  const ranges = result.ranges.map(range => `chain ${range.chain}: ${range.range}`)
+  const first = result.ranges[0]
+  const hint = first === undefined
+    ? ''
+    : `\n\nStyle a chain in one call with mol_style target ${JSON.stringify({ kind: 'residues', chain: first.chain, range: first.range })}.`
+  return `Interface of ${label} at ${result.cutoff} A: ${result.residues.length} residues, ${result.ranges.length} chains (${result.contactPairs} residue pairs).\n`
     + ranges.map(line => `- ${line}`).join('\n')
-    + `\n\nStyle an interface range with mol_style target {\"kind\":\"residues\",\"chain\":\"A\",\"start\":26,\"end\":33}.\n`
-    + `JSON: ${JSON.stringify({ cutoff: result.cutoff, residues: result.residues, ranges: result.ranges })}`
+    + hint
+    + `\nJSON: ${JSON.stringify({ cutoff: result.cutoff, residues: result.residues, ranges: result.ranges })}`
 }
 
 function describeSelector(value: unknown): string {
@@ -499,7 +501,7 @@ function describeSelector(value: unknown): string {
     switch (selector.kind) {
       case 'chain': return `chain ${selector.chain}`
       case 'residue': return `residue ${selector.chain ?? ''}${selector.index}`.trim()
-      case 'residues': return `residues ${selector.chain ?? ''}${selector.start}-${selector.end}`.trim()
+      case 'residues': return `residues ${selector.chain === undefined ? '' : `${selector.chain}:`}${selector.range}`.trim()
       case 'comp': return `residues named ${selector.compId}`
       default: return selector.kind
     }

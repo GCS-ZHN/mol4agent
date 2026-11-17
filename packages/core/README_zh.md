@@ -40,7 +40,7 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-本包已发布到 npm（`@gcszhn/mol4agent-core@0.3.0`）；在 monorepo 内 pnpm 会链接
+本包已发布到 npm（`@gcszhn/mol4agent-core@0.4.0`）；在 monorepo 内 pnpm 会链接
 workspace 版本。`molstar` 和 `react` 是 peer dependencies。DSH 适配包把 Mol*
 打进单个 client bundle；普通 web 应用可以直接使用本包。
 
@@ -172,7 +172,7 @@ interface StructureData {
 { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } }
 { op: 'represent', style: { type: 'ball-and-stick', color: 'element-symbol' } }
 { op: 'select', target: { kind: 'ligand' }, mode: 'highlight', focus: true }
-{ op: 'select', target: { kind: 'residues', chain: 'A', start: 10, end: 25 } }
+{ op: 'select', target: { kind: 'residues', chain: 'A', range: '10-25, 40' } }
 { op: 'focus', target: { kind: 'chain', chain: 'B' } }
 { op: 'camera', action: 'reset' }
 { op: 'background', color: '#101418' }
@@ -248,20 +248,49 @@ query 或 element schema。
 | `{ kind: 'ion' }` | 离子 |
 | `{ kind: 'chain', chain }` | 一条链 |
 | `{ kind: 'residue', chain?, index, auth? }` | 一个残基；`auth` 使用 author 编号 |
-| `{ kind: 'residues', chain?, start, end, auth? }` | 闭区间残基范围 |
+| `{ kind: 'residues', chain?, range, auth? }` | 残基标识的闭区间数字范围（默认 `auth_seq_id`，`auth: false` 时用 `label_seq_id`）；`range` 为 `"12"`、`"5-10"`，或逗号列表 `"1, 5-10, 20"` |
 | `{ kind: 'comp', compId }` | 指定 component id 的所有残基 |
 | `{ kind: 'schema', schema }` | 底层 `StructureElement.Schema` 子集 |
 
-`schema` 字段：`auth_asym_id`、`label_asym_id`、`auth_seq_id`、`label_seq_id`、
-`label_comp_id`、`auth_comp_id`、`beg_auth_seq_id`、`end_auth_seq_id`、
-`beg_label_seq_id`、`end_label_seq_id`、`label_atom_id`、`auth_atom_id`、
-`type_symbol`。
+`residues` 选择器用单个 `range` 字符串取代 `start`/`end`。`range` 是
+**残基标识的闭区间数字范围**，逗号分隔：默认比较 `auth_seq_id`，`auth: false`
+时比较 `label_seq_id`。`12` 是单个编号；`5-10` 两端都包含（5 和 10 都选中）。
+选择是残基级、数字比较，不是 0-based 的序列位置：`"1"` 表示“编号为 1 的残基的
+全部原子”，不是第 1 个原子；author 编号可以从 0、负数开始，也可以跳号。输入会
+排序合并，重叠或相邻段会被归一化。单段编译为一个 element schema；不连续段编译
+为 `SchemaItems`，由 Mol* 在 style、select、focus、measure、label 中取并集。
+`range` 不是序列位置：插入码共享基础编号（100、100A、100B 都会命中 `"100"`）；
+需要更精细的 Mol* 谓词时用 `schema` 选择器。`range` 很省 token：一次
+`mol_style` 调用即可覆盖一条链的所有界面片段。
+
+`schema` 字段：`auth_asym_id`、`label_asym_id`、`label_entity_id`、
+`auth_seq_id`、`label_seq_id`、`residue_index`（0-based 源顺序）、
+`pdbx_PDB_ins_code`、`label_comp_id`、`auth_comp_id`、`beg_auth_seq_id`、
+`end_auth_seq_id`、`beg_label_seq_id`、`end_label_seq_id`、`label_atom_id`、
+`auth_atom_id`、`type_symbol`。
+
+插入码残基共享 `auth_seq_id`，所以 `residues.range` 会把它们一起选中。要精确
+选中某一个，用 `pdbx_PDB_ins_code`（空字符串表示“无插入码”）：
+
+```ts
+{ kind: 'schema', schema: { auth_asym_id: 'H', auth_seq_id: 100, pdbx_PDB_ins_code: 'A' } }
+```
+
+`residue_index` 才是真正的 0-based 序列位置；`auth_seq_id` 和 `label_seq_id`
+都是标识符命名空间。文件含插入码时，`label_seq_id` 是线性序号，不等于 author
+编号。
+
+selector kind 是互斥的，不能组合：不要把 `residues.range` 和 `schema` 混在一起。
+要把区间和其他 Mol* 谓词（例如 component id）组合，把全部字段放进一个
+`schema` 对象，Mol* 会对它们取交集。`schema` 对象也接受 Mol* 的
+`{ items: [...] }` 形式，一次查询即可并集多个 schema item；`residues.range`
+只是常见数字区间场景的简写。
 
 ```ts
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'
 
 const compiled = compileSelector({ kind: 'ligand' })
-const schema = selectorSchema({ kind: 'residues', chain: 'A', start: 10, end: 25 })
+const schema = selectorSchema({ kind: 'residues', chain: 'A', range: '10-25, 40' })
 ```
 
 ## 摘要
@@ -358,7 +387,7 @@ const png = await viewer.capture({
 // 某段界面残基：红色球棍
 { op: 'represent',
   style: { type: 'ball-and-stick', color: 'uniform', colorParams: { value: 0xff0000 } },
-  target: { kind: 'residues', chain: 'A', start: 28, end: 54 } }
+  target: { kind: 'residues', chain: 'A', range: '28-54' } }
 ```
 
 全局 `cartoon` 使用 `polymer-and-ligand` preset；`colorParams` 会传入它的

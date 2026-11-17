@@ -19,13 +19,32 @@ test('normalizes structural selectors and auth switches', () => {
     { kind: 'residue', index: 42, auth: true },
   )
   assert.deepEqual(
-    normalizeSelector({ kind: 'residues', chain: 'A', start: 10, end: 25 }),
-    { kind: 'residues', chain: 'A', start: 10, end: 25 },
+    normalizeSelector({ kind: 'residues', chain: 'A', range: '10-25' }),
+    { kind: 'residues', chain: 'A', range: '10-25' },
+  )
+  assert.deepEqual(
+    normalizeSelector({ kind: 'residues', chain: 'A', range: ' 20, 5 - 10, 1 ' }),
+    { kind: 'residues', chain: 'A', range: '1,5-10,20' },
   )
   assert.deepEqual(normalizeSelector({ kind: 'comp', compId: 'ATP' }), { kind: 'comp', compId: 'ATP' })
   assert.deepEqual(
     normalizeSelector({ kind: 'schema', schema: { label_comp_id: 'HEM' } }),
     { kind: 'schema', schema: { label_comp_id: 'HEM' } },
+  )
+  assert.deepEqual(
+    normalizeSelector({
+      kind: 'schema',
+      schema: { auth_asym_id: 'H', auth_seq_id: 100, pdbx_PDB_ins_code: 'A' },
+    }),
+    { kind: 'schema', schema: { auth_asym_id: 'H', auth_seq_id: 100, pdbx_PDB_ins_code: 'A' } },
+  )
+  const items = [
+    { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 3 },
+    { auth_asym_id: 'A', beg_auth_seq_id: 35, end_auth_seq_id: 38 },
+  ]
+  assert.deepEqual(
+    normalizeSelector({ kind: 'schema', schema: { items } }),
+    { kind: 'schema', schema: { items } },
   )
 })
 
@@ -38,7 +57,16 @@ test('rejects malformed selectors with model-actionable errors', () => {
     [{ kind: 'chain', chain: '' }, /chain/],
     [{ kind: 'residue', chain: 'A' }, /index/],
     [{ kind: 'residue', chain: 'A', index: Number.NaN }, /index/],
-    [{ kind: 'residues', chain: 'A', start: 1 }, /end/],
+    [{ kind: 'residues', chain: 'A' }, /range/],
+    [{ kind: 'residues', chain: 'A', range: '10-5' }, /start must be <= end/],
+    [{ kind: 'residues', chain: 'A', range: '100A' }, /invalid residue range segment/],
+    [{ kind: 'residues', chain: 'A', start: 1, end: 9 }, /does not accept fields "start", "end"/],
+    [{ kind: 'residues', chain: 'A', range: '1', schema: { auth_seq_id: 1 } }, /does not accept field "schema"/],
+    [{ kind: 'schema', schema: { auth_seq_id: 1 }, range: '1' }, /does not accept field "range"/],
+    [{ kind: 'chain', chain: 'A', range: '1' }, /does not accept field "range"/],
+    [{ kind: 'ligand', chain: 'A' }, /does not accept field "chain"/],
+    [{ kind: 'residue', index: 1, auth: 'true' }, /auth" must be a boolean/],
+    [{ kind: 'schema', schema: [] }, /needs a schema object/],
     [{ kind: 'comp' }, /compId/],
     [{ kind: 'schema' }, /schema/],
   ]

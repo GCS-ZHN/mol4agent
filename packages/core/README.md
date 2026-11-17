@@ -40,7 +40,7 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-The package is published on npm as `@gcszhn/mol4agent-core@0.3.0`; inside this
+The package is published on npm as `@gcszhn/mol4agent-core@0.4.0`; inside this
 monorepo, pnpm links the workspace copy instead. `molstar` and `react` are peer
 dependencies. The DSH adapter bundles Mol* into a single client script; a plain
 web app can use the package directly.
@@ -175,7 +175,7 @@ Examples:
 { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } }
 { op: 'represent', style: { type: 'ball-and-stick', color: 'element-symbol' } }
 { op: 'select', target: { kind: 'ligand' }, mode: 'highlight', focus: true }
-{ op: 'select', target: { kind: 'residues', chain: 'A', start: 10, end: 25 } }
+{ op: 'select', target: { kind: 'residues', chain: 'A', range: '10-25, 40' } }
 { op: 'focus', target: { kind: 'chain', chain: 'B' } }
 { op: 'camera', action: 'reset' }
 { op: 'background', color: '#101418' }
@@ -253,20 +253,55 @@ compiles them to Mol* selection queries or element schemas.
 | `{ kind: 'ion' }` | Ions |
 | `{ kind: 'chain', chain }` | One chain |
 | `{ kind: 'residue', chain?, index, auth? }` | One residue; `auth` selects author numbering |
-| `{ kind: 'residues', chain?, start, end, auth? }` | Inclusive residue range |
+| `{ kind: 'residues', chain?, range, auth? }` | Inclusive numeric intervals on the residue identifier (`auth_seq_id`, or `label_seq_id` with `auth: false`); `range` is `"12"`, `"5-10"`, or a comma list like `"1, 5-10, 20"` |
 | `{ kind: 'comp', compId }` | All residues with a component id |
 | `{ kind: 'schema', schema }` | Low-level subset of `StructureElement.Schema` |
 
-`schema` fields: `auth_asym_id`, `label_asym_id`, `auth_seq_id`, `label_seq_id`,
-`label_comp_id`, `auth_comp_id`, `beg_auth_seq_id`, `end_auth_seq_id`,
-`beg_label_seq_id`, `end_label_seq_id`, `label_atom_id`, `auth_atom_id`,
-`type_symbol`.
+A `residues` selector uses one `range` string instead of `start`/`end`.
+`range` is a comma-separated list of **inclusive numeric intervals on the
+residue identifier**: `auth_seq_id` by default, or `label_seq_id` with
+`auth: false`. `12` is one number; `5-10` includes both 5 and 10. The selection
+is residue-level and numeric, not a 0-based sequence position: `"1"` selects
+every atom of the residue numbered 1 (not the first atom), and author numbering
+may start at 0, be negative, or skip values. Input is sorted and merged, so
+overlapping or adjacent segments are canonicalized. One segment compiles to a
+plain element schema; disjoint segments compile to `SchemaItems`, which Mol*
+unions for style, select, focus, measure, and label. `range` is not a sequence
+position: insertion codes share their base number (100, 100A, and 100B all match
+`"100"`); use the `schema` selector when you need a finer Mol* predicate.
+`range` is token-efficient: one `mol_style` call can cover every interface patch
+of a chain.
+
+`schema` fields: `auth_asym_id`, `label_asym_id`, `label_entity_id`,
+`auth_seq_id`, `label_seq_id`, `residue_index` (0-based source order),
+`pdbx_PDB_ins_code`, `label_comp_id`, `auth_comp_id`, `beg_auth_seq_id`,
+`end_auth_seq_id`, `beg_label_seq_id`, `end_label_seq_id`, `label_atom_id`,
+`auth_atom_id`, `type_symbol`.
+
+Insertion-coded residues share `auth_seq_id`, so `residues.range` selects all of
+them. Target one exactly with `pdbx_PDB_ins_code` (the empty string means "no
+insertion code"):
+
+```ts
+{ kind: 'schema', schema: { auth_asym_id: 'H', auth_seq_id: 100, pdbx_PDB_ins_code: 'A' } }
+```
+
+`residue_index` is the only true 0-based sequence position; `auth_seq_id` and
+`label_seq_id` are identifier namespaces. With insertion codes, `label_seq_id`
+is a linear serial and does not equal the author number.
+
+Selector kinds are alternatives, not composable: do not mix `residues.range`
+with `schema`. To combine an interval with other Mol* predicates (for example a
+component id), put every field in one `schema` object; Mol* ANDs them. The
+`schema` object also accepts Mol*'s `{ items: [...] }` form, which unions
+several schema items in one query; `residues.range` is the shorthand for the
+common numeric-interval case.
 
 ```ts
 import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'
 
 const compiled = compileSelector({ kind: 'ligand' })
-const schema = selectorSchema({ kind: 'residues', chain: 'A', start: 10, end: 25 })
+const schema = selectorSchema({ kind: 'residues', chain: 'A', range: '10-25, 40' })
 ```
 
 ## Summaries
@@ -363,10 +398,10 @@ Per-selection styling is additive:
 ```ts
 // gray cartoon for the rest
 { op: 'represent', style: { type: 'cartoon', color: 'uniform', colorParams: { value: 0x808080 } } }
-// red sticks for one interface range
+// red sticks for one chain's interface ranges
 { op: 'represent',
   style: { type: 'ball-and-stick', color: 'uniform', colorParams: { value: 0xff0000 } },
-  target: { kind: 'residues', chain: 'A', start: 28, end: 54 } }
+  target: { kind: 'residues', chain: 'A', range: '28-54' } }
 ```
 
 A global `cartoon` uses the `polymer-and-ligand` preset; `colorParams` is passed

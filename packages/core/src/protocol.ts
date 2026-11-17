@@ -86,8 +86,13 @@ export interface StyleSpec {
 export interface ElementSchema {
   readonly auth_asym_id?: string
   readonly label_asym_id?: string
+  readonly label_entity_id?: string
   readonly auth_seq_id?: number
   readonly label_seq_id?: number
+  /** 0-based residue index in the source model: a true sequence position. */
+  readonly residue_index?: number
+  /** PDB insertion code; the empty string means "no insertion code". */
+  readonly pdbx_PDB_ins_code?: string
   readonly label_comp_id?: string
   readonly auth_comp_id?: string
   readonly beg_auth_seq_id?: number
@@ -100,11 +105,30 @@ export interface ElementSchema {
 }
 
 /**
+ * Several element schemas that Mol* unions (`StructureElement.SchemaItems`).
+ * Used when one selector denotes disjoint residue ranges.
+ */
+export interface ElementSchemaItems {
+  readonly items: readonly ElementSchema[]
+}
+
+/** One flat schema item or a union of items. */
+export type StructureElementSchema = ElementSchema | ElementSchemaItems
+
+/**
  * A selection an agent can express without knowing atom indices.
  *
  * Adapters pass these through unchanged; core compiles them to Mol* selection
  * queries or schemas. This shape is the stable part of the agent-facing
  * contract, so adding a variant is a protocol change.
+ *
+ * `residues.range` is a compact, token-efficient expression of inclusive
+ * numeric residue-identifier intervals: comma-separated segments, each `12`
+ * or `5-10` (both ends included). It compares `auth_seq_id` by default, or
+ * `label_seq_id` with `auth: false`. The selection is residue-level, not a
+ * sequence position or atom index: `"1"` means "the residue numbered 1", and
+ * insertion codes share their base number. One selector can therefore cover
+ * several disjoint interface patches in a single tool call.
  */
 export type StructureSelector =
   | { readonly kind: 'all' }
@@ -116,9 +140,86 @@ export type StructureSelector =
   | { readonly kind: 'ion' }
   | { readonly kind: 'chain'; readonly chain: string }
   | { readonly kind: 'residue'; readonly chain?: string; readonly index: number; readonly auth?: boolean }
-  | { readonly kind: 'residues'; readonly chain?: string; readonly start: number; readonly end: number; readonly auth?: boolean }
+  | { readonly kind: 'residues'; readonly chain?: string; readonly range: string; readonly auth?: boolean }
   | { readonly kind: 'comp'; readonly compId: string }
-  | { readonly kind: 'schema'; readonly schema: ElementSchema }
+  | { readonly kind: 'schema'; readonly schema: StructureElementSchema }
+
+/** One inclusive residue segment of a `residues` selector. */
+export interface ResidueRange {
+  readonly start: number
+  readonly end: number
+}
+
+/**
+ * Parse a residue-range expression such as `"1, 5-10, 20"`.
+ *
+ * Segments are inclusive numeric residue identifiers (default `auth_seq_id`,
+ * or `label_seq_id` when the selector sets `auth: false`), not 0-based
+ * sequence positions. They may be negative (`"-5--1"`). The result is sorted
+ * and merged, so overlapping or adjacent input describes the same residues with
+ * fewer tokens. Throws an `Error` with a model-facing message when malformed.
+ */
+export function parseResidueRanges(range: string): ResidueRange[] {
+  if (typeof range !== 'string' || range.trim() === '') {
+    throw new Error('selector "range" must be a non-empty string like "1, 5-10, 20"')
+  }
+  const segments: ResidueRange[] = []
+  for (const raw of range.split(',')) {
+    const token = raw.trim()
+    if (token === '') {
+      throw new Error(`invalid residue range "${range}": empty segment; use "1, 5-10, 20"`)
+    }
+    const single = /^[+-]?\d+$/u.exec(token)
+    if (single !== null) {
+      const value = integerOf(single[0]!, token)
+      segments.push({ start: value, end: value })
+      continue
+    }
+    const span = /^([+-]?\d+)\s*-\s*([+-]?\d+)$/u.exec(token)
+    if (span === null) {
+      throw new Error(`invalid residue range segment "${token}"; use "12" or "5-10"`)
+    }
+    const start = integerOf(span[1]!, token)
+    const end = integerOf(span[2]!, token)
+    if (start > end) {
+      throw new Error(`invalid residue range segment "${token}": start must be <= end`)
+    }
+    segments.push({ start, end })
+  }
+  return mergeResidueRanges(segments)
+}
+
+/** Render segments in the canonical form `parseResidueRanges` accepts. */
+export function formatResidueRanges(ranges: readonly ResidueRange[]): string {
+  return mergeResidueRanges(ranges)
+    .map(range => range.start === range.end ? String(range.start) : `${range.start}-${range.end}`)
+    .join(',')
+}
+
+/** Parse and canonicalize a range string, e.g. `"1, 5 - 10, 20"` -> `"1,5-10,20"`. */
+export function normalizeResidueRange(range: string): string {
+  return formatResidueRanges(parseResidueRanges(range))
+}
+
+function integerOf(text: string, token: string): number {
+  const value = Number(text)
+  if (!Number.isSafeInteger(value)) throw new Error(`invalid residue range segment "${token}": not an integer`)
+  return value
+}
+
+function mergeResidueRanges(ranges: readonly ResidueRange[]): ResidueRange[] {
+  const sorted = [...ranges].sort((left, right) => left.start - right.start || left.end - right.end)
+  const merged: ResidueRange[] = []
+  for (const range of sorted) {
+    const last = merged.at(-1)
+    if (last !== undefined && range.start <= last.end + 1) {
+      merged[merged.length - 1] = { start: last.start, end: Math.max(last.end, range.end) }
+    } else {
+      merged.push(range)
+    }
+  }
+  return merged
+}
 
 /**
  * One replayable viewer command.

@@ -56,9 +56,25 @@ Selections are JSON, for example:
 ```json
 {"kind":"ligand"}
 {"kind":"chain","chain":"A"}
-{"kind":"residues","chain":"A","start":10,"end":25}
+{"kind":"residues","chain":"A","range":"10-25, 40"}
 {"kind":"comp","compId":"ATP"}
 ```
+
+`residues.range` is a comma-separated list of inclusive numeric intervals on the
+residue identifier: `auth_seq_id` by default, `label_seq_id` with `auth:false`.
+It is residue-level, not a sequence position; insertion codes share their base
+number, so `"100"` also matches `100A`/`100B`. To select one insertion-coded
+residue exactly, use the `schema` selector with `pdbx_PDB_ins_code` (the empty
+string means "no insertion code"):
+
+```json
+{"kind":"schema","schema":{"auth_asym_id":"H","auth_seq_id":100,"pdbx_PDB_ins_code":"A"}}
+```
+
+`residue_index` is the 0-based source order when a true sequence position is
+needed. Selector kinds are alternatives; mixing `range` with `schema` is
+rejected. Combine predicates inside one `schema` object, or union disjoint
+predicates with `{"items":[...]}` (one query, one component).
 
 ## Current limitations
 
