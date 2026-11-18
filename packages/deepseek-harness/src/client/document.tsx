@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type { MolFormat, MolViewer } from '@gcszhn/mol4agent-core'
 import { baseNameOf, formatOfFile, isGzipFile } from '../formats.ts'
-import type { MolPendingCapture, MolSessionState } from '../state.ts'
+import type { MolInspectAnswer, MolPendingCapture, MolSessionState } from '../state.ts'
 import { canonicalTabPath } from '../tab-path.ts'
 import { sessionPathOf } from './address.ts'
 import { captureVisible } from './capture.ts'
@@ -27,6 +27,7 @@ import { putCachedViewer, takeCachedViewer } from './viewer-cache.ts'
 export interface MolBodyInjected {
   readonly readBytes: (path: string, signal: AbortSignal) => Promise<Uint8Array>
   readonly deliverCapture: (callId: string, png: Uint8Array, report: Record<string, unknown>) => Promise<void>
+  readonly deliverInspect: (callId: string, answer: MolInspectAnswer) => Promise<void>
   readonly theme: 'light' | 'dark'
   readonly subscribeTheme: (listener: (theme: 'light' | 'dark') => void) => () => void
   readonly t: (key: string) => string
@@ -75,6 +76,7 @@ export function MolBody(props: MolBodyProps): ReactNode {
   const pendingReload = useRef(false)
   const loaded = useRef<LoadedMark>(EMPTY_MARK)
   const handledCaptures = useRef(new Set<string>())
+  const handledInspections = useRef(new Set<string>())
   const applyFailures = useRef<string[]>([])
   const applyChain = useRef<Promise<void>>(Promise.resolve())
   const tRef = useRef(props.t)
@@ -307,6 +309,35 @@ export function MolBody(props: MolBodyProps): ReactNode {
       })()
     }
   }, [pending, scene, status, path, error, props.deliverCapture])
+
+  const inspecting = projection?.inspecting
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (viewer === undefined || status !== 'ready' || inspecting === undefined) return
+    if (scene === null || scene === undefined || scene.path !== path) return
+    for (const [callId, request] of Object.entries(inspecting)) {
+      if (handledInspections.current.has(callId)) continue
+      if (request.path !== undefined && request.path !== path) continue
+      handledInspections.current.add(callId)
+      void (async () => {
+        // Answer from the scene the surface would show, not a half-applied one.
+        await applyChain.current
+        const answer: MolInspectAnswer = (() => {
+          try {
+            const result = viewer.inspect({
+              ...(request.target === undefined ? {} : { target: request.target }),
+              ...(request.detail === undefined ? {} : { detail: request.detail }),
+              ...(request.limit === undefined ? {} : { limit: request.limit }),
+            })
+            return { ok: true, result }
+          } catch (reason) {
+            return { ok: false, message: reason instanceof Error ? reason.message : String(reason) }
+          }
+        })()
+        await props.deliverInspect(callId, answer)
+      })().catch(reason => { console.warn('[mol4agent] inspection delivery failed', reason) })
+    }
+  }, [inspecting, scene, status, path, props.deliverInspect])
 
   return (
     <div style={rootStyle}>

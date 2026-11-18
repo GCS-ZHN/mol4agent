@@ -9,8 +9,12 @@ mol4agent 的 DeepSeek Harness（DSH）适配包：右侧栏分子文档预览�
   UI 打开，而不是纯文本。每个后缀也接受 `.gz` 变体（例如 `.pdb.gz`、
   `.cif.gz`、`.sdf.gz`），适配器会先解压再交给 core。预览器的「打开方式」仍
   可切回代码/纯文本（`bcif` 是二进制，没有纯文本回退）。
-- **agent 工具**：`mol_info`、`mol_interface`、`mol_fetch`、`mol_open`、
-  `mol_style`、`mol_select`、`mol_focus`、`mol_measure`、`mol_capture`。
+- **agent 工具**：`mol_info`、`mol_inspect`、`mol_interface`、`mol_fetch`、
+  `mol_open`、`mol_style`、`mol_select`、`mol_focus`、`mol_measure`、
+  `mol_capture`。
+- **实时状态查询**：`mol_inspect` 直接从运行中的 Mol* 页面读取当前显示的内容
+  （残基、原子、坐标、按 component 的计数、表示与解析后的颜色），包括人通过
+  点击或 Mol* 面板做出的改动。只读；不解析文件，也不改变场景。
 - **数据库抓取**：`mol_fetch` 可把 PDB 条目（PDB/mmCIF/BinaryCIF）、AlphaFold
   DB 预测结构、PubChem 化合物和 ChEMBL 小分子下载到工作区，agent 可以直接
   从条目 id 开始，而不需要本地文件。
@@ -65,6 +69,7 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | 工具 | 参数 | 行为 |
 |---|---|---|
 | `mol_info` | `path` | 摘要链、残基、原子、配体。不打开 viewer，也不改变场景。 |
+| `mol_inspect` | `tab?`、`target?`、`detail?`、`limit?` | 读取实时 viewer：总数、按 component 的计数、残基行、或带坐标的逐原子行，以及绘制该 target 的表示/颜色。`target` 接受任意选择器或 `{"kind":"selection"}` / `{"kind":"focus"}`；结果里的 `styles` 会按绘制该 target 的每个表示列出 `type`、`color` 主题、`size` 主题和解析出的 `colorValue`。`detail` 为 `summary`（默认，含按 component 的计数）、`residues`、`atoms`；`limit` 限制残基行数（默认 200），总数与计数不会被截断。和 `mol_capture` 一样阻塞等待页面回答。 |
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 在 PDB-like 文件中找两个链组之间的界面残基（默认 8 Å，0 < cutoff ≤ 30），返回可用于 `mol_style`/`mol_focus` 的区间。 |
 | `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
 | `mol_open` | `path`、`type?`、`color?`、`colorParams?`、`select?`、`focus?` | 按规范化（canonical）的 `/` 分隔绝对路径创建/更新 tab 页面并设为活动 tab；发出 `represent`，可选 `select`/`focus`。tab 页面 id 即该路径。 |
@@ -181,9 +186,11 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 | `mol_focus` | 追加 `{ op: 'focus', target? }` |
 | `mol_measure` | 追加 `{ op: 'measure', kind, targets }` |
 | `mol_capture` | 添加 pending 截图项；不产生 viewer 命令 |
+| `mol_inspect` | 添加 pending 查询项；不产生 viewer 命令 |
 | `mol_interface` | 无；只返回计算出的区间 |
 | `mol_fetch` | 无；只下载文件 |
 | `mol_info` | 无 |
+| `mol_inspect` | 无；只添加待页面用实时状态回答的查询项 |
 
 ## Session projection
 
@@ -209,6 +216,13 @@ interface MolSessionState {
     height?: number
     transparent?: boolean
   }>
+  inspecting: Record<string, {
+    callId: string
+    path?: string
+    target?: InspectTarget
+    detail?: InspectDetail
+    limit?: number
+  }>
 }
 ```
 
@@ -216,11 +230,12 @@ interface MolSessionState {
   `sceneKey` 和命令列表。`mol_style`/`mol_select`/`mol_focus`/`mol_measure`
   折叠进 `tab` 参数（缺省为活动 tab）并递增 `revision`。
 - `mol_capture` 按 `tab` 参数（缺省为活动 tab）添加 pending 并递增
-  `revision`；header bridge 会激活目标 tab 以完成截图。只读工具（`mol_info`、
-  `mol_interface`）和非法 selector/format 参数保持状态不变；文件读取失败时
-  仍可能先创建/切换 tab，随后 Host 工具报错。
-- `tool/result` 清除对应的 pending 截图项并递增 `revision`；其他结果保持状态
-  不变。
+  `revision`；header bridge 会激活目标 tab 以完成截图。`mol_inspect` 则在
+  `inspecting` 下添加对应项：它不产生 viewer 命令，因为页面回答的是当前
+  Mol* 状态。只读工具（`mol_info`、`mol_interface`）和非法 selector/format
+  参数保持状态不变；文件读取失败时仍可能先创建/切换 tab，随后 Host 工具报错。
+- `tool/result` 清除对应的 pending 截图或查询项并递增 `revision`；其他结果
+  保持状态不变。
 - 相对路径基于 projection 初始化时捕获的 `cwd` 解析。
 - tab key 必须**规范化**：`/` 分隔、盘符大写的绝对路径
   （`D:/work/5jds.pdb`）。DSH resource 地址和 Sidebar tab 注册表在所有平台上
@@ -267,12 +282,41 @@ body 的流程：
 3. 通过 `remote.workspaceFiles.readBytes` 读字节；
 4. 创建/复用 Mol* viewer 并调用 `load()`；
 5. 跟随 projection，增量应用新命令；
-6. 当 `pending` 中有自己的 call 时截图并回传。
+6. 当 `pending` 中有自己的 call 时截图并回传；当 `inspecting` 中有自己的
+   call 时用实时 viewer 状态作答并回传。
 
 session header bridge 注册在 `conversation.session.header.utilities`。新
 新 tab 或重新打开的 tab 出现时打开对应资源；有 pending capture 时激活目标
 tab；session 打开时已经存在的 tab 不会自动打开（用 header 上的 chip 重新打开
 活动 tab）。
+
+## 查询链路
+
+```mermaid
+sequenceDiagram
+  participant LLM
+  participant Tool as mol_inspect Host
+  participant Hub as InspectHub
+  participant Page as MolBody Browser
+  participant Viewer as Molstar
+
+  LLM->>Tool: mol_inspect { target, detail, limit }
+  Tool->>Hub: wait(session, callId, 20s)
+  Page->>Page: projection.inspecting[callId]
+  Page->>Viewer: inspect(request)
+  Viewer-->>Page: InspectResult
+  Page->>Tool: /mol4agent_inspect callId + gzip(base64) 答案
+  Tool->>Hub: deliver(session, callId, answer)
+  Hub-->>Tool: 结果
+  Tool-->>LLM: 格式化后的行与样式
+```
+
+`mol_inspect` 是场景工具的读侧对应物，与 `CaptureHub` 共用
+`PendingRequests`。答案的大小随 `detail` 增长，所以浏览器用
+`CompressionStream` 压缩并 base64 编码成一个命令参数；Host 用 `gunzipSync`
+在 16 MiB 上限内解码。viewer 侧的失败（例如该 tab 没有结构）以
+`{ ok: false, message }` 回传，变成普通文本结果而不是超时。body 会等在途的
+场景命令应用完毕后再回答，因此不会报告只应用了一半的样式。
 
 ## 截图链路
 
@@ -380,6 +424,11 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.3.0
 - 3D 画布需要 WebGL 2。
 - `mol_capture` 要求结构预览处于打开状态；20 秒超时。**超时不会**产生命令
   记录；只有成功回传时才留下一条内部 `mol4agent_capture` 命令记录。
+- `mol_inspect` 同样要求预览处于打开状态（20 秒超时）。它回答的是页面里
+  已加载的内容，因此无法查询已经关闭的路径；纯文件事实请用 `mol_info`。
+  粗粒化（sphere/gaussian 或低分辨率）unit 没有原子层级，不会列出；
+  格式不携带 `occupancy`/`bFactor` 时这两个字段缺省。`colorValue` 通过该
+  表示自己的配色主题解析，需要 custom property 的主题可能只给出主题名。
 - `mol_style` 不传 `target` 时修改全局表示；传 `target` 时添加选择 component。
   标签（label）还没有暴露成工具。
 - `mol_interface` 目前只解析 PDB-like ATOM 记录（`pdb`/`pdbqt`/`pqr`）；

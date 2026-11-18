@@ -16,8 +16,11 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { BINARY_EXTENSIONS, PREVIEW_EXTENSIONS } from '../formats.ts'
+import type { MolInspectAnswer } from '../state.ts'
+import { encodeBase64 } from './base64.ts'
 import { MolBridge } from './bridge.tsx'
 import { MolBody } from './document.tsx'
+import { encodeInspectAnswer } from './inspect.ts'
 import { DICTIONARIES, NS, type MolTranslate } from './locale.ts'
 import { disposeCachedViewers } from './viewer-cache.ts'
 
@@ -84,6 +87,16 @@ export function apply(ctx: Context): void {
         )
         if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
       },
+      deliverInspect: async (callId: string, answer: MolInspectAnswer): Promise<void> => {
+        const encoded = await encodeInspectAnswer(answer)
+        const result = await ctx.remote.commands.execute(
+          sessionId,
+          `/mol4agent_inspect ${callId} ${encoded}`,
+          [],
+          new AbortController().signal,
+        )
+        if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+      },
     }),
   }, MolBody)), 'mol4agent: document body')
 
@@ -98,13 +111,4 @@ export function apply(ctx: Context): void {
       },
     }),
   }, MolBridge)), 'mol4agent: session bridge')
-}
-
-function encodeBase64(bytes: Uint8Array): string {
-  let binary = ''
-  const chunk = 0x8000
-  for (let offset = 0; offset < bytes.length; offset += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk))
-  }
-  return btoa(binary)
 }

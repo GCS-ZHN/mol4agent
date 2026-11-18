@@ -9,8 +9,8 @@ import { z } from 'zod'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { MolCommand, StyleSpec, StructureSelector } from '@gcszhn/mol4agent-core/protocol'
-import { parseColor } from '@gcszhn/mol4agent-core/protocol'
+import type { MolCommand, StyleSpec, StructureSelector, InspectTarget } from '@gcszhn/mol4agent-core/protocol'
+import { isInspectDetail, parseColor } from '@gcszhn/mol4agent-core/protocol'
 import { baseNameOf, formatOfFile } from '../formats.ts'
 import { normalizeSelector } from '../selector.ts'
 import { canonicalTabPath } from '../tab-path.ts'
@@ -18,14 +18,19 @@ import {
   EMPTY_MOL_STATE,
   PROJECTION_KEY,
   type MolPendingCapture,
+  type MolPendingInspect,
   type MolSceneState,
   type MolSessionState,
 } from '../state.ts'
 
 const MEASUREMENT_KINDS = new Set(['chain', 'residue', 'residues', 'comp', 'schema'])
 
+/** Inspect targets that name live viewer state instead of structure content. */
+const LIVE_INSPECT_KINDS = new Set(['selection', 'focus'])
+
 const stateSchema = z.custom<MolSessionState>(
-  value => typeof value === 'object' && value !== null && 'revision' in value && 'tabs' in value && 'pending' in value,
+  value => typeof value === 'object' && value !== null
+    && 'revision' in value && 'tabs' in value && 'pending' in value && 'inspecting' in value,
 )
 
 /** Build the projection unit the adapter registers on activation. */
@@ -40,7 +45,7 @@ export function molProjectionDefinition() {
       view: state => state,
       summary: false,
     },
-    stateVersion: 2,
+    stateVersion: 3,
   } satisfies ProjectionDefinition<typeof PROJECTION_KEY, MolSessionState>
 }
 
@@ -50,10 +55,12 @@ function fold(state: MolSessionState, event: SessionEvent): MolSessionState {
   }
   if (event.type === 'tool/result') {
     const callId = String(event.data.message.toolCallId)
-    if (!(callId in state.pending)) return state
+    if (!(callId in state.pending) && !(callId in state.inspecting)) return state
     const pending = { ...state.pending }
     delete pending[callId]
-    return { ...state, revision: state.revision + 1, pending }
+    const inspecting = { ...state.inspecting }
+    delete inspecting[callId]
+    return { ...state, revision: state.revision + 1, pending, inspecting }
   }
   return state
 }
@@ -145,6 +152,25 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
       }
     }
 
+    case 'mol_inspect': {
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
+      const target = args.target === undefined ? undefined : inspectTargetOf(args.target)
+      if (args.target !== undefined && target === undefined) return state
+      const pending: MolPendingInspect = {
+        callId,
+        path: tab.path,
+        ...(target === undefined ? {} : { target }),
+        ...(isInspectDetail(args.detail) ? { detail: args.detail } : {}),
+        ...(typeof args.limit === 'number' ? { limit: args.limit } : {}),
+      }
+      return {
+        ...state,
+        revision: state.revision + 1,
+        inspecting: { ...state.inspecting, [callId]: pending },
+      }
+    }
+
     default:
       return state
   }
@@ -233,4 +259,13 @@ function selectorOf(value: unknown): StructureSelector | undefined {
   } catch {
     return undefined
   }
+}
+
+/** A structure selector, or one of the live viewer selections an inspection accepts. */
+function inspectTargetOf(value: unknown): InspectTarget | undefined {
+  if (typeof value === 'object' && value !== null) {
+    const kind = (value as { kind?: unknown }).kind
+    if (typeof kind === 'string' && LIVE_INSPECT_KINDS.has(kind)) return { kind: kind as 'selection' | 'focus' }
+  }
+  return selectorOf(value)
 }

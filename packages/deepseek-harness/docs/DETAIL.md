@@ -35,6 +35,7 @@ reattaches it, so camera, representations, and panel state survive a switch
 | Tool | Effect |
 |---|---|
 | `mol_info` | Reads chains, residues, atoms, and ligands without opening a page |
+| `mol_inspect` | Reads the live viewer: per-component counts, residues, atoms with coordinates, and the representations/colours drawing the target |
 | `mol_interface` | Finds residues within a cutoff between two chain groups (PDB-like files) |
 | `mol_fetch` | Downloads a database entry (RCSB PDB, AlphaFold, PubChem, ChEMBL) to a workspace path |
 | `mol_open` | Opens the structure in a tab page (id = absolute path) and makes it active |
@@ -44,12 +45,15 @@ reattaches it, so camera, representations, and panel state survive a switch
 | `mol_measure` | Adds a distance, angle, or dihedral between selections |
 | `mol_capture` | Returns a PNG of the target tab viewport in the tool result |
 
-`mol_style`, `mol_select`, `mol_focus`, `mol_measure`, and `mol_capture` accept
-`tab` (the path returned by `mol_open`) and default to the active tab. `mol_open`, `mol_style`, `mol_select`, `mol_focus`, and
-`mol_measure` write the durable per-tab scene to the Session projection; each
-open viewer follows only its own tab; a reopened Session can restore the last
-tab scenes. `mol_capture` blocks until the open page delivers
-the image through the internal `mol4agent_capture` session command.
+`mol_style`, `mol_select`, `mol_focus`, `mol_measure`, `mol_inspect`, and
+`mol_capture` accept `tab` (the path returned by `mol_open`) and default to the
+active tab. `mol_open`, `mol_style`, `mol_select`, `mol_focus`, and `mol_measure`
+write the durable per-tab scene to the Session projection; each open viewer
+follows only its own tab; a reopened Session can restore the last tab scenes.
+`mol_capture` blocks until the open page delivers the image through the internal
+`mol4agent_capture` session command, and `mol_inspect` blocks until it answers
+through `mol4agent_inspect` with the state it is showing right now — including
+selection and styling the human made in the Mol* panel.
 
 Selections are JSON, for example:
 
@@ -70,4 +74,7 @@ Selections are JSON, for example:
 - Files larger than 64 MiB are refused.
 - WebGL 2 is required; a machine without a usable GPU shows a load error.
 - Screenshot delivery appears as a short `mol4agent_capture` command row in the
-  conversation.
+  conversation; an inspection appears as a `mol4agent_inspect` row.
+- `mol_inspect` can only describe a structure whose preview tab is open, so a
+  file opened only in the text viewer must be opened with `mol_open` first.
+  Coarse (sphere/gaussian) units have no atom hierarchy and are not listed.

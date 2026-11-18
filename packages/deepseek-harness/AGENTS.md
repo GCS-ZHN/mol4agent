@@ -20,15 +20,23 @@ semantics.
 - Add a tool in `tools.ts`, fold it in `projection.ts`, describe it in
   `prompt.ts`, and update both READMEs. Mutating tools use
   `isConcurrencySafe: () => false`. Tools without a scene effect (`mol_info`,
-  `mol_interface`, `mol_fetch`) are ignored by the projection.
+  `mol_interface`, `mol_fetch`) are ignored by the projection; a tool that
+  *reads* live viewer state (`mol_inspect`) folds into `inspecting`, never into
+  `commands`.
 - `mol_fetch` is Host-only: core resolves the entry id to a download plan, then
   the Host downloads and writes the file (HTTPS, 64 MiB cap, temp file +
   rename). It must not touch the viewer or the projection.
 - Selector validation (`selector.ts`) and core selector support must change
   together; an accepted selector that fails in `compileSelector` is a bug.
 - Screenshot capture is a rendezvous: `mol_capture` blocks in `CaptureHub`, the
-  page renders and calls the internal `/mol4agent_capture` command. Do not
-  replace this with a custom HTTP route, remote service, or file polling.
+  page renders and calls the internal `/mol4agent_capture` command. The same
+  applies to inspection: `mol_inspect` blocks in `InspectHub` and the page
+  answers through `/mol4agent_inspect`. Do not replace either with a custom
+  HTTP route, remote service, or file polling. Both hubs are the same
+  `PendingRequests` keyed by session + call id; answer payloads that grow with
+  data (inspection rows) are gzipped and base64-encoded into the command input,
+  and the Host decodes them under a size cap. Treat an inspection result as
+  untrusted JSON at the command boundary.
 
 ## Document preview
 

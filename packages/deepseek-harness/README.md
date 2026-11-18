@@ -12,8 +12,14 @@ preview that an agent can operate.
   decodes it before handing bytes to core. The previewer's **Open with** menu
   still offers code/plain text (`bcif` has no plain-text fallback because its
   bytes are binary).
-- **Agent tools**: `mol_info`, `mol_interface`, `mol_fetch`, `mol_open`,
-  `mol_style`, `mol_select`, `mol_focus`, `mol_measure`, `mol_capture`.
+- **Agent tools**: `mol_info`, `mol_inspect`, `mol_interface`, `mol_fetch`,
+  `mol_open`, `mol_style`, `mol_select`, `mol_focus`, `mol_measure`,
+  `mol_capture`.
+- **Live-state inspection**: `mol_inspect` reads what the viewer currently shows
+  (residues, atoms, coordinates, per-component counts, representations and
+  resolved colours) straight from the running Mol* page, including changes a
+  human made by clicking or through the Mol* panel. Read-only; it never parses
+  the file or changes the scene.
 - **Database fetch**: `mol_fetch` downloads PDB entries (PDB/mmCIF/BinaryCIF),
   AlphaFold DB predictions, PubChem compounds, and ChEMBL molecules into the
   workspace, so an agent can start from an entry id instead of a local file.
@@ -70,6 +76,7 @@ away.
 | Tool | Parameters | Behavior |
 |---|---|---|
 | `mol_info` | `path` | Summarize chains, residues, atoms, ligands. Does not open a viewer or change the scene. |
+| `mol_inspect` | `tab?`, `target?`, `detail?`, `limit?` | Read the live viewer: totals, per-component counts, residue rows, or per-atom rows with coordinates, plus the representations/colours drawing the target. `target` accepts any selector or `{"kind":"selection"}` / `{"kind":"focus"}`; `styles` in the result lists, per representation drawing the target, `type`, `color` theme, `size` theme, and the resolved `colorValue`. `detail` is `summary` (default, includes per-component counts), `residues`, or `atoms`; `limit` caps residue rows (default 200) without truncating totals or counts. Blocks until the page answers, like `mol_capture`. |
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å, 0 < cutoff ≤ 30) in PDB-like files. Returns ranges for `mol_style`/`mol_focus`. |
 | `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
 | `mol_open` | `path`, `type?`, `color?`, `colorParams?`, `select?`, `focus?` | Create/update the tab page keyed by its canonical `/`-separated absolute path and make it active. Emits `represent` and optionally `select`/`focus`; the tab page id is that path. |
@@ -190,9 +197,11 @@ range.
 | `mol_focus` | Append `{ op: 'focus', target? }` |
 | `mol_measure` | Append `{ op: 'measure', kind, targets }` |
 | `mol_capture` | Add a pending capture entry; no viewer command |
+| `mol_inspect` | Add a pending inspection entry; no viewer command |
 | `mol_interface` | None; returns computed ranges only |
 | `mol_fetch` | None; downloads a file only |
 | `mol_info` | None |
+| `mol_inspect` | None; adds a pending inspection the page answers from live state |
 
 ## Session projection
 
@@ -218,6 +227,13 @@ interface MolSessionState {
     height?: number
     transparent?: boolean
   }>
+  inspecting: Record<string, {
+    callId: string
+    path?: string
+    target?: InspectTarget
+    detail?: InspectDetail
+    limit?: number
+  }>
 }
 ```
 
@@ -226,11 +242,13 @@ interface MolSessionState {
   `mol_measure` fold into the `tab` argument (or active tab) and bump `revision`.
 - `mol_capture` adds a pending entry for the `tab` argument (or active tab) and
   bumps `revision`; the header bridge activates that tab so the capture can be
-  delivered. Read-only tools (`mol_info`, `mol_interface`) and invalid
+  delivered. `mol_inspect` adds a matching entry under `inspecting` instead:
+  it carries no viewer command, because the page answers from current Mol*
+  state. Read-only tools (`mol_info`, `mol_interface`) and invalid
   selector/format arguments leave state unchanged. A file that fails to read can
   still create/switch a tab before the Host tool reports the error.
-- `tool/result` clears a matching pending capture and bumps `revision`; other
-  results leave state unchanged.
+- `tool/result` clears a matching pending capture or inspection and bumps
+  `revision`; other results leave state unchanged.
 - Relative paths are resolved against `cwd` captured when the projection is
   initialized.
 - Tab keys are **canonical**: the `/`-separated absolute path with an uppercase
@@ -282,7 +300,8 @@ The body:
 3. reads bytes through `remote.workspaceFiles.readBytes`;
 4. creates/reuses a Mol* viewer and calls `load()`;
 5. follows the projection and applies new commands incrementally;
-6. captures and delivers PNGs when `pending` contains its call.
+6. captures and delivers PNGs when `pending` contains its call, and answers
+   `inspecting` queries from the live viewer.
 
 The header bridge is registered in `conversation.session.header.utilities`. It
 opens a resource when a tab is new or reopened, and activates the target tab
@@ -321,6 +340,36 @@ The capture report carries `visibleContent`; command failures observed while
 applying a scene travel back as `applyErrors`, so an optimistic tool message
 cannot hide a client-side rejection.
 
+## Inspection loop
+
+```mermaid
+sequenceDiagram
+  participant LLM
+  participant Tool as mol_inspect Host
+  participant Hub as InspectHub
+  participant Page as MolBody Browser
+  participant Viewer as Molstar
+
+  LLM->>Tool: mol_inspect { target, detail, limit }
+  Tool->>Hub: wait(session, callId, 20s)
+  Page->>Page: projection.inspecting[callId]
+  Page->>Viewer: inspect(request)
+  Viewer-->>Page: InspectResult
+  Page->>Tool: /mol4agent_inspect callId + gzip(base64) answer
+  Tool->>Hub: deliver(session, callId, answer)
+  Hub-->>Tool: result
+  Tool-->>LLM: formatted rows and styles
+```
+
+`mol_inspect` is the read counterpart of the scene tools and shares
+`PendingRequests` with `CaptureHub`. The answer is plain data whose size grows
+with `detail`, so the browser gzips it with `CompressionStream` and
+base64-encodes it into one command argument; the Host decodes it with
+`gunzipSync` under a 16 MiB cap. A viewer failure (for example no structure in
+that tab) is delivered as `{ ok: false, message }` and becomes a normal text
+result instead of a timeout. The body answers only after the pending scene
+commands have been applied, so it never reports a half-applied style.
+
 ## Viewer behavior
 
 - **Official Mol* UI**: `createPluginUI` + `DefaultPluginUISpec`. The viewer is
@@ -336,9 +385,9 @@ cannot hide a client-side rejection.
 - **Tab scope**: each document tab has its own viewer, cache, and projection
   scene. `mol_open` returns the tab page id (canonical `/`-separated absolute
   path); pass `tab` to `mol_style`/`mol_select`/`mol_focus`/`mol_measure`/
-  `mol_capture` to target that tab independently. Omitting `tab` uses the
-  last-opened tab. Switching tabs preserves all viewer state; capture activates
-  its target tab.
+  `mol_inspect`/`mol_capture` to target that tab independently. Omitting
+  `tab` uses the last-opened tab. Switching tabs preserves all viewer state;
+  capture activates its target tab.
 - **Tab cache**: an unmounted preview parks its whole Mol* container in a hidden
   holder; remounting the same tab reattaches and resizes instead of re-reading
   the file. The two most recent tabs are kept; plugin unload disposes them.
@@ -404,6 +453,13 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
 - `mol_capture` requires the structure preview to be open and times out after
   20 s. A timeout produces no command row; a successful delivery leaves one
   internal `mol4agent_capture` command row.
+- `mol_inspect` also requires the preview to be open (20 s timeout). It reports
+  what the page has loaded, so it cannot answer for a path that is no longer
+  open; use `mol_info` for file-only facts. Coarse (sphere/gaussian or
+  low-resolution) units have no atom hierarchy and are not listed, and
+  `occupancy`/`bFactor` are absent for formats that do not carry them.
+  `colorValue` is resolved through the representation's own colour theme, so a
+  theme that needs custom properties may report only the theme name.
 - `mol_style` without `target` changes the global representation; with `target`
   it adds a selection component. Labels are not exposed as a tool yet.
 - `mol_interface` currently parses PDB-like ATOM records (`pdb`/`pdbqt`/`pqr`)

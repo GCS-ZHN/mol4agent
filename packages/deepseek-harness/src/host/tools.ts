@@ -19,9 +19,12 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { defineTool, ToolArgsError, ToolContextUnavailableError } from '@deepseek-ai/dsh-tools'
 import {
   COLOR_THEMES,
+  DEFAULT_INSPECT_LIMIT,
+  INSPECT_DETAILS,
   Mol4AgentError,
   REPRESENTATION_TYPES,
   formatColor,
+  isInspectDetail,
   parseColor,
   type StructureSummary,
 } from '@gcszhn/mol4agent-core/protocol'
@@ -33,11 +36,14 @@ import { normalizeSelector } from '../selector.ts'
 import type { MolSceneState, MolSessionState } from '../state.ts'
 import { captureFileName, type CaptureHub } from './capture.ts'
 import { downloadMoleculeSource, FetchTargetError, resolveFetchTarget } from './fetch.ts'
+import { formatInspectResult } from './format-inspect.ts'
+import type { InspectHub } from './inspect.ts'
 import { findInterfaceResidues, type InterfaceResult } from './interface.ts'
 import { resolveMoleculeFile, type ResolvedMoleculeFile } from './paths.ts'
 
 export interface MolToolOptions {
   readonly hub: CaptureHub
+  readonly inspectHub: InspectHub
   /** Read a tab page scene; defaults to the projection's active tab. */
   readonly sceneOf: (session: Session, tab?: string) => MolSceneState | undefined
   readonly maxFileBytes: number
@@ -45,6 +51,7 @@ export interface MolToolOptions {
   readonly captureTimeoutMs: number
   readonly captureWidth: number
   readonly captureHeight: number
+  readonly inspectTimeoutMs: number
 }
 
 const TAB_HELP = 'Tab page id returned by mol_open (its `/`-separated absolute path). '
@@ -324,6 +331,57 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
   }))
 
   ctx.tools.register(defineTool({
+    name: 'mol_inspect',
+    description: 'Read what the molecular viewer currently shows: residue/atom identity, coordinates, '
+      + 'per-component counts (waters, ligands, amino-acid types), and how the target is drawn '
+      + '(representation type, colour theme, size theme, resolved colour). '
+      + 'Answers come from the live Mol* page, so they include changes a human made by clicking or '
+      + 'through the Mol* panel. Use it instead of parsing the structure file. Read-only: it changes nothing.',
+    parameters: {
+      tab: { type: 'string', description: TAB_HELP },
+      target: {
+        type: 'json',
+        description: 'What to inspect. Omit for the whole structure. Accepts any selector, '
+          + `plus {"kind":"selection"} for what is currently selected and {"kind":"focus"} for the last clicked location. ${SELECTOR_HELP}`,
+      },
+      detail: {
+        type: 'string',
+        enum: INSPECT_DETAILS,
+        description: 'summary = totals, per-component counts, and styles; residues = also residue rows; '
+          + 'atoms = residue rows with per-atom coordinates. Defaults to summary.',
+      },
+      limit: {
+        type: 'integer',
+        description: `Maximum residue rows to return. Defaults to ${DEFAULT_INSPECT_LIMIT}; totals and counts are never truncated.`,
+      },
+    },
+    isConcurrencySafe: () => false,
+    output: {
+      schema: { type: 'string' },
+      render: (_args, text) => [{ type: 'text', text }],
+    },
+    async execute(args, exec) {
+      const agent = requireAgent(exec)
+      const scene = requireScene(options, agent, args.tab, 'inspecting')
+      if (args.target !== undefined) assertInspectTarget(args.target)
+      if (args.detail !== undefined && !isInspectDetail(args.detail)) {
+        throw new ToolArgsError([`detail must be one of ${INSPECT_DETAILS.join(', ')}`])
+      }
+      if (args.limit !== undefined && (!Number.isInteger(args.limit) || args.limit <= 0)) {
+        throw new ToolArgsError(['limit must be a positive integer'])
+      }
+      const answer = await options.inspectHub.wait(
+        agent.id,
+        String(exec.callId),
+        options.inspectTimeoutMs,
+        exec.signal,
+      )
+      if (!answer.ok) return `Could not inspect ${scene.label}: ${answer.message}`
+      return formatInspectResult(answer.result)
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'mol_capture',
     description: 'Capture a molecular viewer tab page viewport as a PNG and attach it to this tool result. '
       + 'Use it to visually verify a view or show a figure to the user.',
@@ -458,6 +516,15 @@ function assertSelector(value: unknown): void {
   } catch (error) {
     throw new ToolArgsError([error instanceof Error ? error.message : String(error), SELECTOR_HELP])
   }
+}
+
+/** A structure selector or one of the live viewer selections an inspection accepts. */
+function assertInspectTarget(value: unknown): void {
+  if (typeof value === 'object' && value !== null) {
+    const kind = (value as { kind?: unknown }).kind
+    if (kind === 'selection' || kind === 'focus') return
+  }
+  assertSelector(value)
 }
 
 function assertColorParams(value: unknown): void {
