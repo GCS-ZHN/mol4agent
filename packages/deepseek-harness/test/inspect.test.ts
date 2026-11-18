@@ -27,10 +27,15 @@ const result: InspectResult = {
     { compId: 'CYS', kind: 'polymer', residues: 1, atoms: 1 },
   ],
   styles: [
-    { component: 'Structure', type: 'cartoon', color: 'chain-id', size: 'physical', colorValue: '#00ff00' },
+    { component: 'Structure', type: 'cartoon', color: 'chain-id', size: 'physical', baseColor: '#1b9e77', visibleColor: '#22bb5b' },
     { component: 'mol4agent selection', type: 'ball-and-stick', color: 'uniform', size: 'physical', hidden: true },
   ],
   selection: { entries: 1, atoms: 2, residues: 1 },
+  appearance: {
+    baseColor: '#1b9e77',
+    visibleColor: '#22bb5b',
+    overlays: [{ source: 'selection', color: '#33ff1a', strength: 0.3 }],
+  },
   truncated: false,
 }
 
@@ -87,12 +92,15 @@ test('formats counts, styles, and live selections', () => {
   const text = formatInspectResult(result)
   assert.match(text, /<inspect target="whole structure" detail="summary">/u)
   assert.match(text, /atoms: 5, residues: 4, chains: 1, models: 1/u)
-  assert.match(text, /selection: 1 entry, 1 residues, 2 atoms/u)
+  assert.match(text, /selection: 1 entry, 1 residue, 2 atoms/u)
   assert.match(text, /counts:/u)
   assert.match(text, /- HOH \(water\): 2 residues, 2 atoms/u)
   assert.match(text, /- CYS \(polymer\): 1 residue, 1 atom/u)
-  assert.match(text, /- Structure: cartoon \/ chain-id #00ff00 \/ physical/u)
+  assert.match(text, /- Structure: cartoon \/ chain-id \/ physical base #1b9e77 -> visible #22bb5b/u)
   assert.match(text, /- mol4agent selection: ball-and-stick \/ uniform \/ physical \(hidden\)/u, 'a hidden representation is flagged')
+  // base and visible colour must stay distinguishable at the target level
+  assert.match(text, /appearance: base #1b9e77 -> visible #22bb5b/u)
+  assert.match(text, /overlays:\n- selection #33ff1a strength 0\.3/u)
   assert.match(text, /<\/inspect>/u)
 })
 
@@ -103,6 +111,7 @@ test('formats residue and atom rows with coordinates and truncation', () => {
     detail: 'atoms',
     counts: [{ compId: 'ATP', kind: 'ligand', residues: 1, atoms: 2 }],
     selection: undefined,
+    appearance: undefined,
     styles: [],
     truncated: true,
     residueRows: [
@@ -131,18 +140,46 @@ test('formats residue and atom rows with coordinates and truncation', () => {
   assert.match(text, /rows are truncated/u)
 })
 
-test('formats an empty match explicitly', () => {
+test('reports overlay effects and entry sizes', () => {
+  const overlaid: InspectResult = {
+    ...result,
+    target: 'selection',
+    appearance: {
+      baseColor: '#1b9e77',
+      visibleColor: '#7ecf8f',
+      overlays: [
+        { source: 'overpaint', color: '#ff0000', label: 'cartoon' },
+        { source: 'selection', color: '#33ff1a', strength: 0.3, hidden: true },
+      ],
+    },
+    selection: {
+      entries: 3,
+      atoms: 6,
+      residues: 4,
+      groups: [{ atoms: 3, residues: 2 }, { atoms: 2, residues: 1 }, { atoms: 1, residues: 1 }],
+    },
+  }
+  const text = formatInspectResult(overlaid)
+  assert.match(text, /selection: 3 entries, 4 residues, 6 atoms \(entries: 2 residues\/3 atoms, 1 residue\/2 atoms, 1 residue\/1 atom\)/u)
+  assert.match(text, /overlays:\n- overpaint #ff0000 on cartoon\n- selection #33ff1a strength 0\.3 not tinting the body colour/u)
+})
+
+test('omits the appearance section when nothing matched', () => {
   const empty: InspectResult = {
     ...result,
     detail: 'residues',
     counts: [],
     styles: [],
+    appearance: undefined,
     selection: undefined,
     atoms: 0,
     residues: 0,
     residueRows: [],
   }
-  assert.match(formatInspectResult(empty), /no residues matched this target/u)
+  const text = formatInspectResult(empty)
+  assert.match(text, /no residues matched this target/u)
+  assert.doesNotMatch(text, /appearance:/u)
+  assert.doesNotMatch(text, /overlays:/u)
 })
 
 test('inspect queries are keyed by tab and cleared on tool result', () => {

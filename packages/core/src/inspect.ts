@@ -9,6 +9,7 @@
  */
 import {
   DEFAULT_INSPECT_LIMIT,
+  type InspectAppearance,
   type InspectAtom,
   type InspectCount,
   type InspectDetail,
@@ -19,6 +20,7 @@ import {
   type InspectStyle,
   type InspectVector,
 } from './protocol.ts'
+import { mixColor } from './color.ts'
 
 /** One residue with every atom Mol* placed for it, before detail filtering. */
 export interface ResidueRecord {
@@ -41,6 +43,8 @@ export interface InspectInput {
   readonly models: number
   readonly records: readonly ResidueRecord[]
   readonly styles: readonly InspectStyle[]
+  /** Effective look of the target; omitted for an empty target. */
+  readonly appearance?: InspectAppearance
   readonly selection?: InspectSelection
   readonly focus?: InspectSelection
   readonly limit?: number
@@ -190,8 +194,61 @@ export function buildInspectResult(input: InspectInput): InspectResult {
     counts: countCompIds(ordered),
     ...(rows === undefined ? {} : { residueRows: rows.map(record => residueRow(record, withAtoms)) }),
     styles: input.styles,
+    ...(input.appearance === undefined ? {} : { appearance: input.appearance }),
     ...(input.selection === undefined ? {} : { selection: input.selection }),
     ...(input.focus === undefined ? {} : { focus: input.focus }),
     truncated: rows !== undefined && ordered.length > rows.length,
   }
+}
+
+/** One overpaint layer already resolved to the atoms it covers. */
+export interface OverpaintLayerKeys {
+  readonly keys: ReadonlySet<string>
+  readonly color: number
+  /** Layer resets the colour under it instead of painting. */
+  readonly clear: boolean
+}
+
+/**
+ * Colour left by the last overpaint layer that covers `atomKey`.
+ *
+ * Layers apply in order, and a `clear` layer removes what the layer below
+ * painted, so the effective colour is whatever the last covering layer set.
+ */
+export function resolveOverpaint(
+  layers: readonly OverpaintLayerKeys[],
+  atomKey: string,
+): number | undefined {
+  let applied: number | undefined
+  for (const layer of layers) {
+    if (!layer.keys.has(atomKey)) continue
+    applied = layer.clear ? undefined : layer.color
+  }
+  return applied
+}
+
+/** The canvas selection marker, mirroring `canvas3d.props.renderer`. */
+export interface CanvasMarkerOptions {
+  readonly color: number
+  readonly strength: number
+  /** True when the marker only outlines geometry and does not tint its colour. */
+  readonly edgesOnly: boolean
+}
+
+/**
+ * Colour actually visible for one atom.
+ *
+ * Overpaint replaces the colour its representation theme would give, then the
+ * selection marker mixes on top of that, matching Mol*'s marker shader.
+ */
+export function visibleColorOf(
+  baseColor: number | undefined,
+  overpaintColor: number | undefined,
+  selected: boolean,
+  marker: CanvasMarkerOptions | undefined,
+): number | undefined {
+  const effective = overpaintColor ?? baseColor
+  if (effective === undefined) return undefined
+  if (!selected || marker === undefined || marker.edgesOnly) return effective
+  return mixColor(effective, marker.color, marker.strength)
 }

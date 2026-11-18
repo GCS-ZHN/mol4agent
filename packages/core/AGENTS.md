@@ -26,6 +26,12 @@ keep its protocol consistent for every adapter.
   Mol*-free aggregation (`inspect.ts`) separate from the extractor
   (`inspect-mol.ts`) and plugin wiring (`inspect-plugin.ts`) so the pure part
   stays testable under Node.
+- Appearance keeps `baseColor` (the representation's own theme colour) and
+  `visibleColor` (what is actually drawn) distinct, with a fixed precedence:
+  overpaint replaces the theme colour, then the selection marker mixes over it
+  using `canvas3d.props.renderer` (`selectColor`, `selectStrength`,
+  `colorMarker`). Both are sampled at one matched element; never derive them
+  from the command log.
 
 ## Viewer lifecycle
 

@@ -286,9 +286,14 @@ const residue = viewer.inspect({
   detail: 'atoms',
 })
 // residue.residueRows[0].atomRows → [{ name: 'PG', element: 'P', x: 16.223, ... }]
-// residue.styles → [{ component: 'Structure', type: 'cartoon', color: 'chain-id', colorValue: '#a0d0ff' }]
+// residue.styles → [{ component: 'Structure', type: 'cartoon', color: 'chain-id',
+//                     size: 'physical', baseColor: '#1b9e77', visibleColor: '#22bb5b',
+//                     overlays: [{ source: 'selection', color: '#33ff1a', strength: 0.3 }] }]
+// residue.appearance → { baseColor: '#1b9e77', visibleColor: '#22bb5b', overlays: [...] }
 
 const selected = viewer.inspect({ target: { kind: 'selection' }, detail: 'residues' })
+// selected.selection → { entries: 3, residues: 6, atoms: 74,
+//                        groups: [{ residues: 4, atoms: 36 }, ...] }
 ```
 
 | Request field | Meaning |
@@ -298,22 +303,43 @@ const selected = viewer.inspect({ target: { kind: 'selection' }, detail: 'residu
 | `limit?` | Residue-row budget, default `DEFAULT_INSPECT_LIMIT` (200). Totals and counts always cover the whole target; `truncated` says whether rows were dropped. |
 
 `InspectResult` fields: `target`, `detail`, `atoms`, `residues`, `chains`,
-`models`, `counts`, `residueRows?`, `styles`, `selection?`, `focus?`,
-`truncated`. `counts` is always present and always complete: it answers
-"how many waters / Cys / ligands" in the default call.
+`models`, `counts`, `residueRows?`, `styles`, `appearance?`, `selection?`,
+`focus?`, `truncated`. `counts` is always present and always complete: it
+answers "how many waters / Cys / ligands" in the default call.
 
 Rows carry structure identity (`chain`, `seqId` = auth numbering, `labelSeqId`,
 `compId`, `kind`) and the drawn centre (`x`, `y`, `z`). Atom rows add `name`,
 `element`, coordinates, and `occupancy` / `bFactor` / `altId` when the format
 provides them. Coordinates come from the unit conformation, so they match where
-Mol* draws the atom. Styles report the representation type, colour theme, size theme, colour-theme
-parameters, and the colour Mol* resolves for the inspected element when the
-theme allows it (`colorValue`), plus `hidden` when Mol* is not drawing that
-representation. `colorValue` is sampled at one matched element,
+Mol* draws the atom.
+
+Each style reports the representation type, colour theme, size theme,
+colour-theme parameters, `hidden` when Mol* is not drawing it, and both colours
+that matter:
+
+| Field | Meaning |
+|---|---|
+| `baseColor` | The colour the representation's own theme gives the inspected element. |
+| `visibleColor` | The colour actually seen: overlays applied to `baseColor`. |
+| `overlays` | The overlays that apply to the inspected element. |
+
+Overlays are resolved from live viewer state, in this precedence:
+
+1. **overpaint** (`source: 'overpaint'`) replaces the theme colour for the
+   regions a Mol* overpaint layer covers — the last covering layer wins, and a
+   `clear` layer removes the paint below it;
+2. **selection** (`source: 'selection'`) then mixes over the result using
+   `canvas3d.props.renderer.selectColor` and `selectStrength`, matching Mol*'s
+   marker shader (`#33ff1a` at strength `0.3` in the default theme). A marker
+   that only outlines geometry is reported with `hidden: true` and does not
+   change `visibleColor`.
+
+`appearance` reports the same pair for the target as a whole, using the last
+drawn representation. Colours are sampled at one matched element of the target,
 so under `chain-id` a multi-chain target reports the first chain's colour; query
-the residue itself when its exact colour matters. Per-selection overpaint,
-transparency, emissive, and substance layers are separate Mol* transforms and
-are not reported.
+the residue itself when its exact colour matters. Per-selection transparency,
+emissive, and substance layers, and script-based overpaint layers, are not
+resolved yet.
 
 `inspect` throws `Mol4AgentError` with `NO_STRUCTURE` when nothing is loaded. An
 empty selection or focus is a valid empty result. Low-resolution coarse

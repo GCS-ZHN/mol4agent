@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { COLOR_SYNTAX, formatColor, parseColor } from '../src/color.ts'
+import { COLOR_SYNTAX, formatColor, mixColor, parseColor } from '../src/color.ts'
 
 test('parseColor accepts CSS names case-insensitively', () => {
   assert.equal(parseColor('red'), 0xff0000)
@@ -55,4 +55,15 @@ test('formatColor renders normalized hex', () => {
   assert.equal(formatColor(0xff0000), '#ff0000')
   assert.equal(formatColor(0x0000ff), '#0000ff')
   assert.equal(formatColor(0xd3d3d3), '#d3d3d3')
+})
+
+test('mixColor blends channels the way the marker shader does', () => {
+  // Mol* default: base cartoon teal blended 30% toward the select marker.
+  assert.equal(mixColor(0x1b9e77, 0x33ff1a, 0), 0x1b9e77)
+  assert.equal(mixColor(0x1b9e77, 0x33ff1a, 1), 0x33ff1a)
+  assert.equal(mixColor(0x000000, 0xffffff, 0.5), 0x808080)
+  assert.equal(mixColor(0x000000, 0xffffff, 0.3), 0x4d4d4d)
+  // Strength is clamped so a bad renderer value cannot produce garbage colours.
+  assert.equal(mixColor(0x000000, 0xffffff, -1), 0x000000)
+  assert.equal(mixColor(0x000000, 0xffffff, 2), 0xffffff)
 })
