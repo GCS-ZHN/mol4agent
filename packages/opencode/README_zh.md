@@ -8,6 +8,14 @@
   官方 Mol* UI 里渲染结构，无需离开 harness、无需外部应用。
 - **agent 操作同一页面**：`mol_style` / `mol_select` / `mol_focus` / `mol_measure`
   修改打开的页面；`mol_info` / `mol_interface` 无需打开 viewer 即可摘要。
+- **实时状态查询**：`mol_inspect` 直接读取运行中的 Mol* 页面当前显示的内容
+  （残基/原子、坐标、按 component 的计数、表示、base/visible 颜色与 selection
+  overlay 颜色），包括人在 Mol* 面板里点击或改样式产生的变化。只读：不解析
+  文件，也不改变场景。
+- **多结构场景**：`mol_add_structure` 在同一个标签里追加结构；selector 支持
+  `structureId`；`mol_list_structures` / `mol_remove_structure` 管理它们。
+- **对齐与 TM-score**：`mol_align` 用 TM-align 或序列对齐把一个结构叠到另一个；
+  `mol_tmscore` 在不移动任何结构的情况下比较两个选择。
 - **数据库抓取**：`mol_fetch` 从 RCSB PDB（PDB/mmCIF/BinaryCIF）、AlphaFold DB、
   PubChem 或 ChEMBL 下载结构并保存在会话所属 server 上，随后可直接 `mol_open`。
 - **截图**：`mol_capture` 把视口渲染成 PNG 保存到 `.mol4agent/captures/`。
@@ -19,8 +27,8 @@
 > context 和内存），切换标签/会话也不会释放。适配器最多保留 12 个常驻 viewer，
 > 超出时会释放最久未使用的隐藏 viewer。请只打开需要的结构，用完记得关闭结构标签。
 
-- **与 DSH/ChatGPT 语义一致**：本适配器把相同的 `MolFormat`、selector、命令
-  与截图语义传给 `@gcszhn/mol4agent-core`。
+- **与 DSH/ChatGPT 语义一致**：本适配器把相同的 `MolFormat`、selector、命令、
+  查询请求与截图语义传给 `@gcszhn/mol4agent-core`。
 - **格式**：`.pdb`、`.ent`、`.pdbqt`、`.pqr`、`.cif`、`.mmcif`、`.mcif`、`.bcif`、
   `.mol`、`.sdf`、`.sd`、`.mol2`、`.xyz`、`.gro`，以及 `.gz` 变体（server 端先解压
   再交给 core）。
@@ -45,9 +53,9 @@
   RPC。只有这里能看到路径、读取字节、保存场景日志。
 - **GUI**（`exports["./gui-experimental"]`，`src/gui/`）：侧边栏 `Panel`，每个
   打开的结构一个 Mol* viewer 标签；另有启动器、选文件命令，以及 `LinkHandler`
-  （Ctrl+P 文件搜索，即 `/open`，与 `.pdb` 链接可打开结构）。通过 RPC 跟随场景，
-  并渲染/回传截图。RPC 指向**会话所属 server**（`session.server.client`）：窗口的
-  `ctx.client` 始终是内置本地 server。
+  （Ctrl+P 文件搜索，即 `/open`，与 `.pdb` 链接可打开结构）。通过 RPC 跟随场景、
+  渲染/回传截图，并从实时 viewer 回答查询。RPC 指向**会话所属 server**
+  （`session.server.client`）：窗口的 `ctx.client` 始终是内置本地 server。
 - **RPC**（`exports["./rpc"]`，`src/rpc.ts`）：类型化的 `mol4agent` 契约。
 
 core 只接收 `{ data, format, label }` 加 JSON 命令；路径、后缀识别、IO、session
@@ -84,17 +92,24 @@ OpenCode 2.3 的窗口插件宿主只会从桌面端**内置 server**加载 GUI 
 Mol* 面板依赖**桌面端的本地 GUI 插件宿主**。`opencode serve` 提供的 OpenCode 2.3
 网页端没有 plugin-GUI bridge，不会挂载 `./gui-experimental`：没有侧栏、没有 viewer，
 也没有截图目标。server 部分仍然可用——`mol_open` 会在会话所属 server 上记录场景、
-`mol_*` 工具照常执行——但由于没有 viewer 渲染，`mol_capture` 会超时。查看结构请使用
-桌面端（本地，或连接远程 server）；浏览器会话只能使用工具。
+`mol_*` 工具照常执行——但由于没有 viewer 渲染或回答，`mol_capture` 与
+`mol_inspect` 会超时。查看结构请使用桌面端（本地，或连接远程 server）；浏览器
+会话只能使用工具。
 
 ## 工具
 
 | 工具 | 行为 |
 |---|---|
 | `mol_info` | 摘要链、残基、原子、配体；不打开 viewer |
+| `mol_inspect` | 读取实时 viewer：总数、按 component 计数、残基行或带坐标的原子行；表示的 base/visible 颜色；selection/focus 分组与 overlay。`target` 接受任意 selector（可带 `structureId`）或 `{"kind":"selection"}` / `{"kind":"focus"}`；`detail` 为 `summary`（默认）/`residues`/`atoms`；`limit` 限制残基行数（默认 200），但不会截断总数与计数 |
 | `mol_interface` | 寻找两组链之间的界面残基（PDB 类 ATOM 文件） |
 | `mol_fetch` | 下载数据库条目（`entry_id`、`target_path`、`source_db?`）并保存到会话所属 server |
-| `mol_open` | 在侧边栏打开结构并设为活动场景 |
+| `mol_open` | 在侧边栏打开结构并设为活动场景；主结构 id 为 `structure` |
+| `mol_add_structure` | 在活动标签追加结构，指定稳定 `id`（默认 `structure-N`）、可选样式与聚焦 |
+| `mol_list_structures` | 列出活动标签里的结构（id、格式、原子/残基数） |
+| `mol_remove_structure` | 按 id 移除结构，不关闭标签 |
+| `mol_align` | 把 `target` 叠到 `reference`（默认 `tm-align`，或 `sequence`），可只用一个 auth chain；返回 RMSD/TM-score |
+| `mol_tmscore` | 比较两个选择的 TM-score/RMSD，不移动任何结构 |
 | `mol_style` | 修改表示/颜色；默认替换当前表示，传 `replace: false` 时叠加。`target` 只限定覆盖范围。`colorParams.value` 只对 `uniform` 生效（CSS 名称、十六进制或整数） |
 | `mol_select` | 选择/高亮（可同时聚焦）某个选区 |
 | `mol_focus` | 聚焦某个选区或整个结构 |
@@ -117,6 +132,54 @@ selector 与其他适配器使用相同的 JSON 形状，见 [README.md](README.
 
 常用值：红 `0xff0000`、蓝 `0x0000ff`、白 `0xffffff`、灰 `0x808080`、
 浅灰 `0xd3d3d3`。
+
+### 实时查询
+
+`mol_inspect` 是场景工具的读取对应物。它采样运行中的 Mol* 页面，而不是文件或
+适配器的命令日志，所以也能看到人在 Mol* 面板里改过的选择或表示。它不改变任何
+东西，也不会在重新打开标签时被回放。
+
+```json
+{ "detail": "summary" }
+{ "target": { "kind": "ligand" }, "detail": "residues", "limit": 50 }
+{ "target": { "kind": "selection" }, "detail": "atoms" }
+{ "target": { "kind": "focus" } }
+```
+
+- `summary`（默认）返回总数、按 component 的计数与样式；计数始终覆盖整个目标，
+  默认调用就能回答「有多少水 / Cys」，不受行数预算影响。
+- `residues` 增加残基行（auth/label 编号与绘制中心）；`atoms` 还列出每个原子的
+  坐标，以及格式提供时的 occupancy、B-factor 与 altloc。
+- `styles` 按绘制目标的每个表示报告类型、颜色主题（含参数）、尺寸主题、Mol* 是否
+  隐藏它，以及 `baseColor`（主题颜色）和 `visibleColor`（叠加后实际颜色）。
+  `overlays` 列出 selection marker 与 overpaint 层，`appearance` 给出目标整体的
+  base/visible 颜色。
+- `target: {"kind":"selection"}` 是选择管理器（人点击产生的选择，或
+  `mol_select mode: "select"`）；`focus` 是 Mol* 记录点击位置的 focus 条目。
+  `selection.groups` 用来区分多个 disjoint entry。`mol_focus` 只移动镜头，
+  不会写入 `focus`。
+- GUI 会先显示目标标签并等待场景命令队列排空再回答，所以查询不会描述一个只应用了
+  一半的样式。它与 `mol_capture` 一样要求 viewer 标签存在：只有网页端的会话没有
+  面板，调用会超时。
+- selector 不带 `structureId` 时检查所有已加载结构；多结构场景里加 `structureId`
+  可只检查其中一个。
+
+### 多结构、对齐与 TM-score
+
+`mol_add_structure` 向当前标签追加结构并返回 id。selector 用 `structureId` 区分
+不同结构里同名的链；省略时 select/focus/inspect 作用于所有结构，measure/label
+取第一个匹配。
+
+```json
+{ "path": "fixtures/4zqk.pdb", "id": "pd1", "type": "cartoon", "color": "uniform" }
+{ "reference": "structure", "target": "pd1", "method": "tm-align", "referenceChain": "B", "targetChain": "A" }
+{ "reference": { "kind": "chain", "chain": "B", "structureId": "structure" },
+  "target": { "kind": "chain", "chain": "A", "structureId": "pd1" } }
+```
+
+`mol_align` 是可回放的 `align` 命令：移动 target 并返回 RMSD/TM-score（`sequence`
+只有 RMSD）。`mol_tmscore` 只读，不移动结构。两者都使用 core 的 Mol* TM-align
+与 polymer trace 原子（CA/C4'/P）。
 
 ### 数据库来源
 
@@ -201,7 +264,7 @@ pnpm --filter @gcszhn/mol4agent-opencode build
   （加一个 `file` 引用），而不是把 PNG 附加到模型上下文。
 - **浏览器会话只有工具。** viewer 面板依赖桌面端的本地 GUI 插件宿主；`opencode
   serve` 网页端没有 plugin-GUI bridge，`mol_open` 只会记录场景，不会挂载 viewer，
-  `mol_capture` 会超时。Mol* 面板请使用桌面端。
+  `mol_capture` 与 `mol_inspect` 会超时。Mol* 面板请使用桌面端。
 - **内置文件树不能打开结构**：在文件树里点 `.pdb` 会打开文本编辑器。请用
   **Ctrl+P 文件检索**（即 `/open`）或选文件命令。注册 `"text"` kind 的
   `FileViewer` 会被宿主忽略（它只渲染 file view 自己不渲染的 kind）。
@@ -209,7 +272,18 @@ pnpm --filter @gcszhn/mol4agent-opencode build
   （`mol_open` 返回的路径）可指定某个已打开结构。场景按 session 分桶；面板跟随
   当前路由的 session（切换标签页时会自动刷新）。
 - `mol_capture` 需要目标 viewer 标签挂载：它会先激活该标签，若 15 秒内仍无法创建
-  viewer（例如窄屏时侧栏未打开）则失败。
+  viewer（例如窄屏时侧栏未打开）则失败。`mol_inspect` 同样会激活标签并等待命令
+  队列排空；若 20 秒内没有 viewer 回答则超时。
+- `mol_inspect` 只能描述 viewer 已打开的结构，报告的是 Mol* 已加载的状态；纯文件
+  事实请用 `mol_info`。粗粒化（sphere/gaussian）单元没有原子层级，不会列出；
+  格式不携带时也没有 `occupancy`/`B-factor`。需要自定义属性的颜色主题可能只返回
+  主题名而没有解析后的颜色。`visibleColor` 解析 bundle overpaint 与 selection
+  marker；script overpaint、transparency、emissive、substance 尚未解析。
+- `mol_align`/`mol_tmscore` 需要 polymer trace 原子（CA/C4'/P）。多 model/assembly
+  的 PDB 按 Mol* 默认加载（通常是第一个 biological assembly），只这些链可寻址；
+  需要其他 assembly 时请单独追加结构。
+- 多结构标签把所有结构加载到一个 Mol* 场景。被移除的结构仍保留在场景日志中，
+  以便新挂载的 viewer 回放 `remove-structure`；标签淘汰时才释放数据。
 - GUI 首次挂载时，面板只列出当前 session 已存储的标签；若活动结构的标签不在
   标签栏里，用 **Molecular viewer** 菜单项重新显示。
 - `mol_interface` 只解析 PDB 类 ATOM 记录；`mol_info` 尚不能从原始字节摘要 BCIF。
