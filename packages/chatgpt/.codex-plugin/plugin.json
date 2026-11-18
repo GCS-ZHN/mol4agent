@@ -24,7 +24,7 @@
   "interface": {
     "displayName": "mol4agent",
     "shortDescription": "Interactive 3D molecular structures",
-    "longDescription": "Open molecular structure files in Mol*'s official 3D viewer inside ChatGPT/Codex. The agent can change representations and colors, highlight residues or ligands, focus the camera, measure distances, and capture PNG figures while the viewer updates live.",
+    "longDescription": "Open molecular structure files in Mol*'s official 3D viewer inside ChatGPT/Codex. The agent can load several structures in one scene, align them with TM-align, score selections with TM-score, inspect live residues, coordinates, counts, styles, and visible colors, change representations and colors, highlight residues or ligands, focus the camera, measure distances, and capture PNG figures while the viewer updates live.",
     "developerName": "gcszhn",
     "category": "Science",
     "capabilities": [
