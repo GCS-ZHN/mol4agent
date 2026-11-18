@@ -121,41 +121,34 @@ export default Plugin.define({
     const validateTarget = (scene: SceneSnapshot, selector: StructureSelector): void => {
       const record = recordOf(scene)
       if (record === undefined) return
+      const active = activeStructures(scene)
+      const activeIds = new Set(active.map(structure => structure.id))
       if (selector.structureId !== undefined) {
-        const structure = record.structures.find(candidate => candidate.id === selector.structureId)
-        if (structure === undefined) {
+        if (!activeIds.has(selector.structureId)) {
           throw new Error(
-            `no structure with id "${selector.structureId}" in this scene; available: `
-            + record.structures.map(candidate => candidate.id).join(', '),
+            `no active structure with id "${selector.structureId}" in this scene; available: `
+            + active.map(candidate => candidate.id).join(', '),
           )
         }
-        validateSelectorAgainst(structure.summary, structure.bytes, structure.format, selector)
+        const structure = record.structures.find(candidate => candidate.id === selector.structureId)
+        if (structure !== undefined) {
+          validateSelectorAgainst(structure.summary, structure.bytes, structure.format, selector)
+        }
         return
       }
-      // An unscoped selector applies to every structure, so it is valid when it
-      // matches any one of them (e.g. chain B only exists in the second).
+      // An unscoped selector applies to every active structure, so it is valid
+      // when it matches any one of them (e.g. chain B only exists in the second).
       let firstError: unknown
-      for (const structure of record.structures) {
+      for (const source of record.structures) {
+        if (!activeIds.has(source.id)) continue
         try {
-          validateSelectorAgainst(structure.summary, structure.bytes, structure.format, selector)
+          validateSelectorAgainst(source.summary, source.bytes, source.format, selector)
           return
         } catch (reason) {
           firstError ??= reason
         }
       }
       if (firstError !== undefined) throw firstError
-    }
-
-    const requireStructure = (scene: SceneSnapshot, structureId: string) => {
-      const record = recordOf(scene)
-      const structure = record?.structures.find(candidate => candidate.id === structureId)
-      if (structure === undefined) {
-        throw new Error(
-          `no structure with id "${structureId}" in this scene; available: `
-          + (record?.structures.map(candidate => candidate.id).join(', ') ?? '(none)'),
-        )
-      }
-      return structure
     }
 
     // ---- RPC (GUI <-> server) ---------------------------------------------

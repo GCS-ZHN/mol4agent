@@ -460,4 +460,10 @@ test('mol_remove_structure retires a structure and rejects unknown ids', async (
   const listed = await list.execute({}, context)
   assert.doesNotMatch(listed.content, /- pd1:/u)
   await assert.rejects(remove.execute({ structureId: 'missing' }, context), /no active structure/u)
+  const style = harness.tools.get('mol_style')
+  assert.ok(style !== undefined)
+  await assert.rejects(
+    style.execute({ type: 'cartoon', target: { kind: 'all', structureId: 'pd1' } }, context),
+    /no active structure with id "pd1"/u,
+  )
 })
