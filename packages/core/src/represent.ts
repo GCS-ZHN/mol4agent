@@ -48,6 +48,7 @@ export function usesPolymerAndLigandPreset(style: StyleSpec): boolean {
 export async function applyRepresentation(
   plugin: PluginContext,
   command: RepresentCommand,
+  scopedStructures?: readonly StructureRef[],
 ): Promise<CommandResult> {
   const style = command.style
   if (style.type !== undefined && !(REPRESENTATION_TYPES as readonly string[]).includes(style.type)) {
@@ -69,7 +70,7 @@ export async function applyRepresentation(
   const colorParams = resolvedColor === undefined ? undefined : { value: resolvedColor }
   const colorSuffix = resolvedColor === undefined ? '' : ` ${formatColor(resolvedColor)}`
 
-  const structures = plugin.managers.structure.hierarchy.current.structures
+  const structures = scopedStructures ?? plugin.managers.structure.hierarchy.current.structures
   if (structures.length === 0) {
     return { ok: false, op: command.op, code: 'NO_STRUCTURE', message: 'no structure is loaded' }
   }

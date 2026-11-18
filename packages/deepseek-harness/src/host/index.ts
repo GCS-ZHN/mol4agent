@@ -9,9 +9,11 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { canonicalTabPath } from '../tab-path.ts'
+import { AlignHub } from './align.ts'
 import { CaptureHub } from './capture.ts'
-import { registerCaptureCommand, registerInspectCommand } from './commands.ts'
+import { registerAlignResultCommand, registerCaptureCommand, registerInspectCommand, registerTmScoreCommand } from './commands.ts'
 import { InspectHub } from './inspect.ts'
+import { TmScoreHub } from './tm-score.ts'
 import { MOL_PROMPT } from './prompt.ts'
 import { molProjectionDefinition } from './projection.ts'
 import { registerTools } from './tools.ts'
@@ -24,11 +26,17 @@ export const inject = ['tools', 'sessionProjections', 'systemPrompt', 'commands'
 /** Host activation entry. */
 export async function apply(ctx: Context): Promise<void> {
   const hub = new CaptureHub()
+  const alignHub = new AlignHub()
+  const tmScoreHub = new TmScoreHub()
   const inspectHub = new InspectHub()
   const projection = await ctx.sessionProjections.register(molProjectionDefinition())
 
   registerTools(ctx, {
     hub,
+    alignHub,
+    alignTimeoutMs: 15_000,
+    tmScoreHub,
+    tmScoreTimeoutMs: 15_000,
     inspectHub,
     sceneOf: (session, tab) => {
       const state = projection.stateOf(session)
@@ -43,11 +51,15 @@ export async function apply(ctx: Context): Promise<void> {
     inspectTimeoutMs: 20_000,
   })
   registerCaptureCommand(ctx, hub)
+  registerAlignResultCommand(ctx, alignHub)
+  registerTmScoreCommand(ctx, tmScoreHub)
   registerInspectCommand(ctx, inspectHub)
 
   ctx.systemPrompt.section({ name: 'mol4agent', order: 80, text: MOL_PROMPT })
   ctx.effect(() => () => {
     hub.dispose()
+    alignHub.dispose()
+    tmScoreHub.dispose()
     inspectHub.dispose()
   }, 'mol4agent: viewer request hubs')
 }

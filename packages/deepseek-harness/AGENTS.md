@@ -30,8 +30,9 @@ semantics.
   together; an accepted selector that fails in `compileSelector` is a bug.
 - Screenshot capture is a rendezvous: `mol_capture` blocks in `CaptureHub`, the
   page renders and calls the internal `/mol4agent_capture` command. The same
-  applies to inspection: `mol_inspect` blocks in `InspectHub` and the page
-  answers through `/mol4agent_inspect`. Do not replace either with a custom
+  applies to inspection and scoring: `mol_inspect` blocks in `InspectHub` and
+  the page answers through `/mol4agent_inspect`; `mol_tmscore` blocks in
+  `TmScoreHub` and answers through `/mol4agent_tmscore_result`. Do not replace either with a custom
   HTTP route, remote service, or file polling. Both hubs are the same
   `PendingRequests` keyed by session + call id; answer payloads that grow with
   data (inspection rows) are gzipped and base64-encoded into the command input,
@@ -55,6 +56,9 @@ semantics.
 - The body selects `tabs[path]` for its own tab; do not let one tab apply another
   tab's commands. Capture pending carries the target `path`; the bridge activates
   that tab and only its body delivers.
+- A tab scene may hold several `structures`; `mol_add_structure` appends one and
+  the body loads missing ids before applying commands. Removal is a JSON command
+  so replay stays faithful; do not reuse a removed id in that tab.
 - The header bridge opens a new or reopened tab; do not auto-open tabs that
   already existed when a session was restored.
 

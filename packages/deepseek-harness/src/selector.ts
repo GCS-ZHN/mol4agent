@@ -5,7 +5,7 @@
  *
  * @module @gcszhn/mol4agent-deepseekharness/selector
  */
-import type { StructureSelector } from '@gcszhn/mol4agent-core/protocol'
+import { isStructureId, type StructureSelector } from '@gcszhn/mol4agent-core/protocol'
 
 const KINDS = new Set([
   'all',
@@ -36,11 +36,15 @@ export function normalizeSelector(value: unknown): StructureSelector {
   if (typeof kind !== 'string' || !KINDS.has(kind)) {
     throw new Error(`selector "kind" must be one of: ${[...KINDS].join(', ')}`)
   }
+  const scope: { structureId?: string } = candidate.structureId === undefined
+    ? {}
+    : { structureId: requiredStructureId(candidate.structureId) }
   switch (kind) {
     case 'chain':
-      return { kind, chain: requiredString(candidate.chain, 'chain') }
+      return { ...scope, kind, chain: requiredString(candidate.chain, 'chain') }
     case 'residue':
       return {
+        ...scope,
         kind,
         ...(candidate.chain === undefined ? {} : { chain: requiredString(candidate.chain, 'chain') }),
         index: requiredNumber(candidate.index, 'index'),
@@ -48,6 +52,7 @@ export function normalizeSelector(value: unknown): StructureSelector {
       }
     case 'residues':
       return {
+        ...scope,
         kind,
         ...(candidate.chain === undefined ? {} : { chain: requiredString(candidate.chain, 'chain') }),
         start: requiredNumber(candidate.start, 'start'),
@@ -55,12 +60,12 @@ export function normalizeSelector(value: unknown): StructureSelector {
         ...(candidate.auth === undefined ? {} : { auth: candidate.auth === true }),
       }
     case 'comp':
-      return { kind, compId: requiredString(candidate.compId, 'compId') }
+      return { ...scope, kind, compId: requiredString(candidate.compId, 'compId') }
     case 'schema':
       if (typeof candidate.schema !== 'object' || candidate.schema === null) {
         throw new Error('"schema" selector needs a schema object')
       }
-      return { kind, schema: candidate.schema as Record<string, string | number> }
+      return { ...scope, kind, schema: candidate.schema as Record<string, string | number> }
     case 'all':
     case 'polymer':
     case 'protein':
@@ -68,9 +73,16 @@ export function normalizeSelector(value: unknown): StructureSelector {
     case 'ligand':
     case 'water':
     case 'ion':
-      return { kind }
+      return { ...scope, kind }
   }
   throw new Error(`unsupported selector kind "${kind}"`)
+}
+
+function requiredStructureId(value: unknown): string {
+  if (!isStructureId(value)) {
+    throw new Error('selector "structureId" must be 1-64 letters, digits, ".", "_" or "-", starting with a letter or digit')
+  }
+  return value
 }
 
 function requiredString(value: unknown, field: string): string {

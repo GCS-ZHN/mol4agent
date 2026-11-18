@@ -15,6 +15,8 @@ export interface CachedViewerMark {
   version: string | undefined
   sceneKey: string | undefined
   applied: number
+  /** Structures currently loaded in the parked viewer (primary first). */
+  structureIds?: readonly string[]
 }
 
 export interface CachedViewer {

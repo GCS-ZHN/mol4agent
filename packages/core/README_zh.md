@@ -25,7 +25,7 @@ core: createPluginUI -> Mol* state tree -> commands -> capture
 - 输入永远是 `StructureData { data: string | Uint8Array, format, binary?, label? }`。
 - `format` 显式给出；core 从不检查后缀或 MIME。
 - 不引用文件系统、网络、session 或任何 harness 包。
-- 命令是 JSON 可序列化的；**加载是方法，不是命令**，因为适配包持有的字节
+- 命令是 JSON 可序列化的；**加载/添加结构是方法，不是命令**，因为适配包持有的字节
   不一定可序列化。
 - `@gcszhn/mol4agent-core/parse` 是纯函数，Node 和浏览器都能用。
 - `@gcszhn/mol4agent-core/sources` 同样是纯函数：把条目 id 变成下载计划
@@ -76,6 +76,9 @@ const viewer = await createMolViewer({
 })
 
 await viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
+// 可选：把第二个结构加入同一场景并做结构叠合。
+await viewer.addStructure({ data: otherBytes, format: 'pdb', label: 'target.pdb' }, { id: 'target' })
+await viewer.execute({ op: 'align', reference: 'structure', target: 'target', method: 'tm-align' })
 await viewer.apply([
   { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } },
   { op: 'select', target: { kind: 'ligand' }, mode: 'highlight', focus: true },
@@ -100,9 +103,13 @@ viewer.dispose()
 
 | 方法 | 签名 | 含义 |
 |---|---|---|
-| `load` | `(data: StructureData, options?: { preset?: string }) => Promise<StructureSummary>` | 替换当前结构。文本 format 以字节传入时会做 UTF-8 解码；`binary` 会被尊重。`preset` 默认 `default`；内置值有 `default`、`auto`、`illustrative`、`atomic-detail`、`polymer-and-ligand`，也可以传适配包注册的自定义 preset 名。 |
+| `load` | `(data: StructureData, options?: { preset?: string; id?: string }) => Promise<StructureSummary>` | 替换整个场景，并清空旧结构、component 和测量。文本 format 以字节传入时会做 UTF-8 解码；`binary` 会被尊重。`preset` 默认 `default`；内置值有 `default`、`auto`、`illustrative`、`atomic-detail`、`polymer-and-ligand`，也可以传适配包注册的自定义 preset 名。`id` 默认 `structure`。 |
+| `addStructure` | `(data: StructureData, options?: { preset?: string; id?: string }) => Promise<LoadedStructure>` | 向当前场景追加结构，不清空已有结构。id 必须唯一；省略时为 `structure-2`、`structure-3`…… |
+| `removeStructure` | `(id: string) => Promise<void>` | 移除一个结构及其 component |
+| `listStructures` | `() => readonly LoadedStructure[]` | 按加载顺序列出场景中的结构 |
 | `summary` | `() => StructureSummary \| undefined` | 当前结构的摘要（若已加载） |
 | `inspect` | `(request?: InspectRequest) => InspectResult` | 读取已加载结构和 Mol* 当前绘制方式；只读，见[查询](#查询) |
+| `tmScore` | `(request: TmScoreRequest) => TmScoreResult` | 只读计算两个选择的 TM-align RMSD/TM-score，不移动任何结构 |
 | `execute` | `(command: MolCommand) => Promise<CommandResult>` | 执行一条命令；失败返回 `{ ok: false, code, message }` |
 | `apply` | `(commands: readonly MolCommand[]) => Promise<readonly CommandResult[]>` | 按顺序执行多条命令 |
 | `capture` | `(options?: CaptureOptions) => Promise<Uint8Array>` | 把当前视图渲染成 PNG |
@@ -117,10 +124,10 @@ viewer.dispose()
 {
   canvas: { width, height, clientWidth, clientHeight },
   host: { clientWidth, clientHeight },
-  structures: number,
+  structures: number,       // Mol* 结构层级条目数
   components: number,
   representations: number,
-  atoms: number,
+  atoms: number,            // 所有已加载结构 summary 的原子数之和
 }
 ```
 
@@ -158,7 +165,7 @@ interface StructureData {
 
 | `op` | 字段 | 效果 |
 |---|---|---|
-| `represent` | `style: StyleSpec`，可选 `target`，可选 `replace` | `replace` 默认 `true`：先删除当前表示，再绘制新表示。`target` 只限定新表示覆盖哪部分；`replace: true` 时整个场景仍会先被清空。`replace: false` 保留所有已有表示并叠加新表示，可作用于整个结构，也可作用于 `target`（新建 Mol* component）。`type` 为 `cartoon` 或省略时，core 用 Mol* 的 `polymer-and-ligand` preset，保证 HETATM 配体仍然可见。`quality` 协议里有字段，但目前尚未生效。 |
+| `represent` | `style: StyleSpec`，可选 `target`，可选 `replace` | `replace` 默认 `true`：先删除当前表示，再绘制新表示。`target` 只限定新表示覆盖哪部分；`replace: true` 时整个场景仍会先被清空；若 `target.structureId` 已指定，则只清空该结构。`replace: false` 保留所有已有表示并叠加新表示，可作用于整个结构，也可作用于 `target`（新建 Mol* component）。`type` 为 `cartoon` 或省略时，core 用 Mol* 的 `polymer-and-ligand` preset，保证 HETATM 配体仍然可见。`quality` 协议里有字段，但目前尚未生效。 |
 | `select` | `target`，`mode?: 'select' \| 'highlight'`，`focus?` | 应用 Mol* 选择交互；`focus` 会移动镜头 |
 | `clear-selection` | `mode?` | 清除 select/highlight 交互 |
 | `focus` | 可选 `target` | 聚焦选择或整个结构 |
@@ -166,6 +173,9 @@ interface StructureData {
 | `background` | `color: string \| number \| 'theme'` | 设置画布背景 |
 | `measure` | `kind: 'distance' \| 'angle' \| 'dihedral'`，`targets` 2/3/4 个 | 添加测量 |
 | `label` | `target`，可选 `text` | 添加 3D 标签 |
+| `align` | `reference`、`target`，可选 `method`、`referenceChain`、`targetChain` | 把 target 叠合到 reference；`method` 为 `tm-align`（默认）或 `sequence` |
+| `remove-structure` | `structureId` | 从场景移除一个结构 |
+| `visibility` | `structureId`、`visible` | 显示/隐藏一个结构，但不移除 |
 
 示例：
 
@@ -182,6 +192,9 @@ interface StructureData {
   { kind: 'residue', chain: 'A', index: 87 },
 ] }
 { op: 'label', target: { kind: 'ligand' }, text: 'ATP' }
+{ op: 'align', reference: 'structure', target: 'target', method: 'tm-align', referenceChain: 'A', targetChain: 'A' }
+{ op: 'visibility', structureId: 'target', visible: false }
+{ op: 'remove-structure', structureId: 'target' }
 ```
 
 ### `StyleSpec`
@@ -231,7 +244,8 @@ type CommandResult =
 
 错误码：`INVALID_COMMAND`、`UNSUPPORTED_FORMAT`、`UNSUPPORTED_REPRESENTATION`、
 `REPRESENT_FAILED`、`NO_STRUCTURE`、`LOAD_FAILED`、`CAPTURE_FAILED`、
-`SUMMARY_UNSUPPORTED`、`UNSUPPORTED_SOURCE`、`INVALID_ENTRY_ID`、`DISPOSED`。
+`SUMMARY_UNSUPPORTED`、`UNSUPPORTED_SOURCE`、`INVALID_ENTRY_ID`、`DISPOSED`、
+`UNKNOWN_STRUCTURE`、`DUPLICATE_STRUCTURE_ID`、`ALIGN_FAILED`、`TM_SCORE_FAILED`。
 
 ## 选择器
 
@@ -253,6 +267,10 @@ query 或 element schema。
 | `{ kind: 'comp', compId }` | 指定 component id 的所有残基 |
 | `{ kind: 'schema', schema }` | 底层 `StructureElement.Schema` 子集 |
 
+每个变体都接受可选的 `structureId`，用于在多结构场景中指定某一个结构。省略时：
+`select`/`focus` 作用于所有已加载结构，`measure`/`label` 取第一个匹配的结构，
+带 `target` 的 `represent` 逐个结构应用。这样可以区分两个都含链 `A` 的结构。
+
 `schema` 字段：`auth_asym_id`、`label_asym_id`、`auth_seq_id`、`label_seq_id`、
 `label_comp_id`、`auth_comp_id`、`beg_auth_seq_id`、`end_auth_seq_id`、
 `beg_label_seq_id`、`end_label_seq_id`、`label_atom_id`、`auth_atom_id`、
@@ -270,7 +288,8 @@ const schema = selectorSchema({ kind: 'residues', chain: 'A', start: 10, end: 25
 `viewer.inspect(request)` 读取已加载结构以及 Mol* 当前的绘制方式。它是
 `execute` 的读侧对应物：不改变任何状态，而且不像回放的命令日志那样只反映
 agent 自己的操作，它采样的是**实时**状态，因此人通过点击或 Mol* 面板做出的
-选择和样式也会被读到。
+选择和样式也会被读到。多结构场景中，带 `structureId` 的选择器只检查该结构；
+如果结构已有叠合变换，坐标取变换后的当前显示位置。
 
 ```ts
 const summary = viewer.inspect()
@@ -485,6 +504,56 @@ sequenceDiagram
   聚焦和 PNG 截图。
 - DSH 适配包把 core 打进单个 client bundle；见
   [`packages/deepseek-harness`](../deepseek-harness)。
+
+## TM-score 与 RMSD
+
+`tmScore()` 比较两个选择但不改变场景，适合给从未叠合过的链/区域打分，或在
+叠合后做只读复核。
+
+```ts
+const score = viewer.tmScore({
+  reference: { kind: 'chain', chain: 'B', structureId: 'reference' },
+  target: { kind: 'chain', chain: 'A', structureId: 'target' },
+})
+// { method: 'tm-align', rmsd, tmScoreA, tmScoreB, alignedLength,
+//   referenceAtoms, targetAtoms, reference, target }
+```
+
+两个选择都会归约为聚合物 trace（CA/C4'/P）。`rmsd` 是 TM-align 在对齐后的
+trace 上做最优叠合后的 RMSD，不是当前相机坐标系下的 RMSD。计算复用 Mol* 的
+structure-level `tmAlign`（`mol-model/structure/structure/util/tm-align`），
+不另写算法，也不会对 viewer 施加变换。
+
+## 多结构与结构叠合
+
+`load()` 打开全新场景；`addStructure()` 把另一个结构追加到同一个 Mol* 场景。
+每个结构保留自己的 id、component、表示、可见性和测量。
+
+```ts
+await viewer.load({ data: referenceBytes, format: 'pdb', label: '7czd.pdb' }, { id: 'reference' })
+await viewer.addStructure({ data: targetBytes, format: 'pdb', label: '4zqk.pdb' }, { id: 'target' })
+await viewer.execute({
+  op: 'represent',
+  style: { type: 'cartoon', color: 'uniform', colorParams: { value: 0xef4444 } },
+  target: { kind: 'all', structureId: 'target' },
+})
+const aligned = await viewer.execute({
+  op: 'align',
+  reference: 'reference',
+  target: 'target',
+  method: 'tm-align',
+  referenceChain: 'B',
+  targetChain: 'A',
+})
+// aligned.data: { method, rmsd, alignedLength, tmScoreA, tmScoreB }
+```
+
+两个方法都复用 Mol* 自带的叠合工具
+（`mol-model/structure/structure/util/{superposition,tm-align}`）和
+`TransformStructureConformation` 装饰器，没有另写叠合或渲染引擎。叠合使用
+聚合物 trace（CA/C4'/P）移动 target，reference 保持不动，并把镜头框到叠合后的
+一对结构上；如果 reference 本身
+已经被变换，则把其当前坐标系合入 target 的变换。
 
 总体架构见 [`docs/architecture_zh.md`](../../docs/architecture_zh.md)；具体实现见本包
 README/AGENTS，DSH agent 接口见

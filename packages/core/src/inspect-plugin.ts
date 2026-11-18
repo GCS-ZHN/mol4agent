@@ -37,6 +37,8 @@ import { describeSelector, selectorExpression } from './select.ts'
 interface ResolvedTarget {
   readonly label: string
   readonly loci: readonly StructureElement.Loci[]
+  /** Structures that contribute to this target, for style matching. */
+  readonly structures: readonly Structure[]
 }
 
 /** Structure identity of one residue, independent of which representation draws it. */
@@ -75,29 +77,40 @@ function atomKeysOf(lociList: readonly StructureElement.Loci[]): Set<string> {
 function loadedStructures(plugin: PluginContext): Structure[] {
   const structures: Structure[] = []
   for (const ref of plugin.managers.structure.hierarchy.current.structures) {
-    const structure = ref.cell.obj?.data
+    // Prefer the decorated structure so coordinates match what the page shows
+    // after an alignment transform; it is the same object when untransformed.
+    const structure = ref.transform?.cell.obj?.data ?? ref.cell.obj?.data
     if (structure !== undefined) structures.push(structure)
   }
   return structures
 }
 
-function targetLocations(plugin: PluginContext, target: InspectTarget): ResolvedTarget {
-  const structures = loadedStructures(plugin)
+type StructuresFor = (structureId: string) => Structure[]
+
+function targetLocations(
+  plugin: PluginContext,
+  target: InspectTarget,
+  structuresFor?: StructuresFor,
+): ResolvedTarget {
+  const scoped = target.kind !== 'selection' && target.kind !== 'focus' && target.structureId !== undefined
+  const structures = scoped && structuresFor !== undefined
+    ? structuresFor(target.structureId!)
+    : loadedStructures(plugin)
   if (structures.length === 0) throw new Mol4AgentError('NO_STRUCTURE', 'no structure is loaded')
   if (target.kind === 'selection') {
     const loci: StructureElement.Loci[] = []
     for (const entry of plugin.managers.structure.selection.entries.values()) {
       if (!StructureElement.Loci.isEmpty(entry.selection)) loci.push(entry.selection)
     }
-    return { label: 'selection', loci }
+    return { label: 'selection', loci, structures }
   }
   if (target.kind === 'focus') {
     const current = plugin.managers.structure.focus.current
     const empty = current === undefined || StructureElement.Loci.isEmpty(current.loci)
-    return { label: 'focus', loci: empty ? [] : [current.loci] }
+    return { label: 'focus', loci: empty ? [] : [current.loci], structures }
   }
   if (target.kind === 'all') {
-    return { label: 'whole structure', loci: structures.map(structure => StructureElement.Loci.all(structure)) }
+    return { label: 'whole structure', loci: structures.map(structure => StructureElement.Loci.all(structure)), structures }
   }
   const expression = selectorExpression(target)
   const loci: StructureElement.Loci[] = []
@@ -105,7 +118,12 @@ function targetLocations(plugin: PluginContext, target: InspectTarget): Resolved
     const selected = StructureElement.Loci.fromExpression(structure, expression)
     if (!StructureElement.Loci.isEmpty(selected)) loci.push(selected)
   }
-  return { label: describeSelector(target), loci }
+  const label = describeSelector(target)
+  return {
+    label: target.structureId === undefined ? label : `${label} [${target.structureId}]`,
+    loci,
+    structures,
+  }
 }
 
 /** Residue and atom totals of a set of locations, walked once. */
@@ -295,11 +313,14 @@ function selectionOverlayFor(
 function collectStyles(
   plugin: PluginContext,
   targetKeys: ReadonlySet<string>,
+  targetStructures: readonly Structure[],
   selectionKeys: ReadonlySet<string> | undefined,
 ): InspectStyle[] {
   const styles: InspectStyle[] = []
   const marker = canvasMarker(plugin)
   for (const structureRef of plugin.managers.structure.hierarchy.current.structures) {
+    const structure = structureRef.transform?.cell.obj?.data ?? structureRef.cell.obj?.data
+    if (structure === undefined || !targetStructures.includes(structure)) continue
     for (const component of structureRef.components) {
       const structure = component.cell.obj?.data
       if (structure === undefined) continue
@@ -376,8 +397,12 @@ function appearanceOf(styles: readonly InspectStyle[]): InspectAppearance {
  * Throws {@link Mol4AgentError} with `NO_STRUCTURE` when nothing is loaded; an
  * empty selection or focus is a valid empty result instead of an error.
  */
-export function inspectViewer(plugin: PluginContext, request: InspectRequest = {}): InspectResult {
-  const target = targetLocations(plugin, request.target ?? { kind: 'all' })
+export function inspectViewer(
+  plugin: PluginContext,
+  request: InspectRequest = {},
+  structuresFor?: StructuresFor,
+): InspectResult {
+  const target = targetLocations(plugin, request.target ?? { kind: 'all' }, structuresFor)
   const detail = request.detail ?? 'summary'
   // Resolving the target is what makes the totals describe the requested
   // scope; the style probe additionally needs residue identity.
@@ -387,7 +412,7 @@ export function inspectViewer(plugin: PluginContext, request: InspectRequest = {
   const selection = summarize(selectionLocis, true)
   const focus = summarize([plugin.managers.structure.focus.current?.loci])
   const selectionKeys = selection === undefined ? undefined : atomKeysOf(selectionLocis)
-  const styles = collectStyles(plugin, keys, selectionKeys)
+  const styles = collectStyles(plugin, keys, target.structures, selectionKeys)
   return buildInspectResult({
     target: target.label,
     detail,
