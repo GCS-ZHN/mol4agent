@@ -1,4 +1,5 @@
 /** Selector compilation: protocol selectors to Mol* schemas/queries. @module @gcszhn/mol4agent-core/select */
+import { StructureElement } from 'molstar/lib/mol-model/structure'
 import { StructureSelectionQueries } from 'molstar/lib/mol-plugin-state/helpers/structure-selection-query'
 import type { Expression } from 'molstar/lib/mol-script/language/expression'
 import type { ElementSchema, StructureSelector } from './protocol.ts'
@@ -64,6 +65,32 @@ export function compileSelector(selector: StructureSelector): CompiledSelector {
 export function selectorSchema(selector: StructureSelector): ElementSchema | undefined {
   const compiled = compileSelector(selector)
   return 'elements' in compiled ? compiled.elements : undefined
+}
+
+/** The Mol* expression equivalent of a selector, for direct Loci lookups. */
+export function selectorExpression(selector: StructureSelector): Expression {
+  const compiled = compileSelector(selector)
+  return 'elements' in compiled
+    ? StructureElement.Schema.toExpression(compiled.elements)
+    : compiled.expression(undefined)
+}
+
+/** Short human label for a selector, used in tool and inspection output. */
+export function describeSelector(selector: StructureSelector): string {
+  switch (selector.kind) {
+    case 'all': return 'whole structure'
+    case 'polymer': return 'polymer'
+    case 'protein': return 'protein'
+    case 'nucleic': return 'nucleic acid'
+    case 'ligand': return 'ligand'
+    case 'water': return 'water'
+    case 'ion': return 'ion'
+    case 'chain': return `chain ${selector.chain}`
+    case 'residue': return `residue ${selector.chain ?? ''}${selector.index}`
+    case 'residues': return `residues ${selector.chain ?? ''}${selector.start}-${selector.end}`
+    case 'comp': return `comp ${selector.compId}`
+    case 'schema': return 'custom schema'
+  }
 }
 
 function query(selection: { readonly expression: Expression }): CompiledSelector {

@@ -19,6 +19,13 @@ keep its protocol consistent for every adapter.
   replayable. Adding a selector/command variant is a protocol change: update
   `protocol.ts`, `select.ts`, this package's README, and the DSH validator/
   projection in the same change.
+- Inspection is a **read method**, `viewer.inspect()` (`inspect*.ts`), never a
+  command op: it must stay out of `MolCommand` so the session log stays a replay
+  of changes. It reads live Mol* state on purpose, including human-made
+  selections and styles, so never re-derive it from the command log. Keep the
+  Mol*-free aggregation (`inspect.ts`) separate from the extractor
+  (`inspect-mol.ts`) and plugin wiring (`inspect-plugin.ts`) so the pure part
+  stays testable under Node.
 
 ## Viewer lifecycle
 

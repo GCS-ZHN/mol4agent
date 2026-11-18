@@ -45,9 +45,14 @@ APIs, but **molecular behavior must be consistent**:
 1. **Structure preview is first-class.** Opening a supported molecular file in a
    harness previewer enters the official Mol* 3D UI by default; the host's
    existing "Open with" affordance still offers text/code.
-2. **The agent operates the same page the human sees.** Opening, styling,
-   selecting/highlighting, focusing, measuring, and capturing go through the
-   adapter's agent tools; the human watches the page change. Page-level code
+2. **The agent operates and reads the same page the human sees.** Opening,
+   styling, selecting/highlighting, focusing, measuring, and capturing go
+   through the adapter's agent tools; the human watches the page change.
+   Inspection goes the other way: the agent reads the loaded structure and the
+   way it is drawn (residue/atom identity, coordinates, per-component counts,
+   representations, colour themes and resolved colours) from the live viewer, so
+   the agent never has to re-parse a file to answer what the page already
+   knows, and human-made selections/styles are visible to it. Page-level code
    injection is not an agent interface.
 3. **Agent-initiated open.** Naming a structure makes the preview appear/open
    without another human click.
