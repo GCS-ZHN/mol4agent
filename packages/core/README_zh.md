@@ -58,8 +58,8 @@ Package `exports` 指向 `lib`，npm `files` 只包含 `lib` 和 README；`src/`
 
 | Import | 导出 |
 |---|---|
-| `@gcszhn/mol4agent-core` | `createMolViewer`、协议类型、format 辅助函数、source 辅助函数、`summarizeStructure`、`compileSelector`、`selectorSchema` |
-| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`、`StructureData`、`MolCommand`、`StructureSelector`、`StructureSummary`、`Mol4AgentError`、`parseColor` / `formatColor` / `COLOR_SYNTAX`，以及 `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` 守卫 |
+| `@gcszhn/mol4agent-core` | `createMolViewer`、协议类型、format 辅助函数、source 辅助函数、`summarizeStructure`、`compileSelector`、`selectorSchema`、查询辅助函数（`buildInspectResult`、`kindOfEntity`、`countCompIds`） |
+| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`、`StructureData`、`MolCommand`、`StructureSelector`、`StructureSummary`、`InspectRequest` / `InspectResult` / `InspectTarget`、`Mol4AgentError`、`parseColor` / `formatColor` / `COLOR_SYNTAX`，以及 `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` / `isInspectDetail` 守卫 |
 | `@gcszhn/mol4agent-core/parse` | `summarizeStructure`、`summarizePdbLike`、`summarizeCif`、`summarizeSdf`、`summarizeMol2`、`summarizeXyz`、`summarizeGro` |
 | `@gcszhn/mol4agent-core/sources` | `SOURCE_DATABASES`、`SOURCE_DATABASE_INFO`、`resolveSource`、`normalizeSourceDb`、`readSourceIndexField`，以及 `isSourceDatabase` 守卫 |
 | `@gcszhn/mol4agent-core/react` | `Mol4AgentViewer`、`Mol4AgentViewerHandle`、`Mol4AgentScene` |
@@ -102,6 +102,7 @@ viewer.dispose()
 |---|---|---|
 | `load` | `(data: StructureData, options?: { preset?: string }) => Promise<StructureSummary>` | 替换当前结构。文本 format 以字节传入时会做 UTF-8 解码；`binary` 会被尊重。`preset` 默认 `default`；内置值有 `default`、`auto`、`illustrative`、`atomic-detail`、`polymer-and-ligand`，也可以传适配包注册的自定义 preset 名。 |
 | `summary` | `() => StructureSummary \| undefined` | 当前结构的摘要（若已加载） |
+| `inspect` | `(request?: InspectRequest) => InspectResult` | 读取已加载结构和 Mol* 当前绘制方式；只读，见[查询](#查询) |
 | `execute` | `(command: MolCommand) => Promise<CommandResult>` | 执行一条命令；失败返回 `{ ok: false, code, message }` |
 | `apply` | `(commands: readonly MolCommand[]) => Promise<readonly CommandResult[]>` | 按顺序执行多条命令 |
 | `capture` | `(options?: CaptureOptions) => Promise<Uint8Array>` | 把当前视图渲染成 PNG |
@@ -263,6 +264,52 @@ import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'
 const compiled = compileSelector({ kind: 'ligand' })
 const schema = selectorSchema({ kind: 'residues', chain: 'A', start: 10, end: 25 })
 ```
+
+## 查询
+
+`viewer.inspect(request)` 读取已加载结构以及 Mol* 当前的绘制方式。它是
+`execute` 的读侧对应物：不改变任何状态，而且不像回放的命令日志那样只反映
+agent 自己的操作，它采样的是**实时**状态，因此人通过点击或 Mol* 面板做出的
+选择和样式也会被读到。
+
+```ts
+const summary = viewer.inspect()
+// summary.counts → [{ compId: 'HOH', kind: 'water', residues: 103, atoms: 103 }, ...]
+
+const residue = viewer.inspect({
+  target: { kind: 'residue', chain: 'E', index: 355 },
+  detail: 'atoms',
+})
+// residue.residueRows[0].atomRows → [{ name: 'PG', element: 'P', x: 16.223, ... }]
+// residue.styles → [{ component: 'Structure', type: 'cartoon', color: 'chain-id', colorValue: '#a0d0ff' }]
+
+const selected = viewer.inspect({ target: { kind: 'selection' }, detail: 'residues' })
+```
+
+| 请求字段 | 含义 |
+|---|---|
+| `target?` | 任意[选择器](#选择器)，或 `{ kind: 'selection' }` / `{ kind: 'focus' }`（当前选择管理器 / 最后一次点击的位置）。缺省为整个结构。 |
+| `detail?` | `summary`（默认）：总数、按 component 的计数与样式，不含行；`residues`：再加残基行；`atoms`：残基行 + 每个原子的坐标。 |
+| `limit?` | 残基行上限，默认 `DEFAULT_INSPECT_LIMIT`（200）。总数和 counts 始终覆盖整个 target，`truncated` 表示行是否被截断。 |
+
+`InspectResult` 字段：`target`、`detail`、`atoms`、`residues`、`chains`、
+`models`、`counts`、`residueRows?`、`styles`、`selection?`、`focus?`、
+`truncated`。`counts` 总是存在且总是完整：默认调用即可回答「多少个水 /
+Cys / 配体」。
+
+行里带结构身份（`chain`、`seqId` 为 author 编号、`labelSeqId`、`compId`、
+`kind`）和绘制中心坐标（`x`、`y`、`z`）。原子行额外有 `name`、`element`、
+坐标，以及格式提供时的 `occupancy` / `bFactor` / `altId`。坐标取自 unit
+conformation，也就是 Mol* 实际绘制的位置。样式给出表示类型、配色主题、尺寸主题、配色主题参数，以及在主题允许时
+Mol* 为该元素解析出的具体颜色（`colorValue`）；`hidden` 表示该表示当前未被绘制。
+`colorValue` 只在 target 的
+一个命中元素上采样，所以 `chain-id` 下多链 target 报的是第一条链的颜色；
+要某个残基的准确颜色就直接查询该残基。按选择叠加的 overpaint / transparency /
+emissive / substance 是独立的 Mol* transform，暂不报告。
+
+没有加载结构时 `inspect` 抛 `Mol4AgentError`（`NO_STRUCTURE`）；空选择或空
+focus 是合法的空结果。低分辨率的粗粒化（sphere/gaussian）unit 没有原子层级，
+不会列出。
 
 ## 摘要
 

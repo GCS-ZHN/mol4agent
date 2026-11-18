@@ -60,8 +60,8 @@ Package `exports` point at `lib`, and the npm `files` allowlist includes only
 
 | Import | Exports |
 |---|---|
-| `@gcszhn/mol4agent-core` | `createMolViewer`, protocol types, format helpers, source helpers, `summarizeStructure`, `compileSelector`, `selectorSchema` |
-| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`, `StructureData`, `MolCommand`, `StructureSelector`, `StructureSummary`, `Mol4AgentError`, `parseColor` / `formatColor` / `COLOR_SYNTAX`, and the `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` guards |
+| `@gcszhn/mol4agent-core` | `createMolViewer`, protocol types, format helpers, source helpers, `summarizeStructure`, `compileSelector`, `selectorSchema`, inspection helpers (`buildInspectResult`, `kindOfEntity`, `countCompIds`) |
+| `@gcszhn/mol4agent-core/protocol` | `MOL_FORMATS`, `StructureData`, `MolCommand`, `StructureSelector`, `StructureSummary`, `InspectRequest` / `InspectResult` / `InspectTarget`, `Mol4AgentError`, `parseColor` / `formatColor` / `COLOR_SYNTAX`, and the `isMolFormat` / `isStructureData` / `isMolCommandOp` / `isPresetName` / `isInspectDetail` guards |
 | `@gcszhn/mol4agent-core/parse` | `summarizeStructure`, `summarizePdbLike`, `summarizeCif`, `summarizeSdf`, `summarizeMol2`, `summarizeXyz`, `summarizeGro` |
 | `@gcszhn/mol4agent-core/sources` | `SOURCE_DATABASES`, `SOURCE_DATABASE_INFO`, `resolveSource`, `normalizeSourceDb`, `readSourceIndexField`, and the `isSourceDatabase` guard |
 | `@gcszhn/mol4agent-core/react` | `Mol4AgentViewer`, `Mol4AgentViewerHandle`, `Mol4AgentScene` |
@@ -104,6 +104,7 @@ stylesheet once per viewer and removes it on `dispose()`.
 |---|---|---|
 | `load` | `(data: StructureData, options?: { preset?: string }) => Promise<StructureSummary>` | Replace the displayed structure. Text formats passed as bytes are UTF-8 decoded; `binary` is respected. `preset` defaults to `default`; built-ins are `default`, `auto`, `illustrative`, `atomic-detail`, `polymer-and-ligand`, or an adapter-registered preset name. |
 | `summary` | `() => StructureSummary \| undefined` | Summary of the current structure, when loaded |
+| `inspect` | `(request?: InspectRequest) => InspectResult` | Read the loaded structure and the way Mol* currently draws it; read-only, see [Inspection](#inspection) |
 | `execute` | `(command: MolCommand) => Promise<CommandResult>` | Run one command; failures are returned as `{ ok: false, code, message }` |
 | `apply` | `(commands: readonly MolCommand[]) => Promise<readonly CommandResult[]>` | Run commands in order |
 | `capture` | `(options?: CaptureOptions) => Promise<Uint8Array>` | Render the viewport to PNG |
@@ -268,6 +269,55 @@ import { compileSelector, selectorSchema } from '@gcszhn/mol4agent-core'
 const compiled = compileSelector({ kind: 'ligand' })
 const schema = selectorSchema({ kind: 'residues', chain: 'A', start: 10, end: 25 })
 ```
+
+## Inspection
+
+`viewer.inspect(request)` reads the loaded structure and the way Mol* currently
+draws it. It is the read counterpart of `execute`: nothing changes, and unlike a
+replayed command log it samples **live** state, so a selection or style a human
+made by clicking or through the Mol* panel is included.
+
+```ts
+const summary = viewer.inspect()
+// summary.counts → [{ compId: 'HOH', kind: 'water', residues: 103, atoms: 103 }, ...]
+
+const residue = viewer.inspect({
+  target: { kind: 'residue', chain: 'E', index: 355 },
+  detail: 'atoms',
+})
+// residue.residueRows[0].atomRows → [{ name: 'PG', element: 'P', x: 16.223, ... }]
+// residue.styles → [{ component: 'Structure', type: 'cartoon', color: 'chain-id', colorValue: '#a0d0ff' }]
+
+const selected = viewer.inspect({ target: { kind: 'selection' }, detail: 'residues' })
+```
+
+| Request field | Meaning |
+|---|---|
+| `target?` | Any [selector](#selectors), or `{ kind: 'selection' }` / `{ kind: 'focus' }` for the live selection manager / the last clicked location. Defaults to the whole structure. |
+| `detail?` | `summary` (default): totals, per-component counts, and styles, no rows. `residues`: additionally residue rows. `atoms`: residue rows with per-atom coordinates. |
+| `limit?` | Residue-row budget, default `DEFAULT_INSPECT_LIMIT` (200). Totals and counts always cover the whole target; `truncated` says whether rows were dropped. |
+
+`InspectResult` fields: `target`, `detail`, `atoms`, `residues`, `chains`,
+`models`, `counts`, `residueRows?`, `styles`, `selection?`, `focus?`,
+`truncated`. `counts` is always present and always complete: it answers
+"how many waters / Cys / ligands" in the default call.
+
+Rows carry structure identity (`chain`, `seqId` = auth numbering, `labelSeqId`,
+`compId`, `kind`) and the drawn centre (`x`, `y`, `z`). Atom rows add `name`,
+`element`, coordinates, and `occupancy` / `bFactor` / `altId` when the format
+provides them. Coordinates come from the unit conformation, so they match where
+Mol* draws the atom. Styles report the representation type, colour theme, size theme, colour-theme
+parameters, and the colour Mol* resolves for the inspected element when the
+theme allows it (`colorValue`), plus `hidden` when Mol* is not drawing that
+representation. `colorValue` is sampled at one matched element,
+so under `chain-id` a multi-chain target reports the first chain's colour; query
+the residue itself when its exact colour matters. Per-selection overpaint,
+transparency, emissive, and substance layers are separate Mol* transforms and
+are not reported.
+
+`inspect` throws `Mol4AgentError` with `NO_STRUCTURE` when nothing is loaded. An
+empty selection or focus is a valid empty result. Low-resolution coarse
+(sphere/gaussian) units have no atom hierarchy and are not listed.
 
 ## Summaries
 

@@ -121,6 +121,139 @@ export type StructureSelector =
   | { readonly kind: 'schema'; readonly schema: ElementSchema }
 
 /**
+ * How much detail one inspection returns.
+ *
+ * `summary` reports totals, per-component counts, and styles but no rows;
+ * `residues` adds residue rows, and `atoms` adds per-atom rows inside them.
+ */
+export const INSPECT_DETAILS = ['summary', 'residues', 'atoms'] as const
+
+export type InspectDetail = (typeof INSPECT_DETAILS)[number]
+
+/** Row budget for one inspection result; counts always cover the full target. */
+export const DEFAULT_INSPECT_LIMIT = 200
+
+/**
+ * What an inspection describes.
+ *
+ * Selectors name structure content; `selection` and `focus` name the viewer's
+ * live state, which only Mol* knows: `selection` is the selection manager
+ * (what a human selected by clicking, or what `mol_select` set) and `focus` is
+ * the structure focus entry the Mol* UI keeps for the last clicked location.
+ */
+export type InspectTarget =
+  | StructureSelector
+  | { readonly kind: 'selection' }
+  | { readonly kind: 'focus' }
+
+/**
+ * One read-only query about the loaded structure and the way Mol* draws it.
+ *
+ * Unlike {@link MolCommand} this changes nothing and is never replayed: it
+ * samples the viewer as it is right now, so answers include human-driven
+ * changes (clicked selection, panel styles) that never reached the session log.
+ */
+export interface InspectRequest {
+  /** Defaults to the whole structure. */
+  readonly target?: InspectTarget
+  /** Defaults to `summary`. */
+  readonly detail?: InspectDetail
+  /** Maximum residue rows to return. Defaults to {@link DEFAULT_INSPECT_LIMIT}. */
+  readonly limit?: number
+}
+
+/** Coarse classification shared with {@link ChainSummary}. */
+export type InspectKind = 'polymer' | 'ligand' | 'water' | 'ion' | 'other'
+
+export interface InspectVector {
+  readonly x: number
+  readonly y: number
+  readonly z: number
+}
+
+/** One atom as Mol* currently places it. */
+export interface InspectAtom extends InspectVector {
+  readonly name: string
+  readonly element: string
+  readonly occupancy?: number
+  readonly bFactor?: number
+  readonly altId?: string
+}
+
+/** One residue as Mol* currently models it, with its drawn centre. */
+export interface InspectResidue extends InspectVector {
+  readonly chain: string
+  readonly seqId: number
+  readonly labelSeqId: number
+  readonly compId: string
+  readonly kind: InspectKind
+  readonly atoms: number
+  /** Present when the request asked for `atoms` detail. */
+  readonly atomRows?: readonly InspectAtom[]
+}
+
+/** How one representation currently draws the inspected target. */
+export interface InspectStyle {
+  /** Mol* component label the representation belongs to. */
+  readonly component: string
+  /** Representation type, e.g. `cartoon` or `ball-and-stick`. */
+  readonly type: string
+  /** Colour theme name, e.g. `chain-id` or `uniform`. */
+  readonly color: string
+  /** Size theme name, e.g. `physical` or `uniform`. */
+  readonly size: string
+  readonly colorParams?: Readonly<Record<string, string | number | boolean>>
+  /** True when Mol* is not drawing this representation (hidden component or representation). */
+  readonly hidden?: boolean
+  /**
+   * Colour Mol* resolves for the inspected element, when the theme allows it.
+   *
+   * It is sampled at one matched element of the target: for a multi-chain
+   * target under `chain-id` this is the first chain's colour, so query the
+   * residue itself when its exact colour matters.
+   */
+  readonly colorValue?: string
+}
+
+/** Residue/atom totals for one component id inside the inspected target. */
+export interface InspectCount {
+  readonly compId: string
+  readonly kind: InspectKind
+  readonly residues: number
+  readonly atoms: number
+}
+
+/** Totals for one live selection, without its content. */
+export interface InspectSelection {
+  readonly entries: number
+  readonly atoms: number
+  readonly residues: number
+}
+
+/** Result of one {@link InspectRequest}. */
+export interface InspectResult {
+  /** What was inspected, e.g. `whole structure` or `residue E71`. */
+  readonly target: string
+  readonly detail: InspectDetail
+  readonly atoms: number
+  readonly residues: number
+  readonly chains: number
+  readonly models: number
+  /** Per component id totals, always complete regardless of the row budget. */
+  readonly counts: readonly InspectCount[]
+  /** Residue rows; present for `residues` and `atoms` detail. */
+  readonly residueRows?: readonly InspectResidue[]
+  /** Representations drawing the target, with their colour and style. */
+  readonly styles: readonly InspectStyle[]
+  /** Live selection totals, when anything is selected. */
+  readonly selection?: InspectSelection
+  /** Live focus totals, when the viewer has a focused location. */
+  readonly focus?: InspectSelection
+  /** True when the row budget dropped rows; counts and totals stay complete. */
+  readonly truncated: boolean
+}
+
+/**
  * One replayable viewer command.
  *
  * Loading is a method, not a command: bytes are adapter-owned input and may not
@@ -242,6 +375,10 @@ export function isMolFormat(value: unknown): value is MolFormat {
 
 export function isPresetName(value: unknown): value is PresetName {
   return typeof value === 'string' && (PRESETS as readonly string[]).includes(value)
+}
+
+export function isInspectDetail(value: unknown): value is InspectDetail {
+  return typeof value === 'string' && (INSPECT_DETAILS as readonly string[]).includes(value)
 }
 
 export function isStructureData(value: unknown): value is StructureData {

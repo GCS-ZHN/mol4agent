@@ -28,13 +28,16 @@ import {
   REPRESENTATION_TYPES,
   type CaptureOptions,
   type CommandResult,
+  type InspectRequest,
+  type InspectResult,
   type MolCommand,
   type MolFormat,
   type StructureData,
   type StructureSelector,
   type StructureSummary,
 } from './protocol.ts'
-import { compileSelector, selectorSchema } from './select.ts'
+import { compileSelector, selectorExpression, selectorSchema } from './select.ts'
+import { inspectViewer } from './inspect-plugin.ts'
 import { formatColor, parseColor } from './color.ts'
 
 let globalComponentSeq = 0
@@ -61,6 +64,14 @@ export interface MolViewer {
   load(data: StructureData, options?: { preset?: string }): Promise<StructureSummary>
   /** Current summary, when a structure is loaded. */
   summary(): StructureSummary | undefined
+  /**
+   * Read the loaded structure and the way Mol* currently draws it.
+   *
+   * Read-only: unlike {@link MolViewer.execute} it changes nothing, and its
+   * answers include human-driven viewer state (clicked selection, panel
+   * styles) that never passed through the adapter's command log.
+   */
+  inspect(request?: InspectRequest): InspectResult
   /** Execute one command against the loaded structure. */
   execute(command: MolCommand): Promise<CommandResult>
   /** Execute commands in order, returning per-command results. */
@@ -246,6 +257,11 @@ export async function createMolViewer(options: MolViewerOptions): Promise<MolVie
       return summary
     },
 
+    inspect(request) {
+      assertAlive()
+      return inspectViewer(plugin, request ?? {})
+    },
+
     async execute(command) {
       try {
         assertAlive()
@@ -369,7 +385,7 @@ async function executeCommand(
       // scene". The selection gets its own component so the rest of the
       // structure keeps its current representation.
       if (command.target !== undefined) {
-        const expression = selectionExpression(command.target)
+        const expression = selectorExpression(command.target)
         let targeted = 0
         for (const structure of structures) {
           const component = await plugin.builders.structure.tryCreateComponentFromExpression(
@@ -427,7 +443,7 @@ async function executeCommand(
         // Representations live under components. Build one fresh all-atom
         // component, then drop the previous components; removing only their
         // reps can take the reused component (and the new reps) with it.
-        const all = selectionExpression({ kind: 'all' })
+        const all = selectorExpression({ kind: 'all' })
         for (const structure of structures) {
           const component = await plugin.builders.structure.tryCreateComponentFromExpression(
             structure.cell,
@@ -545,13 +561,6 @@ async function executeCommand(
       return { ok: true, op: command.op, message: 'label added' }
     }
   }
-}
-
-function selectionExpression(selector: StructureSelector) {
-  const compiled = compileSelector(selector)
-  return 'elements' in compiled
-    ? StructureElement.Schema.toExpression(compiled.elements as never)
-    : compiled.expression(undefined)
 }
 
 /** Stable key so repeated styles of one selection update the same component. */
