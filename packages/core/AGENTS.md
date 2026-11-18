@@ -53,14 +53,19 @@ keep its protocol consistent for every adapter.
 
 - Global `cartoon` uses the `polymer-and-ligand` preset so HETATM ligands remain
   visible; `colorParams` must be passed through the preset theme.
-- Targeted `represent` is **additive**: create a selection component and add a
-  representation there; never remove the rest of the scene for a target.
-- The preset updates tagged representations **in place**. Do not remove
-  pre-command representation refs on the preset path; they can be the same
-  transforms and removing them blanks the viewport.
-- When bypassing the preset for a global style, build a fresh all-atom component
-  and remove the old components. Avoid deleting reused components by ref, which
-  can take the new representation with them.
+- `represent.replace` is explicit and defaults to `true`. With replace, clear
+  the structure components **before** building either style family, then build;
+  the preset would otherwise update its tagged components in place and leave
+  earlier non-preset/targeted components behind. With `replace: false`, never
+  clear: add a selection component for a target, or a fresh all-atom component
+  for a global style.
+- `target` only narrows the new representation's coverage; it never implies add
+  or replace. With `replace: true` the whole scene is replaced even when a
+  target is present.
+- Do not remove pre-command refs *after* applying the preset: the refs can be
+  the same transforms and removing them blanks the viewport. Clear before.
+- Avoid deleting reused components by ref after building a fresh component: it
+  can take the new representation with it. The pre-clear avoids that.
 - `capture()` renders the viewport only; use it through the DSH capture
   rendezvous, not as a substitute for verifying the page UI.
 
@@ -82,6 +87,10 @@ keep its protocol consistent for every adapter.
 - `pnpm typecheck` (root builds core first), then
   `pnpm --filter @gcszhn/mol4agent-core test` and
   `pnpm --filter @gcszhn/mol4agent-core build`.
+- `test/represent.test.ts` drives a real headless Mol* `PluginContext` and
+  asserts the live hierarchy, so run it for any change to `represent` or the
+  preset/component lifecycle. It is test-only; the product viewer still mounts
+  the official UI.
 - Verify real fixtures: 1CRN PDB/CIF, 1ATP, aspirin SDF, 7CZD. Exercise load,
   global style, targeted style, focus, and capture.
 - For UI changes, use headless Chrome + SwiftShader and click the actual viewport

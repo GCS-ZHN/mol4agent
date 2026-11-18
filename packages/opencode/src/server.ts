@@ -386,12 +386,18 @@ export default Plugin.define({
       editor.add({
         name: 'mol_style',
         description:
-          'Change the representation or color theme of an open structure. Without target this replaces the '
-          + 'scene representation; with target it adds a representation only to that selection. Pass `tab` '
+          'Change the representation or color theme of an open structure. Replaces the current '
+          + 'representations by default; pass replace:false to keep them and overlay the new style. '
+          + 'target narrows only the part the new representation covers. Pass `tab` '
           + '(the path mol_open returned) to target a specific open structure; defaults to the active one.',
         input: {
           type: 'object',
-          properties: { ...STYLE_SCHEMA, target: SELECTOR_SCHEMA, tab: { type: 'string' } },
+          properties: {
+            ...STYLE_SCHEMA,
+            target: SELECTOR_SCHEMA,
+            replace: { type: 'boolean' },
+            tab: { type: 'string' },
+          },
           additionalProperties: false,
         },
         execute: async (input, context) => {
@@ -400,6 +406,7 @@ export default Plugin.define({
             color?: string
             colorParams?: { value?: string | number }
             target?: unknown
+            replace?: boolean
             tab?: string
           }
           const tab = tabOf(args)
@@ -414,6 +421,7 @@ export default Plugin.define({
             op: 'represent',
             style: styleOf({ type: args.type as never, color: args.color as never, colorParams: args.colorParams }),
             ...(target === undefined ? {} : { target }),
+            ...(args.replace === undefined ? {} : { replace: args.replace }),
           })
           emitScene(context.sessionID)
           return {
@@ -422,6 +430,7 @@ export default Plugin.define({
               color: args.color as never,
               colorParams: args.colorParams,
               target,
+              replace: args.replace,
             }),
           }
         },

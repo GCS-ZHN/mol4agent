@@ -91,6 +91,7 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
         op: 'represent',
         style,
         ...(target === undefined ? {} : { target }),
+        ...(typeof args.replace === 'boolean' ? { replace: args.replace } : {}),
       }
       return withCommands(state, tab.path, [...tab.commands, command])
     }

@@ -23,9 +23,7 @@ import darkCss from 'molstar/build/viewer/theme/dark.css'
 import { summarizeStructure } from './parse/index.ts'
 import { molstarFormatOf } from './formats.ts'
 import {
-  COLOR_THEMES,
   Mol4AgentError,
-  REPRESENTATION_TYPES,
   type CaptureOptions,
   type CommandResult,
   type InspectRequest,
@@ -33,14 +31,12 @@ import {
   type MolCommand,
   type MolFormat,
   type StructureData,
-  type StructureSelector,
   type StructureSummary,
 } from './protocol.ts'
-import { compileSelector, selectorExpression, selectorSchema } from './select.ts'
+import { compileSelector, selectorSchema } from './select.ts'
+import { applyRepresentation } from './represent.ts'
 import { inspectViewer } from './inspect-plugin.ts'
 import { formatColor, parseColor } from './color.ts'
-
-let globalComponentSeq = 0
 
 export interface MolViewerOptions {
   readonly container: HTMLElement
@@ -363,123 +359,7 @@ async function executeCommand(
   }
   switch (command.op) {
     case 'represent': {
-      const style = command.style
-      if (style.type !== undefined && !(REPRESENTATION_TYPES as readonly string[]).includes(style.type)) {
-        return invalid(command.op, `unknown representation "${style.type}"; supported: ${REPRESENTATION_TYPES.join(', ')}`)
-      }
-      if (style.color !== undefined && !(COLOR_THEMES as readonly string[]).includes(style.color)) {
-        return invalid(command.op, `unknown colour theme "${style.color}"; supported: ${COLOR_THEMES.join(', ')}`)
-      }
-      // Normalize once, before touching the scene: a bad color must fail the
-      // command instead of reaching Mol* and painting the structure black.
-      const resolvedColor = style.colorParams?.value === undefined
-        ? undefined
-        : resolveColor(style.colorParams.value)
-      const colorParams = resolvedColor === undefined ? undefined : { value: resolvedColor }
-      const colorSuffix = resolvedColor === undefined ? '' : ` ${formatColor(resolvedColor)}`
-      const structures = plugin.managers.structure.hierarchy.current.structures
-      if (structures.length === 0) {
-        return { ok: false, op: command.op, code: 'NO_STRUCTURE', message: 'no structure is loaded' }
-      }
-      // A target means "add this style to a selection", not "replace the whole
-      // scene". The selection gets its own component so the rest of the
-      // structure keeps its current representation.
-      if (command.target !== undefined) {
-        const expression = selectorExpression(command.target)
-        let targeted = 0
-        for (const structure of structures) {
-          const component = await plugin.builders.structure.tryCreateComponentFromExpression(
-            structure.cell,
-            expression,
-            selectionKey(command.target),
-            { label: 'mol4agent selection' },
-          )
-          if (component === undefined) continue
-          const rep = await plugin.builders.structure.representation.addRepresentation(component as never, {
-            type: (style.type ?? 'ball-and-stick') as never,
-            color: (style.color ?? 'uniform') as never,
-            ...(colorParams === undefined ? {} : { colorParams: colorParams as never }),
-          }, { tag: 'mol4agent-selection' } as never)
-          if (rep !== undefined) targeted += 1
-        }
-        if (targeted === 0) {
-          return {
-            ok: false,
-            op: command.op,
-            code: 'REPRESENT_FAILED',
-            message: `Mol* did not create a representation for ${command.target.kind}`,
-          }
-        }
-        plugin.canvas3d?.requestDraw()
-        return {
-          ok: true,
-          op: command.op,
-          message: `applied ${style.type ?? 'ball-and-stick'} / ${style.color ?? 'uniform'}${colorSuffix} to ${command.target.kind}`,
-        }
-      }
-
-      const previousComponents = structures.flatMap(structure => [...structure.components])
-      // A single Cartoon representation hides HETATM ligands. Use Mol*'s
-      // polymer-and-ligand preset for the default cartoon style so ATP/HEM/etc.
-      // stay visible. A uniform colorParams is passed through the preset theme
-      // so "gray cartoon" still keeps the ligand representation.
-      const polymerAndLigand = style.type === undefined || style.type === 'cartoon'
-      let added = 0
-      if (polymerAndLigand) {
-        for (const structure of structures) {
-          await plugin.builders.structure.representation.applyPreset(
-            structure.cell,
-            'polymer-and-ligand',
-            {
-              theme: {
-                globalName: style.color ?? 'chain-id',
-                ...(colorParams === undefined ? {} : { globalColorParams: colorParams }),
-              },
-            } as never,
-          )
-          added += 1
-        }
-      } else {
-        // Representations live under components. Build one fresh all-atom
-        // component, then drop the previous components; removing only their
-        // reps can take the reused component (and the new reps) with it.
-        const all = selectorExpression({ kind: 'all' })
-        for (const structure of structures) {
-          const component = await plugin.builders.structure.tryCreateComponentFromExpression(
-            structure.cell,
-            all,
-            `mol4agent-global-${globalComponentSeq += 1}`,
-            { label: 'mol4agent global' },
-          )
-          if (component === undefined) continue
-          const rep = await plugin.builders.structure.representation.addRepresentation(component as never, {
-            type: (style.type ?? 'cartoon') as never,
-            color: (style.color ?? 'chain-id') as never,
-            ...(colorParams === undefined ? {} : { colorParams: colorParams as never }),
-          })
-          if (rep !== undefined) added += 1
-        }
-      }
-      if (added === 0) {
-        return {
-          ok: false,
-          op: command.op,
-          code: 'REPRESENT_FAILED',
-          message: `Mol* did not create a representation for ${style.type ?? 'cartoon'}`,
-        }
-      }
-      try {
-        // The representation preset updates the existing tagged representations
-        // in place. Removing the pre-command refs would remove those updates
-        // (the refs are the same transforms), leaving a blank viewport.
-        if (!polymerAndLigand && previousComponents.length > 0) {
-          await plugin.managers.structure.hierarchy.remove(previousComponents, true)
-        }
-      } catch (reason) {
-        console.warn('[mol4agent] could not remove the previous representation', reason)
-      }
-      plugin.canvas3d?.requestDraw()
-      return { ok: true, op: command.op, message: `applied ${style.type ?? 'cartoon'} / ${style.color ?? 'chain-id'}${colorSuffix}` }
+      return applyRepresentation(plugin, command)
     }
 
     case 'select': {
@@ -561,16 +441,6 @@ async function executeCommand(
       return { ok: true, op: command.op, message: 'label added' }
     }
   }
-}
-
-/** Stable key so repeated styles of one selection update the same component. */
-function selectionKey(selector: StructureSelector): string {
-  let hash = 2166136261
-  for (const char of JSON.stringify(selector)) {
-    hash ^= char.charCodeAt(0)
-    hash = Math.imul(hash, 16777619)
-  }
-  return `mol4agent-sel-${(hash >>> 0).toString(36)}`
 }
 
 function firstStructure(plugin: PluginContext): Structure | undefined {

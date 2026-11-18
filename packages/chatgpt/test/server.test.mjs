@@ -235,6 +235,35 @@ test('opens a scene, reads its bytes, and appends commands', async t => {
   })
 })
 
+test('passes replace:false through for additive targeted styling', async t => {
+  const { client } = await withClient(t)
+  const opened = await client.callTool({
+    name: 'mol_open',
+    arguments: { path: fixture, type: 'cartoon', color: 'chain-id' },
+  })
+  assert.equal(opened.isError, undefined)
+
+  const styled = await client.callTool({
+    name: 'mol_style',
+    arguments: {
+      type: 'ball-and-stick',
+      color: 'uniform',
+      colorParams: { value: 0xff0000 },
+      target: { kind: 'residues', chain: 'A', start: 1, end: 5 },
+      replace: false,
+    },
+  })
+  assert.equal(styled.isError, undefined)
+  const commands = styled.structuredContent?.scene.commands
+  assert.deepEqual(commands.at(-1), {
+    op: 'represent',
+    style: { type: 'ball-and-stick', color: 'uniform', colorParams: { value: 0xff0000 } },
+    target: { kind: 'residues', chain: 'A', start: 1, end: 5 },
+    replace: false,
+  })
+  assert.match(styled.content[0].text, /\(overlaid\)/)
+})
+
 test('rejects selectors that cannot match the structure', async t => {
   const { client } = await withClient(t)
   const opened = await client.callTool({ name: 'mol_open', arguments: { path: fixture } })

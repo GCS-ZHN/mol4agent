@@ -115,7 +115,7 @@ to a remote server) for the viewer; a browser session is tool-only.
 | `mol_interface` | Find interface residues between two chain groups (PDB-like ATOM files). |
 | `mol_fetch` | Download a database entry (`entry_id`, `target_path`, `source_db?`) and save it on the session's server. |
 | `mol_open` | Open a structure in the side panel and make it the active scene. |
-| `mol_style` | Change representation/color; with `target`, style a selection additively. `colorParams.value` applies to `uniform` (CSS name, hex, or integer). |
+| `mol_style` | Change representation/color; replaces current representations by default, or overlays with `replace: false`. `target` narrows coverage. `colorParams.value` applies to `uniform` (CSS name, hex, or integer). |
 | `mol_select` | Select/highlight (and optionally focus) a selection. |
 | `mol_focus` | Focus a selection or the whole structure. |
 | `mol_measure` | Add a distance (2), angle (3), or dihedral (4) measurement. |

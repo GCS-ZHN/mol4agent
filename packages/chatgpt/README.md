@@ -123,7 +123,7 @@ Model-facing tools:
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å) in PDB-like files. |
 | `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
 | `mol_open` | `path`, `type?`, `color?`, `colorParams?`, `select?`, `focus?` | Open a scene, render the MCP App card, and optionally highlight/focus a selection. |
-| `mol_style` | `type?`, `color?`, `target?`, `colorParams?` | Replace the global representation, or add one to a selection. `colorParams.value` applies to `uniform` and accepts a CSS name (`"red"`), hex (`"#ff0000"`), or an integer (`16711680`); invalid colours are rejected and the result echoes the resolved hex. |
+| `mol_style` | `type?`, `color?`, `target?`, `replace?`, `colorParams?` | Replace the current representations by default (`replace: true`), or overlay one with `replace: false`. `target` only narrows the new representation's coverage. `colorParams.value` applies to `uniform` and accepts a CSS name (`"red"`), hex (`"#ff0000"`), or an integer (`16711680`); invalid colours are rejected and the result echoes the resolved hex. |
 | `mol_select` | `target`, `mode?`, `focus?` | Apply select/highlight interactivity. |
 | `mol_focus` | `target?` | Focus a selection or the whole structure. |
 | `mol_measure` | `kind`, `targets` | Add a distance (2), angle (3), or dihedral (4) measurement. |

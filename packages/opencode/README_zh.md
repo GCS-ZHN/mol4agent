@@ -95,7 +95,7 @@ Mol* 面板依赖**桌面端的本地 GUI 插件宿主**。`opencode serve` 提�
 | `mol_interface` | 寻找两组链之间的界面残基（PDB 类 ATOM 文件） |
 | `mol_fetch` | 下载数据库条目（`entry_id`、`target_path`、`source_db?`）并保存到会话所属 server |
 | `mol_open` | 在侧边栏打开结构并设为活动场景 |
-| `mol_style` | 修改表示/颜色；带 `target` 时叠加式着色某个选区。`colorParams.value` 只对 `uniform` 生效（CSS 名称、十六进制或整数） |
+| `mol_style` | 修改表示/颜色；默认替换当前表示，传 `replace: false` 时叠加。`target` 只限定覆盖范围。`colorParams.value` 只对 `uniform` 生效（CSS 名称、十六进制或整数） |
 | `mol_select` | 选择/高亮（可同时聚焦）某个选区 |
 | `mol_focus` | 聚焦某个选区或整个结构 |
 | `mol_measure` | 添加距离(2)/角度(3)/二面角(4)测量 |

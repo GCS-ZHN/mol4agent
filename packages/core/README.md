@@ -161,7 +161,7 @@ can be stored in a session log, then replayed after `load()`.
 
 | `op` | Fields | Effect |
 |---|---|---|
-| `represent` | `style: StyleSpec`, optional `target` | Without `target`, replace the scene representation. For `cartoon` (or omitted `type`) core uses Mol*'s `polymer-and-ligand` preset so HETATM ligands stay visible. With `target`, add the representation only to that selection (a new Mol* component), leaving the rest untouched. `quality` is accepted but not applied yet. |
+| `represent` | `style: StyleSpec`, optional `target`, optional `replace` | `replace` defaults to `true`: remove the current representations, then draw the new one. `target` only narrows which part the new representation covers; with `replace: true` the whole scene is still cleared first. `replace: false` keeps every existing representation and overlays the new one, on the whole structure or on `target` (a new Mol* component). For `cartoon` (or omitted `type`) core uses Mol*'s `polymer-and-ligand` preset so HETATM ligands stay visible. `quality` is accepted but not applied yet. |
 | `select` | `target`, `mode?: 'select' \| 'highlight'`, `focus?` | Apply Mol* selection interactivity; `focus` moves the camera |
 | `clear-selection` | `mode?` | Clear select/highlight interactivity |
 | `focus` | optional `target` | Focus camera on the selection or the whole structure |
@@ -434,20 +434,24 @@ const png = await viewer.capture({
 selectors; semantic categories such as `ligand`/`protein` cannot be converted to
 a single atom position and return `INVALID_COMMAND`.
 
-Per-selection styling is additive:
+Overlay a selection with `replace: false`:
 
 ```ts
 // gray cartoon for the rest
 { op: 'represent', style: { type: 'cartoon', color: 'uniform', colorParams: { value: 0x808080 } } }
-// red sticks for one interface range
+// red sticks for one interface range, keeping the cartoon
 { op: 'represent',
   style: { type: 'ball-and-stick', color: 'uniform', colorParams: { value: 0xff0000 } },
-  target: { kind: 'residues', chain: 'A', start: 28, end: 54 } }
+  target: { kind: 'residues', chain: 'A', start: 28, end: 54 },
+  replace: false }
 ```
 
 A global `cartoon` uses the `polymer-and-ligand` preset; `colorParams` is passed
-through its theme so `uniform` colors work. A targeted `represent` creates a
-separate selection component and does not remove other representations.
+through its theme so `uniform` colors work. A targeted `represent` with
+`replace: false` creates a separate selection component and leaves the rest of
+the scene untouched. Without `replace: false` a targeted `represent` replaces
+the scene like any other command, so the target only limits the new
+representation's coverage.
 
 ## React binding
 
