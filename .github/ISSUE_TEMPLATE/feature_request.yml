@@ -1,0 +1,155 @@
+name: Feature Request
+description: Propose a new capability or behavior for mol4agent, with the use case and feasibility context.
+title: "[Feature]: "
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. The most useful requests describe a real molecular workflow, not only a missing API, and place the change in mol4agent's core/adapter structure.
+
+        **Before you file**
+
+        - Search [existing issues](https://github.com/GCS-ZHN/mol4agent/issues?q=is%3Aissue) and the relevant [adapter README](https://github.com/GCS-ZHN/mol4agent/tree/main/packages) to check whether the capability already exists or is a documented limitation.
+        - Open one request per feature. Split independent capabilities so each can be discussed and shipped on its own.
+        - The version fields below describe the environment where the need arises; the feature itself may target more harnesses.
+
+        Each mol4agent adapter has its own version, and the harness version moves independently. Both are required so maintainers can tell a genuine gap from a version-specific limitation.
+
+  - type: dropdown
+    id: harness
+    attributes:
+      label: Agent harness
+      description: The host application where you need this feature. Choose "Other / multiple" if it applies to more than one, and list them under Proposed feature.
+      options:
+        - DeepSeek Harness (DSH)
+        - ChatGPT / Codex
+        - OpenCode
+        - Other / multiple
+    validations:
+      required: true
+
+  - type: input
+    id: harness-version
+    attributes:
+      label: Agent harness version
+      description: "Find it in the harness's About dialog, or from `codex --version` / `opencode --version`. Include the build number when one is shown."
+      placeholder: "e.g. DeepSeek Harness 0.1.0, codex-cli 0.149.1, OpenCode 2.3.0"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: mol4agent plugin version
+      description: "The installed adapter package and version, for example `@gcszhn/mol4agent-deepseekharness 0.3.0`. Use the version from your install command, lockfile, or plugin manager. For a local checkout, add the commit SHA."
+      placeholder: "@gcszhn/mol4agent-deepseekharness 0.3.0"
+    validations:
+      required: true
+
+  - type: input
+    id: core-version
+    attributes:
+      label: mol4agent core version (only if separately pinned)
+      description: "Adapters bundle `@gcszhn/mol4agent-core`, so the adapter version is normally enough. Fill this in only if you installed or pinned core yourself."
+      placeholder: "0.3.0"
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and architecture
+      description: Include the OS version and CPU architecture. This matters for harness UI, paths, WebGL, and screenshot capture.
+      placeholder: "e.g. macOS 15.2 (arm64), Windows 11 24H2 (x64), Ubuntu 24.04 (x64)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method
+      description: How the adapter reached this machine.
+      options:
+        - npm registry
+        - GitHub marketplace (Codex)
+        - Local checkout (link or path)
+        - Prebuilt release
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Problem and use case
+      description: |
+        Describe the molecular workflow, not just the missing API. Include:
+        - what you are trying to accomplish and why;
+        - the file formats, structure sizes, and database sources involved;
+        - what the agent and human do today, including workarounds.
+      placeholder: |
+        When I ..., I need to ..., but today I have to ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed feature
+      description: |
+        Describe the expected behavior. Include the tool name and arguments or result fields you would expect, the UI behavior, and which harnesses need it.
+        If possible, show a concrete input and the expected result; put sample files, screenshots, and links in the examples field below.
+      placeholder: |
+        Add a mol_* tool that ... The viewer should ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: feasibility
+    attributes:
+      label: Feasibility and scope
+      description: |
+        Give a short assessment so the request can be triaged:
+        - Should this live in core (protocol, selectors, viewer, summaries) or in one or more adapters (host APIs, preview, capture)?
+        - Which harness API, Mol* capability, or data source would provide what is missing?
+        - What could block it: protocol changes, permissions, remote sessions, capture timing, bundle size, or performance?
+        "Not sure" is acceptable. State what you know and what would need verification.
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation ideas (optional)
+      description: |
+        If you have a design in mind, point at key files, commands, protocol messages, or selectors. Sketches, pseudo-code, and upstream references are welcome.
+        This is advice, not a commitment to a particular design.
+      placeholder: "I would start in packages/core/src/... and add ..."
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)
+      description: Existing tools, harness features, or workflows that solve part of the problem, and why they are not enough.
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Screenshots, examples, and test data (optional)
+      description: |
+        Attach files directly in this field, or link a gist/archive. Useful examples:
+        - a sample structure or trimmed fixture, or a public PDB/AlphaFold/PubChem/ChEMBL ID;
+        - a screenshot or mockup of the desired result;
+        - the exact tool call and result you would like to see;
+        - links to related issues or upstream projects.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I checked the relevant adapter README and limitations.
+          required: true
+        - label: I can test a prototype or provide sample files if needed.

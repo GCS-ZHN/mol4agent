@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Setup and troubleshooting
+    url: https://github.com/GCS-ZHN/mol4agent#readme
+    about: Installation, upgrade, and quick starts for DSH, Codex, and OpenCode.
+  - name: Adapter documentation
+    url: https://github.com/GCS-ZHN/mol4agent/tree/main/packages
+    about: Tool reference, limitations, and architecture for each adapter.

@@ -34,6 +34,37 @@ The canonical cross-harness goals and acceptance criteria live in
 behavior; do not restate them here. Implementation requirements for each package
 are in its AGENTS playbook.
 
+## Issues
+
+- File issues through the forms in `.github/ISSUE_TEMPLATE/`: `bug_report.yml`
+  for a reproducible defect, `feature_request.yml` for a new capability. Do not
+  open a blank issue.
+- Search existing issues first, and open one issue per distinct problem. Fill
+  every required field with real values. The version fields are mandatory:
+  agent harness, harness version, mol4agent plugin version, OS/architecture,
+  and install method; include the core version only when it is separately
+  pinned.
+- Include the strongest evidence available:
+  - logs and stack traces in the dedicated log field, which is rendered as a
+    code block; when writing the body by hand, use a fenced code block or a
+    gist/permalink, not a screenshot of text;
+  - screenshots or short recordings for visual, viewer, or layout problems;
+  - minimal test data: the smallest structure file, a trimmed fixture, or a
+    public PDB/AlphaFold/PubChem/ChEMBL ID, plus the exact prompt or `mol_*`
+    call and arguments.
+  Attach files in the form's evidence/examples field, or link a gist or stable
+  URL. Redact tokens, private paths, and unpublished structures.
+- Feature requests must also state the molecular workflow, expected behavior,
+  and feasibility/scope (core vs adapter, harness APIs, blockers);
+  implementation ideas are optional but useful.
+- Adding, renaming, or removing a harness/adapter must update the harness
+  options and the harness/plugin-version examples in both `bug_report.yml` and
+  `feature_request.yml` in the same change.
+- The web forms are the canonical path. `gh issue create --template` does not
+  support YAML issue forms: when filing non-interactively, mirror the form's
+  labels as headings and fill the same required fields, then pass the matching
+  `bug` or `enhancement` label explicitly.
+
 ## Versioning and releases
 
 ### Version numbers
@@ -114,8 +145,9 @@ are in its AGENTS playbook.
 - A new package/adapter is a cross-cutting change: wire it into
   `.github/workflows/ci.yml` (install, core build, typecheck, unit tests,
   package build) and, when publishable, into
-  `.github/scripts/release-packages.mjs` (publish step and ordering). Every
-  package ships unit tests for its pure logic (suffix/format detection,
+  `.github/scripts/release-packages.mjs` (publish step and ordering); update the
+  harness options and harness/plugin-version examples in both issue forms.
+  Every package ships unit tests for its pure logic (suffix/format detection,
   selectors, scene store, capture hub, summaries) plus a `test` script that CI
   runs; a manual harness check does not replace those tests.
 - Documentation defaults to English with a synchronized `README_zh.md`. Update

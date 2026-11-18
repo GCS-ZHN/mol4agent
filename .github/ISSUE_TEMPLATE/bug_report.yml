@@ -1,0 +1,173 @@
+name: Bug Report
+description: Report a reproducible defect in mol4agent, including the viewer, tools, capture, or installation.
+title: "[Bug]: "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Filling in the required fields up front makes the report reproducible without a follow-up round trip.
+
+        **Before you file**
+
+        - Search [existing issues](https://github.com/GCS-ZHN/mol4agent/issues?q=is%3Aissue) and the [README](https://github.com/GCS-ZHN/mol4agent#readme), including your adapter's limitations section.
+        - Reproduce on the latest released adapter and harness version, or note the version constraint in this report.
+        - Remove API keys, access tokens, private paths, and unpublished structures. Use a public PDB ID or a trimmed fixture when possible.
+        - Open one issue per distinct problem. If two symptoms share a cause, include both in one report.
+
+        mol4agent is a harness-neutral core plus one adapter per harness. The adapter version and the harness version are independent, so both are required below.
+
+  - type: dropdown
+    id: harness
+    attributes:
+      label: Agent harness
+      description: The host application that loaded mol4agent. Choose "Other / multiple" if the bug spans harnesses, and name them in the steps.
+      options:
+        - DeepSeek Harness (DSH)
+        - ChatGPT / Codex
+        - OpenCode
+        - Other / multiple
+    validations:
+      required: true
+
+  - type: input
+    id: harness-version
+    attributes:
+      label: Agent harness version
+      description: "Find it in the harness's About dialog, or from `codex --version` / `opencode --version`. Include the build number when one is shown."
+      placeholder: "e.g. DeepSeek Harness 0.1.0, codex-cli 0.149.1, OpenCode 2.3.0"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: mol4agent plugin version
+      description: "The installed adapter package and version, for example `@gcszhn/mol4agent-deepseekharness 0.3.0`. Use the version from your install command, lockfile, or plugin manager. For a local checkout, add the commit SHA."
+      placeholder: "@gcszhn/mol4agent-deepseekharness 0.3.0"
+    validations:
+      required: true
+
+  - type: input
+    id: core-version
+    attributes:
+      label: mol4agent core version (only if separately pinned)
+      description: "Adapters bundle `@gcszhn/mol4agent-core`, so the adapter version is normally enough. Fill this in only if you installed or pinned core yourself."
+      placeholder: "0.3.0"
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and architecture
+      description: Include the OS version and CPU architecture. This matters for path handling, WebGL, and screenshot capture.
+      placeholder: "e.g. macOS 15.2 (arm64), Windows 11 24H2 (x64), Ubuntu 24.04 (x64)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method
+      description: How the adapter reached this machine.
+      options:
+        - npm registry
+        - GitHub marketplace (Codex)
+        - Local checkout (link or path)
+        - Prebuilt release
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-areas
+    attributes:
+      label: Affected area
+      description: Select every area that shows the problem. Hold Cmd/Ctrl to select more than one.
+      multiple: true
+      options:
+        - Structure preview or Mol* rendering
+        - Agent tools (mol_* calls)
+        - Screenshot capture (mol_capture)
+        - Database fetch (mol_fetch)
+        - Installation, update, or plugin loading
+        - Other (describe under "Actual behavior")
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Give the smallest sequence that triggers the bug. Include the exact prompt or `mol_*` call with JSON arguments, and any Mol* UI clicks involved. Put files, screenshots, and fixtures in the evidence fields below.
+      placeholder: |
+        1. Open ...
+        2. Ask the agent: "..."
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen, and why is that the intended behavior?
+      placeholder: "The viewer should ... / the tool should return ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: |
+        What happened instead? Include the exact error message, tool result, or blank/incorrect UI state.
+        If the page stayed blank, say whether the tab opened and whether the browser console shows an error.
+      placeholder: "The viewer shows ... instead of ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output (strongly recommended)
+      description: |
+        Paste the relevant raw excerpt. This field is rendered as a code block, so text is preferred over a screenshot of a terminal.
+        Include the command or `mol_*` call that produced the output and the first error, not only the last line. Remove secrets and private paths first.
+      placeholder: |
+        Paste the relevant lines here.
+      render: shell
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots and test data (strongly recommended)
+      description: |
+        Attach files directly in this field, or link a gist/archive (including a gist of the full logs). Include the smallest input that reproduces the problem:
+        - the structure file, a trimmed fixture, or a public PDB/AlphaFold/PubChem/ChEMBL ID;
+        - screenshots or short recordings for visual, viewer, and layout problems;
+        - exact tool arguments or random seeds when they matter.
+        For large or private structures, attach a reduced subset or a synthetic fixture that keeps the bug.
+      placeholder: "fixture.pdb + screenshot attached / https://gist.github.com/... / PDB 1CRN"
+
+  - type: textarea
+    id: suggested-fix
+    attributes:
+      label: Suggested fix (optional)
+      description: If you traced the cause, name the package, file, or protocol message and the change you would make. A hunch is welcome; a patch is not required.
+      placeholder: "I think this is in packages/core/src/... because ..."
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I reproduced this on a current release, or explained above why I cannot upgrade.
+          required: true
+        - label: I included logs, screenshots, or test data where available.
+          required: true
+        - label: I removed credentials, private paths, and unpublished data from this report.
+          required: true
