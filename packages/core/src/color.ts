@@ -48,6 +48,23 @@ export function formatColor(value: number): string {
   return `#${(value & 0xffffff).toString(16).padStart(6, '0')}`
 }
 
+/**
+ * Blend two colours the way Mol*'s marker shader does:
+ * `mix(base, overlay, strength)` per channel.
+ *
+ * Used to derive the visible colour of a selected element from the colour its
+ * representation paints and the canvas selection marker.
+ */
+export function mixColor(from: number, to: number, strength: number): number {
+  const weight = Math.max(0, Math.min(1, strength))
+  const blend = (shift: number): number => {
+    const base = (from >> shift) & 0xff
+    const overlay = (to >> shift) & 0xff
+    return Math.round(base * (1 - weight) + overlay * weight)
+  }
+  return (blend(16) << 16) | (blend(8) << 8) | blend(0)
+}
+
 function parseNumericColor(value: number): number {
   if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) throw invalidColor(value)
   return value & 0xffffff

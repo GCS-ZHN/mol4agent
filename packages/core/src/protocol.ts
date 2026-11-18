@@ -192,6 +192,43 @@ export interface InspectResidue extends InspectVector {
   readonly atomRows?: readonly InspectAtom[]
 }
 
+/** Where an overlay that changes the drawn colour comes from. */
+export type InspectOverlaySource = 'selection' | 'overpaint'
+
+/**
+ * One colour layer drawn on top of a representation's own theme colour.
+ *
+ * `selection` is the canvas marker that tints selected elements (colour and
+ * strength come from `canvas3d.props.renderer`); `overpaint` is a per-region
+ * colour override stored as a transform on the representation.
+ */
+export interface InspectOverlay {
+  readonly source: InspectOverlaySource
+  /** Colour the overlay paints with, as `#rrggbb`. */
+  readonly color?: string
+  /** Blend strength when the overlay mixes with the colour below it instead of replacing it. */
+  readonly strength?: number
+  /** What the overlay is applied to, e.g. the representation type or a selection entry. */
+  readonly label?: string
+  /** True when the overlay exists but does not change the visible body colour. */
+  readonly hidden?: boolean
+}
+
+/**
+ * How the inspected element actually looks, versus how its representation
+ * alone would colour it.
+ *
+ * Precedence: overpaint replaces the theme colour, then the selection marker
+ * mixes on top of that; `visibleColor` is the result for one matched element.
+ */
+export interface InspectAppearance {
+  /** Colour from the representation's own colour theme. */
+  readonly baseColor?: string
+  /** Colour actually visible after overlays. */
+  readonly visibleColor?: string
+  readonly overlays: readonly InspectOverlay[]
+}
+
 /** How one representation currently draws the inspected target. */
 export interface InspectStyle {
   /** Mol* component label the representation belongs to. */
@@ -205,14 +242,12 @@ export interface InspectStyle {
   readonly colorParams?: Readonly<Record<string, string | number | boolean>>
   /** True when Mol* is not drawing this representation (hidden component or representation). */
   readonly hidden?: boolean
-  /**
-   * Colour Mol* resolves for the inspected element, when the theme allows it.
-   *
-   * It is sampled at one matched element of the target: for a multi-chain
-   * target under `chain-id` this is the first chain's colour, so query the
-   * residue itself when its exact colour matters.
-   */
-  readonly colorValue?: string
+  /** Colour the representation's own theme gives the inspected element. */
+  readonly baseColor?: string
+  /** Colour visible for the inspected element after the overlays below. */
+  readonly visibleColor?: string
+  /** Overlays that apply to the inspected element in this representation. */
+  readonly overlays?: readonly InspectOverlay[]
 }
 
 /** Residue/atom totals for one component id inside the inspected target. */
@@ -223,11 +258,21 @@ export interface InspectCount {
   readonly atoms: number
 }
 
-/** Totals for one live selection, without its content. */
-export interface InspectSelection {
-  readonly entries: number
+/** Totals for one selection entry. */
+export interface InspectSelectionGroup {
   readonly atoms: number
   readonly residues: number
+  /** Entry label Mol* keeps for the selection, when it has one. */
+  readonly label?: string
+}
+
+/** Totals for one live selection, plus one row per entry. */
+export interface InspectSelection {
+  readonly entries: number
+  /** Union totals: entries may overlap. */
+  readonly atoms: number
+  readonly residues: number
+  readonly groups?: readonly InspectSelectionGroup[]
 }
 
 /** Result of one {@link InspectRequest}. */
@@ -245,6 +290,13 @@ export interface InspectResult {
   readonly residueRows?: readonly InspectResidue[]
   /** Representations drawing the target, with their colour and style. */
   readonly styles: readonly InspectStyle[]
+  /**
+   * Effective look of the target: the last drawn style plus its overlays.
+   *
+   * Absent when the target matches nothing, so an empty selection carries no
+   * appearance section.
+   */
+  readonly appearance?: InspectAppearance
   /** Live selection totals, when anything is selected. */
   readonly selection?: InspectSelection
   /** Live focus totals, when the viewer has a focused location. */
@@ -356,7 +408,7 @@ export function isMolCommandOp(value: unknown): value is MolCommand['op'] {
  * Colour parsing is part of the agent-facing protocol: adapters use the same
  * accepted syntax to validate tool arguments and echo the resolved value.
  */
-export { COLOR_SYNTAX, formatColor, parseColor } from './color.ts'
+export { COLOR_SYNTAX, formatColor, mixColor, parseColor } from './color.ts'
 
 const COMMAND_OPS = new Set<MolCommand['op']>([
   'represent',

@@ -69,7 +69,7 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | 工具 | 参数 | 行为 |
 |---|---|---|
 | `mol_info` | `path` | 摘要链、残基、原子、配体。不打开 viewer，也不改变场景。 |
-| `mol_inspect` | `tab?`、`target?`、`detail?`、`limit?` | 读取实时 viewer：总数、按 component 的计数、残基行、或带坐标的逐原子行，以及绘制该 target 的表示/颜色。`target` 接受任意选择器或 `{"kind":"selection"}` / `{"kind":"focus"}`；结果里的 `styles` 会按绘制该 target 的每个表示列出 `type`、`color` 主题、`size` 主题和解析出的 `colorValue`。`detail` 为 `summary`（默认，含按 component 的计数）、`residues`、`atoms`；`limit` 限制残基行数（默认 200），总数与计数不会被截断。和 `mol_capture` 一样阻塞等待页面回答。 |
+| `mol_inspect` | `tab?`、`target?`、`detail?`、`limit?` | 读取实时 viewer：总数、按 component 的计数、残基行、或带坐标的逐原子行，以及绘制该 target 的表示/颜色。`target` 接受任意选择器或 `{"kind":"selection"}` / `{"kind":"focus"}`；结果里的 `styles` 会按绘制该 target 的每个表示列出 `type`、`color` 主题、`size` 主题，以及 `baseColor`（主题色）与 `visibleColor`（叠加 overpaint 和选择标记后的实际颜色）及其 `overlays`；`appearance` 再给出 target 整体的这一对颜色。`{kind:"selection"}` 会逐条列出每个选择项及其残基/原子数。`detail` 为 `summary`（默认，含按 component 的计数）、`residues`、`atoms`；`limit` 限制残基行数（默认 200），总数与计数不会被截断。和 `mol_capture` 一样阻塞等待页面回答。 |
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 在 PDB-like 文件中找两个链组之间的界面残基（默认 8 Å，0 < cutoff ≤ 30），返回可用于 `mol_style`/`mol_focus` 的区间。 |
 | `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
 | `mol_open` | `path`、`type?`、`color?`、`colorParams?`、`select?`、`focus?` | 按规范化（canonical）的 `/` 分隔绝对路径创建/更新 tab 页面并设为活动 tab；发出 `represent`，可选 `select`/`focus`。tab 页面 id 即该路径。 |

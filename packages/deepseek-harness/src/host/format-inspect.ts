@@ -6,7 +6,14 @@
  *
  * @module @gcszhn/mol4agent-deepseekharness/host/format-inspect
  */
-import type { InspectResidue, InspectSelection, InspectStyle, InspectResult } from '@gcszhn/mol4agent-core/protocol'
+import type {
+  InspectAppearance,
+  InspectOverlay,
+  InspectResidue,
+  InspectSelection,
+  InspectStyle,
+  InspectResult,
+} from '@gcszhn/mol4agent-core/protocol'
 
 /** One line per aggregate component id. */
 function countLine(compId: string, kind: string, residues: number, atoms: number): string {
@@ -18,14 +25,48 @@ function position(x: number, y: number, z: number): string {
   return `${x} ${y} ${z}`
 }
 
+function plural(count: number, noun: string, nouns = `${noun}s`): string {
+  return `${count} ${count === 1 ? noun : nouns}`
+}
+
 function selectionLine(label: string, selection: InspectSelection): string {
-  return `${label}: ${selection.entries} ${selection.entries === 1 ? 'entry' : 'entries'}, `
-    + `${selection.residues} residues, ${selection.atoms} atoms`
+  const head = `${label}: ${plural(selection.entries, 'entry', 'entries')}, `
+    + `${plural(selection.residues, 'residue')}, ${plural(selection.atoms, 'atom')}`
+  const groups = selection.groups
+  if (groups === undefined || groups.length <= 1) return head
+  const sizes = groups.map(group => `${plural(group.residues, 'residue')}/${plural(group.atoms, 'atom')}`)
+  return `${head} (entries: ${sizes.join(', ')})`
+}
+
+function overlayLine(overlay: InspectOverlay): string {
+  const parts: string[] = [overlay.source]
+  if (overlay.color !== undefined) parts.push(overlay.color)
+  if (overlay.strength !== undefined) parts.push(`strength ${overlay.strength}`)
+  if (overlay.label !== undefined) parts.push(`on ${overlay.label}`)
+  if (overlay.hidden === true) parts.push('not tinting the body colour')
+  return `- ${parts.join(' ')}`
+}
+
+/** `base #x` plus `visible #y` when overlays change what is drawn. */
+function colorPair(baseColor: string | undefined, visibleColor: string | undefined): string {
+  if (baseColor === undefined && visibleColor === undefined) return ''
+  if (baseColor === undefined) return ` visible ${visibleColor}`
+  if (visibleColor === undefined || visibleColor === baseColor) return ` base ${baseColor}`
+  return ` base ${baseColor} -> visible ${visibleColor}`
+}
+
+function appearanceLines(appearance: InspectAppearance): string[] {
+  const lines = [`appearance:${colorPair(appearance.baseColor, appearance.visibleColor)}`]
+  if (appearance.overlays.length === 0) return lines
+  lines.push('overlays:')
+  for (const overlay of appearance.overlays) lines.push(overlayLine(overlay))
+  return lines
 }
 
 function styleLine(style: InspectStyle): string {
-  const color = style.colorValue === undefined ? style.color : `${style.color} ${style.colorValue}`
-  return `- ${style.component}: ${style.type} / ${color} / ${style.size}${style.hidden === true ? ' (hidden)' : ''}`
+  return `- ${style.component}: ${style.type} / ${style.color} / ${style.size}`
+    + `${colorPair(style.baseColor, style.visibleColor)}`
+    + `${style.hidden === true ? ' (hidden)' : ''}`
 }
 
 function atomLine(residue: InspectResidue, index: number): string {
@@ -78,6 +119,8 @@ export function formatInspectResult(result: InspectResult): string {
     lines.push('styles:')
     for (const style of result.styles) lines.push(styleLine(style))
   }
+
+  if (result.appearance !== undefined) lines.push(...appearanceLines(result.appearance))
 
   if (result.truncated) {
     lines.push('note: rows are truncated; totals above cover the whole target. Raise limit to list more.')

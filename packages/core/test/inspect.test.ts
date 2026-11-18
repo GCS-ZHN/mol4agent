@@ -6,8 +6,11 @@ import {
   countCompIds,
   kindOfEntity,
   listsResidues,
+  resolveOverpaint,
+  visibleColorOf,
   type ResidueRecord,
 } from '../src/inspect.ts'
+import { mixColor } from '../src/color.ts'
 import { DEFAULT_INSPECT_LIMIT, type InspectAtom } from '../src/protocol.ts'
 
 function atom(name: string, x: number, y: number, z: number): InspectAtom {
@@ -65,7 +68,8 @@ test('summary reports totals, counts, and styles without rows', () => {
     chains: ['A'],
     models: 1,
     records,
-    styles: [{ component: 'Structure', type: 'cartoon', color: 'chain-id', size: 'physical', colorValue: '#00ff00' }],
+    styles: [{ component: 'Structure', type: 'cartoon', color: 'chain-id', size: 'physical', baseColor: '#00ff00' }],
+    appearance: { baseColor: '#00ff00', visibleColor: '#00ff00', overlays: [] },
   })
   assert.equal(result.target, 'whole structure')
   assert.equal(result.residues, 4)
@@ -79,8 +83,9 @@ test('summary reports totals, counts, and styles without rows', () => {
   ])
   assert.equal(result.residueRows, undefined)
   assert.equal(result.truncated, false)
+  assert.deepEqual(result.appearance, { baseColor: '#00ff00', visibleColor: '#00ff00', overlays: [] })
   assert.deepEqual(result.styles, [
-    { component: 'Structure', type: 'cartoon', color: 'chain-id', size: 'physical', colorValue: '#00ff00' },
+    { component: 'Structure', type: 'cartoon', color: 'chain-id', size: 'physical', baseColor: '#00ff00' },
   ])
 })
 
@@ -187,4 +192,48 @@ test('selection and focus totals are carried through as given', () => {
   })
   assert.deepEqual(result.selection, { entries: 1, atoms: 2, residues: 1 })
   assert.deepEqual(result.focus, { entries: 1, atoms: 1, residues: 1 })
+})
+
+test('overpaint layers apply in order and a clear layer removes the colour below', () => {
+  const red = new Set(['E44|ASP|CA'])
+  const yellow = new Set(['E44|ASP|CA', 'E45|ARG|CA'])
+  // Last covering layer wins.
+  assert.equal(resolveOverpaint([{ keys: red, color: 0xff0000, clear: false }], 'E44|ASP|CA'), 0xff0000)
+  assert.equal(resolveOverpaint([
+    { keys: red, color: 0xff0000, clear: false },
+    { keys: yellow, color: 0xffff00, clear: false },
+  ], 'E44|ASP|CA'), 0xffff00)
+  // A layer only applies to the atoms it covers.
+  assert.equal(resolveOverpaint([{ keys: yellow, color: 0xffff00, clear: false }], 'E60|VAL|CA'), undefined)
+  // `clear` resets the paint instead of painting.
+  assert.equal(resolveOverpaint([
+    { keys: red, color: 0xff0000, clear: false },
+    { keys: red, color: 0x000000, clear: true },
+  ], 'E44|ASP|CA'), undefined)
+})
+
+test('visible colour follows overpaint, then the selection marker', () => {
+  const marker = { color: 0x33ff1a, strength: 0.3, edgesOnly: false }
+  const base = 0x1b9e77
+  // Nothing selected: the theme colour is what is drawn.
+  assert.equal(visibleColorOf(base, undefined, false, marker), base)
+  // Selected: the marker mixes 30% over the theme colour (`#1b9e77` -> `#22bb5b`).
+  assert.equal(visibleColorOf(base, undefined, true, marker), 0x22bb5b)
+  // Overpaint replaces the theme colour, then the marker mixes over it.
+  assert.equal(visibleColorOf(0x1b9e77, 0xff0000, false, marker), 0xff0000)
+  assert.equal(visibleColorOf(0x1b9e77, 0xff0000, true, marker), 0xc24d08)
+  // Edge-only markers do not tint the body colour.
+  assert.equal(visibleColorOf(base, undefined, true, { ...marker, edgesOnly: true }), base)
+  // No marker (headless or canvas unavailable) leaves the base colour alone.
+  assert.equal(visibleColorOf(base, undefined, true, undefined), base)
+  // Nothing known about the theme colour: nothing to report.
+  assert.equal(visibleColorOf(undefined, undefined, true, marker), undefined)
+})
+
+test('a customised selection colour is read from the live marker', () => {
+  // The caller passes whatever canvas3d.props.renderer currently holds, so a
+  // colour changed in the app is what gets reported and blended.
+  const custom = { color: 0xff0000, strength: 0.5, edgesOnly: false }
+  assert.equal(visibleColorOf(0x0000ff, undefined, true, custom), 0x800080)
+  assert.equal(mixColor(0x0000ff, 0xff0000, 0.5), 0x800080)
 })

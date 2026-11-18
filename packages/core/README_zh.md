@@ -281,9 +281,14 @@ const residue = viewer.inspect({
   detail: 'atoms',
 })
 // residue.residueRows[0].atomRows → [{ name: 'PG', element: 'P', x: 16.223, ... }]
-// residue.styles → [{ component: 'Structure', type: 'cartoon', color: 'chain-id', colorValue: '#a0d0ff' }]
+// residue.styles → [{ component: 'Structure', type: 'cartoon', color: 'chain-id',
+//                     size: 'physical', baseColor: '#1b9e77', visibleColor: '#22bb5b',
+//                     overlays: [{ source: 'selection', color: '#33ff1a', strength: 0.3 }] }]
+// residue.appearance → { baseColor: '#1b9e77', visibleColor: '#22bb5b', overlays: [...] }
 
 const selected = viewer.inspect({ target: { kind: 'selection' }, detail: 'residues' })
+// selected.selection → { entries: 3, residues: 6, atoms: 74,
+//                        groups: [{ residues: 4, atoms: 36 }, ...] }
 ```
 
 | 请求字段 | 含义 |
@@ -293,19 +298,37 @@ const selected = viewer.inspect({ target: { kind: 'selection' }, detail: 'residu
 | `limit?` | 残基行上限，默认 `DEFAULT_INSPECT_LIMIT`（200）。总数和 counts 始终覆盖整个 target，`truncated` 表示行是否被截断。 |
 
 `InspectResult` 字段：`target`、`detail`、`atoms`、`residues`、`chains`、
-`models`、`counts`、`residueRows?`、`styles`、`selection?`、`focus?`、
-`truncated`。`counts` 总是存在且总是完整：默认调用即可回答「多少个水 /
+`models`、`counts`、`residueRows?`、`styles`、`appearance?`、`selection?`、
+`focus?`、`truncated`。`counts` 总是存在且总是完整：默认调用即可回答「多少个水 /
 Cys / 配体」。
 
 行里带结构身份（`chain`、`seqId` 为 author 编号、`labelSeqId`、`compId`、
 `kind`）和绘制中心坐标（`x`、`y`、`z`）。原子行额外有 `name`、`element`、
 坐标，以及格式提供时的 `occupancy` / `bFactor` / `altId`。坐标取自 unit
-conformation，也就是 Mol* 实际绘制的位置。样式给出表示类型、配色主题、尺寸主题、配色主题参数，以及在主题允许时
-Mol* 为该元素解析出的具体颜色（`colorValue`）；`hidden` 表示该表示当前未被绘制。
-`colorValue` 只在 target 的
-一个命中元素上采样，所以 `chain-id` 下多链 target 报的是第一条链的颜色；
-要某个残基的准确颜色就直接查询该残基。按选择叠加的 overpaint / transparency /
-emissive / substance 是独立的 Mol* transform，暂不报告。
+conformation，也就是 Mol* 实际绘制的位置。
+
+每条样式给出表示类型、配色主题、尺寸主题、配色主题参数、`hidden`（该表示当前
+未被绘制），以及两个关键颜色：
+
+| 字段 | 含义 |
+|---|---|
+| `baseColor` | 该表示自身配色主题给这个元素的颜色。 |
+| `visibleColor` | 实际看到的颜色：在 `baseColor` 上叠加 overlay 之后的结果。 |
+| `overlays` | 作用在该元素上的叠加层。 |
+
+叠加层来自实时 viewer 状态，优先级如下：
+
+1. **overpaint**（`source: 'overpaint'`）替换主题色，覆盖 Mol* overpaint 图层
+   覆盖的区域——最后命中的图层生效，`clear` 图层会清掉下面的涂色；
+2. **selection**（`source: 'selection'`）再把画布选择标记混到上面，使用
+   `canvas3d.props.renderer.selectColor` 与 `selectStrength`，与 Mol* 的
+   marker shader 一致（默认主题下是 `#33ff1a`、强度 `0.3`）。只描边、不改变体
+   色的标记会以 `hidden: true` 报出，且不影响 `visibleColor`。
+
+`appearance` 用最后绘制的那个表示给出 target 整体上的同一对颜色。颜色只在
+target 的一个命中元素上采样，所以 `chain-id` 下多链 target 报的是第一条链的
+颜色；要某个残基的准确颜色就直接查询该残基。按选择叠加的 transparency /
+emissive / substance，以及基于 script 的 overpaint 图层，暂未解析。
 
 没有加载结构时 `inspect` 抛 `Mol4AgentError`（`NO_STRUCTURE`）；空选择或空
 focus 是合法的空结果。低分辨率的粗粒化（sphere/gaussian）unit 没有原子层级，

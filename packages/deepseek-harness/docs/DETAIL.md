@@ -35,7 +35,7 @@ reattaches it, so camera, representations, and panel state survive a switch
 | Tool | Effect |
 |---|---|
 | `mol_info` | Reads chains, residues, atoms, and ligands without opening a page |
-| `mol_inspect` | Reads the live viewer: per-component counts, residues, atoms with coordinates, and the representations/colours drawing the target |
+| `mol_inspect` | Reads the live viewer: per-component counts, residues, atoms with coordinates, the representations drawing the target, and their theme vs visible colour (overpaint + selection marker) |
 | `mol_interface` | Finds residues within a cutoff between two chain groups (PDB-like files) |
 | `mol_fetch` | Downloads a database entry (RCSB PDB, AlphaFold, PubChem, ChEMBL) to a workspace path |
 | `mol_open` | Opens the structure in a tab page (id = absolute path) and makes it active |

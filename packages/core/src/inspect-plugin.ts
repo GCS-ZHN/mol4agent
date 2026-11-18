@@ -10,14 +10,24 @@
  */
 import type { PluginContext } from 'molstar/lib/mol-plugin/context'
 import { StructureElement, StructureProperties, Unit, type Structure } from 'molstar/lib/mol-model/structure'
+import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms'
 import { formatColor } from './color.ts'
-import { buildInspectResult, type ResidueRecord } from './inspect.ts'
+import {
+  buildInspectResult,
+  resolveOverpaint,
+  visibleColorOf,
+  type OverpaintLayerKeys,
+  type ResidueRecord,
+} from './inspect.ts'
 import { extractResidues } from './inspect-mol.ts'
 import {
   Mol4AgentError,
+  type InspectAppearance,
+  type InspectOverlay,
   type InspectRequest,
   type InspectResult,
   type InspectSelection,
+  type InspectSelectionGroup,
   type InspectStyle,
   type InspectTarget,
 } from './protocol.ts'
@@ -40,6 +50,25 @@ function residueKeyOfLocation(location: StructureElement.Location): string {
 
 function residueKeyOfRecord(record: ResidueRecord): string {
   return [record.chain, record.seqId, record.compId].join('|')
+}
+
+/** Atom identity independent of which structure instance holds it. */
+function atomKeyOfLocation(location: StructureElement.Location): string {
+  return [
+    residueKeyOfLocation(location),
+    StructureProperties.atom.label_atom_id(location),
+  ].join('|')
+}
+
+/** Every atom of the given locations, keyed the same way as `atomKeyOfLocation`. */
+function atomKeysOf(lociList: readonly StructureElement.Loci[]): Set<string> {
+  const keys = new Set<string>()
+  for (const loci of lociList) {
+    StructureElement.Loci.forEachLocation(loci, location => {
+      if (Unit.isAtomic(location.unit)) keys.add(atomKeyOfLocation(location))
+    })
+  }
+  return keys
 }
 
 /** Every loaded structure object in the viewer, skipping unbuilt hierarchy entries. */
@@ -79,15 +108,32 @@ function targetLocations(plugin: PluginContext, target: InspectTarget): Resolved
   return { label: describeSelector(target), loci }
 }
 
-/** Totals for one or more live selections, without listing their content. */
-function summarize(input: readonly (StructureElement.Loci | undefined)[]): InspectSelection | undefined {
+/** Residue and atom totals of a set of locations, walked once. */
+function totalsOf(loci: readonly StructureElement.Loci[]): { atoms: number; residues: number } {
+  const records = extractResidues(loci).records
+  let atoms = 0
+  for (const record of records) atoms += record.atoms.length
+  return { atoms, residues: records.length }
+}
+
+/**
+ * Totals for one or more live selections.
+ *
+ * `entries` are reported one row each so disjoint selection entries stay
+ * distinguishable; the top-level totals are the union, which is smaller than
+ * the sum of the per-entry rows when entries overlap.
+ */
+function summarize(
+  input: readonly (StructureElement.Loci | undefined)[],
+  withGroups = false,
+): InspectSelection | undefined {
   const loci = input.filter((entry): entry is StructureElement.Loci =>
     entry !== undefined && !StructureElement.Loci.isEmpty(entry))
   if (loci.length === 0) return undefined
-  const extracted = extractResidues(loci)
-  let atoms = 0
-  for (const record of extracted.records) atoms += record.atoms.length
-  return { entries: loci.length, atoms, residues: extracted.records.length }
+  const summary: InspectSelection = { entries: loci.length, ...totalsOf(loci) }
+  if (!withGroups) return summary
+  const groups: InspectSelectionGroup[] = loci.map(entry => totalsOf([entry]))
+  return { ...summary, groups }
 }
 
 /** Keep only JSON-safe theme parameters; Mol* params may hold objects and Colors. */
@@ -106,12 +152,12 @@ function safeColorParams(params: unknown): Record<string, string | number | bool
  * Themes needing custom properties (e.g. hydrophobicity) can fail outside a
  * rendered scene; the style row still reports its theme name in that case.
  */
-function resolveColor(
+function themeColor(
   plugin: PluginContext,
   colorTheme: string,
   params: Record<string, unknown> | undefined,
   location: StructureElement.Location,
-): string | undefined {
+): number | undefined {
   try {
     const provider = plugin.representation.structure.themes.colorThemeRegistry.get(colorTheme)
     const theme = provider.factory(
@@ -119,7 +165,7 @@ function resolveColor(
       (params ?? provider.defaultValues) as never,
     ) as unknown as { color?: (location: StructureElement.Location, secondary: boolean) => number }
     if (typeof theme.color !== 'function') return undefined
-    return formatColor(theme.color(location, false))
+    return theme.color(location, false)
   } catch {
     return undefined
   }
@@ -141,6 +187,104 @@ interface RepresentationParams {
   readonly sizeTheme?: { readonly name?: unknown }
 }
 
+/** One bundle-based overpaint layer stored on a representation. */
+interface OverpaintLayer {
+  readonly bundle: unknown
+  readonly color: number
+  readonly clear: boolean
+}
+
+/**
+ * Overpaint layers attached to one representation, in application order.
+ *
+ * Mol* stores overpaint as a transform layered on the representation, so these
+ * are its child transforms in the state tree. Script-based layers are skipped:
+ * resolving a Mol*Script selection needs the script engine, and the UI only
+ * ever writes bundle layers.
+ */
+function overpaintLayers(plugin: PluginContext, representationRef: string): OverpaintLayer[] {
+  const tree = plugin.state.data.tree
+  const children = tree.children.get(representationRef)
+  if (children === undefined) return []
+  const layers: OverpaintLayer[] = []
+  children.forEach(childRef => {
+    const transform = tree.transforms.get(childRef)
+    if (transform === undefined) return
+    if (transform.transformer !== StateTransforms.Representation.OverpaintStructureRepresentation3DFromBundle) return
+    const params = transform.params as { readonly layers?: readonly OverpaintLayer[] } | undefined
+    for (const layer of params?.layers ?? []) layers.push(layer)
+  })
+  return layers
+}
+
+/**
+ * Overpaint colour covering one atom of a representation, plus the overlay row.
+ *
+ * Layers apply in order: a layer whose bundle contains the atom sets the colour,
+ * and a `clear` layer resets it back to the theme colour. The atom is matched by
+ * structure identity, so a bundle built against the root structure still matches
+ * an atom seen through a component substructure.
+ */
+function overpaintFor(
+  plugin: PluginContext,
+  representationRef: string,
+  root: Structure,
+  atomKey: string,
+  label: string,
+): { readonly color?: number; readonly overlays: readonly InspectOverlay[] } {
+  const resolved: OverpaintLayerKeys[] = []
+  for (const layer of overpaintLayers(plugin, representationRef)) {
+    try {
+      resolved.push({
+        keys: atomKeysOf([StructureElement.Bundle.toLoci(layer.bundle as never, root)]),
+        color: layer.color,
+        clear: layer.clear,
+      })
+    } catch {
+      // A layer that cannot be resolved is skipped rather than failing the query.
+    }
+  }
+  const applied = resolveOverpaint(resolved, atomKey)
+  if (applied === undefined) return { overlays: [] }
+  return {
+    color: applied,
+    overlays: [{ source: 'overpaint', color: formatColor(applied), label }],
+  }
+}
+
+/** The canvas selection marker that tints selected elements. */
+interface CanvasMarker {
+  readonly selectColor: number
+  readonly selectStrength: number
+  /** True when the marker is drawn as edges only and does not tint the body colour. */
+  readonly edgesOnly: boolean
+}
+
+function canvasMarker(plugin: PluginContext): CanvasMarker | undefined {
+  const renderer = plugin.canvas3d?.props.renderer
+  if (renderer === undefined) return undefined
+  return {
+    selectColor: renderer.selectColor,
+    selectStrength: typeof renderer.selectStrength === 'number' ? renderer.selectStrength : 0,
+    edgesOnly: renderer.colorMarker !== true,
+  }
+}
+
+/** The selection overlay for one atom, when that atom is currently selected. */
+function selectionOverlayFor(
+  marker: CanvasMarker | undefined,
+  selectionKeys: ReadonlySet<string> | undefined,
+  atomKey: string,
+): InspectOverlay | undefined {
+  if (marker === undefined || selectionKeys === undefined || !selectionKeys.has(atomKey)) return undefined
+  return {
+    source: 'selection',
+    color: formatColor(marker.selectColor),
+    strength: marker.selectStrength,
+    ...(marker.edgesOnly ? { hidden: true } : {}),
+  }
+}
+
 /**
  * Representations that currently draw any residue of the target.
  *
@@ -148,14 +292,20 @@ interface RepresentationParams {
  * than unit instances, so the same residue in a symmetry copy or in a
  * selection component still reports the style that colours it on screen.
  */
-function collectStyles(plugin: PluginContext, targetKeys: ReadonlySet<string>): InspectStyle[] {
+function collectStyles(
+  plugin: PluginContext,
+  targetKeys: ReadonlySet<string>,
+  selectionKeys: ReadonlySet<string> | undefined,
+): InspectStyle[] {
   const styles: InspectStyle[] = []
+  const marker = canvasMarker(plugin)
   for (const structureRef of plugin.managers.structure.hierarchy.current.structures) {
     for (const component of structureRef.components) {
       const structure = component.cell.obj?.data
       if (structure === undefined) continue
       const location = firstTargetLocation(structure, targetKeys)
       if (location === undefined) continue
+      const atomKey = atomKeyOfLocation(location)
       const label = component.cell.obj?.label ?? 'component'
       const componentHidden = component.cell.transform.state.isHidden === true
       for (const representation of component.representations) {
@@ -165,7 +315,23 @@ function collectStyles(plugin: PluginContext, targetKeys: ReadonlySet<string>): 
         const sizeTheme = typeof values?.sizeTheme?.name === 'string' ? values.sizeTheme.name : 'unknown'
         const params = values?.colorTheme?.params
         const colorParams = safeColorParams(params)
-        const colorValue = resolveColor(plugin, colorTheme, params, location)
+        const baseColor = themeColor(plugin, colorTheme, params, location)
+        const overpaint = overpaintFor(plugin, representation.cell.transform.ref, structure.root, atomKey, type)
+        const selection = selectionOverlayFor(marker, selectionKeys, atomKey)
+        const overlays: InspectOverlay[] = [
+          ...overpaint.overlays,
+          ...(selection === undefined ? [] : [selection]),
+        ]
+        // `selection` only exists when a marker does, so the marker options and
+        // the selected flag stay consistent.
+        const visibleColor = visibleColorOf(
+          baseColor,
+          overpaint.color,
+          selection !== undefined,
+          marker === undefined
+            ? undefined
+            : { color: marker.selectColor, strength: marker.selectStrength, edgesOnly: marker.edgesOnly },
+        )
         const hidden = componentHidden || representation.cell.transform.state.isHidden === true
         styles.push({
           component: label,
@@ -173,13 +339,35 @@ function collectStyles(plugin: PluginContext, targetKeys: ReadonlySet<string>): 
           color: colorTheme,
           size: sizeTheme,
           ...(colorParams === undefined ? {} : { colorParams }),
-          ...(colorValue === undefined ? {} : { colorValue }),
+          ...(baseColor === undefined ? {} : { baseColor: formatColor(baseColor) }),
+          ...(visibleColor === undefined ? {} : { visibleColor: formatColor(visibleColor) }),
+          ...(overlays.length === 0 ? {} : { overlays }),
           ...(hidden ? { hidden: true } : {}),
         })
       }
     }
   }
   return styles
+}
+
+/**
+ * Effective appearance of the target: the last drawn style and its overlays.
+ *
+ * Several representations can cover one target (e.g. a cartoon plus a selection
+ * component), so this reports the one drawn last rather than inventing a merged
+ * colour; per-representation values stay in `styles`.
+ */
+function appearanceOf(styles: readonly InspectStyle[]): InspectAppearance {
+  for (let index = styles.length - 1; index >= 0; index -= 1) {
+    const style = styles[index]
+    if (style === undefined || style.hidden === true) continue
+    return {
+      ...(style.baseColor === undefined ? {} : { baseColor: style.baseColor }),
+      ...(style.visibleColor === undefined ? {} : { visibleColor: style.visibleColor }),
+      overlays: style.overlays ?? [],
+    }
+  }
+  return { overlays: [] }
 }
 
 /**
@@ -195,15 +383,20 @@ export function inspectViewer(plugin: PluginContext, request: InspectRequest = {
   // scope; the style probe additionally needs residue identity.
   const extracted = extractResidues(target.loci)
   const keys = new Set(extracted.records.map(residueKeyOfRecord))
-  const selection = summarize([...plugin.managers.structure.selection.entries.values()].map(entry => entry.selection))
+  const selectionLocis = [...plugin.managers.structure.selection.entries.values()].map(entry => entry.selection)
+  const selection = summarize(selectionLocis, true)
   const focus = summarize([plugin.managers.structure.focus.current?.loci])
+  const selectionKeys = selection === undefined ? undefined : atomKeysOf(selectionLocis)
+  const styles = collectStyles(plugin, keys, selectionKeys)
   return buildInspectResult({
     target: target.label,
     detail,
     chains: extracted.chains,
     models: extracted.models,
     records: extracted.records,
-    styles: collectStyles(plugin, keys),
+    styles,
+    // An empty target carries no appearance: nothing is drawn to describe.
+    ...(extracted.records.length === 0 ? {} : { appearance: appearanceOf(styles) }),
     ...(selection === undefined ? {} : { selection }),
     ...(focus === undefined ? {} : { focus }),
     ...(request.limit === undefined ? {} : { limit: request.limit }),
