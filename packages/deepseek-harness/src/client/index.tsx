@@ -16,7 +16,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { BINARY_EXTENSIONS, PREVIEW_EXTENSIONS } from '../formats.ts'
-import type { MolInspectAnswer } from '../state.ts'
+import type { MolInspectAnswer, MolTmScoreAnswer } from '../state.ts'
 import { encodeBase64 } from './base64.ts'
 import { MolBridge } from './bridge.tsx'
 import { MolBody } from './document.tsx'
@@ -83,6 +83,26 @@ export function apply(ctx: Context): void {
           sessionId,
           `/mol4agent_capture ${callId} ${encodedReport}`,
           [{ type: 'image', mediaType: 'image/png', data: encodeBase64(png) }],
+          new AbortController().signal,
+        )
+        if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+      },
+      deliverAlignResult: async (callId: string, payload: unknown): Promise<void> => {
+        const encoded = encodeURIComponent(JSON.stringify(payload))
+        const result = await ctx.remote.commands.execute(
+          sessionId,
+          `/mol4agent_align_result ${callId} ${encoded}`,
+          [],
+          new AbortController().signal,
+        )
+        if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+      },
+      deliverTmScore: async (callId: string, answer: MolTmScoreAnswer): Promise<void> => {
+        const encoded = encodeURIComponent(JSON.stringify(answer))
+        const result = await ctx.remote.commands.execute(
+          sessionId,
+          `/mol4agent_tmscore_result ${callId} ${encoded}`,
+          [],
           new AbortController().signal,
         )
         if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)

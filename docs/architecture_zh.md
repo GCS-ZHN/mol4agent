@@ -185,8 +185,11 @@ App；两者共享长轮询场景与 claim/deliver 截图会合。每个 `mcp-ex
 
 ## 7. 实现状态
 
-- **core**：协议、Mol* 官方 UI viewer、选择器、摘要、per-selection 样式、PNG capture 已实现。
-- **DSH adapter**：文档预览、agent 工具、session projection、截图回传、面板/主题/tab 生命周期已实现。
+- **core**：协议、Mol* 官方 UI viewer、选择器、摘要、per-selection 样式、多结构场景
+  （`addStructure` / `removeStructure` / `listStructures`）、基于 Mol* 的叠合
+  （`align`，支持 TM-align 或序列）、只读 `tmScore` 比较和 PNG capture 已实现。
+- **DSH adapter**：文档预览、agent 工具、session projection、截图回传、面板/主题/tab 生命周期
+  已实现；另有 DSH 的多结构场景与 `mol_align`/`mol_tmscore`。
 - **ChatGPT/Codex 适配**：MCP App viewer、`mol_*` 工具、长轮询场景更新、
   截图会合、本地 marketplace 安装，以及文件树的 MCP extension file viewer
   均已实现；按扩展名授权与单活场景限制记录在包 README。

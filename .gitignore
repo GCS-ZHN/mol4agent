@@ -10,3 +10,7 @@ dist/
 .mol4agent/
 packages/chatgpt/test/.build/
 packages/chatgpt/test/artifacts/
+packages/core/test/.build/
+packages/core/test/artifacts/
+packages/deepseek-harness/test/.build/
+packages/deepseek-harness/test/artifacts/

@@ -10,8 +10,12 @@ mol4agent 的 DeepSeek Harness（DSH）适配包：右侧栏分子文档预览�
   `.cif.gz`、`.sdf.gz`），适配器会先解压再交给 core。预览器的「打开方式」仍
   可切回代码/纯文本（`bcif` 是二进制，没有纯文本回退）。
 - **agent 工具**：`mol_info`、`mol_inspect`、`mol_interface`、`mol_fetch`、
-  `mol_open`、`mol_style`、`mol_select`、`mol_focus`、`mol_measure`、
-  `mol_capture`。
+  `mol_open`、`mol_add_structure`、`mol_align`、`mol_tmscore`、
+  `mol_remove_structure`、`mol_list_structures`、`mol_style`、`mol_select`、
+  `mol_focus`、`mol_measure`、`mol_capture`。
+- **多结构场景**：一个 tab 页面可同时容纳多个结构，每个都有稳定 id；
+  `mol_align` 把 target 叠合到 reference，`mol_tmscore` 只读比较两个选择，
+  选择器可用 `structureId` 区分同名链。
 - **实时状态查询**：`mol_inspect` 直接从运行中的 Mol* 页面读取当前显示的内容
   （残基、原子、坐标、按 component 的计数、表示与解析后的颜色），包括人通过
   点击或 Mol* 面板做出的改动。只读；不解析文件，也不改变场景。
@@ -73,7 +77,12 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 在 PDB-like 文件中找两个链组之间的界面残基（默认 8 Å，0 < cutoff ≤ 30），返回可用于 `mol_style`/`mol_focus` 的区间。 |
 | `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
 | `mol_open` | `path`、`type?`、`color?`、`colorParams?`、`select?`、`focus?` | 按规范化（canonical）的 `/` 分隔绝对路径创建/更新 tab 页面并设为活动 tab；发出 `represent`，可选 `select`/`focus`。tab 页面 id 即该路径。 |
-| `mol_style` | `tab?`、`type?`、`color?`、`target?`、`replace?`、`colorParams?` | 给指定 tab（默认活动 tab）追加 `represent`。`replace` 默认 `true`：先清空当前表示再绘制；传 `replace: false` 保留已有表示并叠加。`target` 只限定新表示的覆盖范围，不隐含替换或叠加。`colorParams.value` 只对 `uniform` 生效，可传 CSS 名称（`"red"`）、十六进制（`"#ff0000"`）或整数（`16711680`）；非法颜色会被拒绝，结果会回显解析后的十六进制。 |
+| `mol_add_structure` | `tab?`、`path`、`id?`、`type?`、`color?`、`colorParams?`、`focus?` | 向同一 tab 场景追加结构，不清空已有结构。默认 id 为 `structure-2`、`structure-3`……；结果会回显 id。 |
+| `mol_align` | `tab?`、`reference`、`target`、`method?`、`referenceChain?`、`targetChain?` | 用 Mol* TM-align（默认）或序列引导的叠合把 target 叠到 reference；可选链号限制参与叠合的 trace。 |
+| `mol_tmscore` | `tab?`、`reference`、`target` | 只读比较两个选择的 TM-align 指标：RMSD、两个 TM-score 和对齐长度；不移动任何结构。选择会归约为聚合物 trace。 |
+| `mol_remove_structure` | `tab?`、`structureId` | 追加 `remove-structure`；其他结构保留。 |
+| `mol_list_structures` | `tab?` | 列出 tab 中当前结构及其 id、label、format。 |
+| `mol_style` | `tab?`、`type?`、`color?`、`target?`、`replace?`、`colorParams?` | 给指定 tab（默认活动 tab）追加 `represent`。`replace` 默认 `true`：先清空当前表示再绘制（带 `structureId` 的 target 只清空该结构）；传 `replace: false` 保留已有表示并叠加。`target` 只限定新表示的覆盖范围，不隐含替换或叠加。`colorParams.value` 只对 `uniform` 生效，可传 CSS 名称（`"red"`）、十六进制（`"#ff0000"`）或整数（`16711680`）；非法颜色会被拒绝，结果会回显解析后的十六进制。 |
 | `mol_select` | `tab?`、`target`、`mode?`、`focus?` | 追加 `select`；`mode` 为 `select` 或 `highlight`。 |
 | `mol_focus` | `tab?`、`target?` | 追加 `focus`；不传 target 聚焦整个结构。 |
 | `mol_measure` | `tab?`、`kind`、`targets` | 追加 `measure`；距离 2 个目标，角度 3 个，二面角 4 个。 |
@@ -185,12 +194,16 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 | `mol_select` | 追加 `{ op: 'select', target, mode, focus? }` |
 | `mol_focus` | 追加 `{ op: 'focus', target? }` |
 | `mol_measure` | 追加 `{ op: 'measure', kind, targets }` |
+| `mol_add_structure` | 添加 `structures[]` 条目；可选追加目标结构上的 `represent`/`focus` |
+| `mol_align` | 追加 `{ op: 'align', reference, target, method?, referenceChain?, targetChain? }` |
+| `mol_remove_structure` | 追加 `{ op: 'remove-structure', structureId }` |
+| `mol_list_structures` | 无；只读 projection 中的结构列表 |
 | `mol_capture` | 添加 pending 截图项；不产生 viewer 命令 |
+| `mol_tmscore` | 添加 pending TM-score 请求；不产生 viewer 命令 |
 | `mol_inspect` | 添加 pending 查询项；不产生 viewer 命令 |
 | `mol_interface` | 无；只返回计算出的区间 |
 | `mol_fetch` | 无；只下载文件 |
 | `mol_info` | 无 |
-| `mol_inspect` | 无；只添加待页面用实时状态回答的查询项 |
 
 ## Session projection
 
@@ -206,6 +219,12 @@ interface MolSessionState {
     path: string       // 规范化的 `/` 分隔绝对路径
     format: MolFormat
     label: string
+    structures?: {
+      id: string
+      path: string
+      format: MolFormat
+      label: string
+    }[]
     commands: MolCommand[]
   }>
   active: string | null   // 规范化的 `/` 分隔绝对路径
@@ -227,8 +246,13 @@ interface MolSessionState {
 ```
 
 - `mol_open` 添加/替换 `tabs[path]` 并设置 `active`；每个 tab 页面有独立的
-  `sceneKey` 和命令列表。`mol_style`/`mol_select`/`mol_focus`/`mol_measure`
-  折叠进 `tab` 参数（缺省为活动 tab）并递增 `revision`。
+  `sceneKey`、结构列表和命令列表。`mol_style`/`mol_select`/`mol_focus`/
+  `mol_measure`/`mol_align`/`mol_remove_structure` 折叠进 `tab` 参数（缺省为
+  活动 tab）并递增 `revision`；`mol_add_structure` 追加 `structures` 条目，
+  并按需追加针对该结构的命令。
+- 客户端先以 id `structure` 加载主结构，再读取并追加 `structures` 中后续的
+  结构，最后应用新命令。被移除的结构仍留在 projection 中，以便重放命令日志
+  复现同一场景；该 tab 内 id 不能复用。
 - `mol_capture` 按 `tab` 参数（缺省为活动 tab）添加 pending 并递增
   `revision`；header bridge 会激活目标 tab 以完成截图。`mol_inspect` 则在
   `inspecting` 下添加对应项：它不产生 viewer 命令，因为页面回答的是当前
@@ -430,8 +454,11 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.3.0
   粗粒化（sphere/gaussian 或低分辨率）unit 没有原子层级，不会列出；
   格式不携带 `occupancy`/`bFactor` 时这两个字段缺省。`colorValue` 通过该
   表示自己的配色主题解析，需要 custom property 的主题可能只给出主题名。
-- `mol_style` 默认替换当前表示；叠加式（包括带 `target` 的叠加）必须显式传
-  `replace: false`，`target` 只限定覆盖范围。标签（label）还没有暴露成工具。
+- `mol_style` 默认替换当前表示；叠加（包括带 `target` 的叠加）必须显式传
+  `replace: false`，`target` 只限定覆盖范围。多结构场景中给选择器加
+  `structureId` 可指定单个结构。标签（label）还没有暴露成工具。
+- `mol_align` 会返回 RMSD/TM-score/对齐长度；`mol_tmscore` 不移动任何结构，
+  独立比较两个选择。
 - `mol_interface` 目前只解析 PDB-like ATOM 记录（`pdb`/`pdbqt`/`pqr`）；
   mmCIF/BCIF 的界面计算尚未实现。
 - `mol_fetch` 需要 DSH Host 能访问外网 HTTPS。下载上限 64 MiB、30 秒超时；

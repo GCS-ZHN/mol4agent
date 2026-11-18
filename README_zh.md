@@ -7,6 +7,7 @@
 - **人工打开**：在 harness 的文件预览器里点开 `.pdb` / `.cif` / `.sdf` / `.mol2` / `.xyz` / `.gro`（含 `.gz` 变体），右侧直接显示 Mol* 官方 3D 界面；「打开方式」里仍可切回纯文本/代码。
 - **agent 操作**：LLM 通过 `mol_*` 工具改表示、配色、高亮残基/配体、聚焦镜头、测量、截图，人只看着页面变化。
 - **agent 主动打开**：指定文件后页面自动打开该结构。
+- **多结构与叠合（core + DSH）**：在同一场景追加第二个结构，用 Mol* TM-align 或序列引导叠合，再按结构 id 独立着色/选择；独立比较两个选择的 TM-score/RMSD 可用 `mol_tmscore`。
 - **跨 harness**：渲染与命令协议在 `@gcszhn/mol4agent-core`，每个 harness 一个薄适配包。
 
 ![ChatGPT/Codex 侧栏中的 mol4agent](docs/assets/chatgpt-codex.png)
@@ -53,7 +54,7 @@ viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
 
 | 包 | 作用 | 状态 |
 |---|---|---|
-| [`@gcszhn/mol4agent-core`](packages/core) | 与 harness 无关的 Mol* 渲染引擎、命令协议、选择器、字节摘要、数据库来源解析、PNG 截图 | 已实现；用真实 1CRN/1ATP/aspirin 验证 |
+| [`@gcszhn/mol4agent-core`](packages/core) | 与 harness 无关的 Mol* 渲染引擎、命令协议、选择器、字节摘要、数据库来源解析、多结构场景、叠合、PNG 截图 | 已实现；用真实 1CRN/1ATP/aspirin 及 7CZD/4ZQK 多结构叠合验证 |
 | [`@gcszhn/mol4agent-deepseekharness`](packages/deepseek-harness) | DSH 适配：右侧文档预览、session projection、`mol_*` 工具、截图回传 | 已实现并安装到 Desktop profile |
 | [`@gcszhn/mol4agent-chatgpt`](packages/chatgpt) | ChatGPT/Codex 适配：MCP App viewer、`mol_*` 工具、长轮询场景更新、截图回传 | 已实现；本地 marketplace 安装，协议测试与真实 MCP Apps 冒烟测试通过 |
 | [`@gcszhn/mol4agent-opencode`](packages/opencode) | OpenCode 2.2+ 适配：侧栏 Mol* viewer、`mol_*` 工具、RPC 场景更新、截图回传 | 已实现；在 OpenCode 桌面端（2.3.0）完成 server + GUI 端到端验证 |

@@ -60,6 +60,24 @@ export const COLOR_THEMES = [
 
 export type ColorTheme = (typeof COLOR_THEMES)[number]
 
+/** Alignment algorithms exposed to agents. */
+export const ALIGNMENT_METHODS = ['tm-align', 'sequence'] as const
+
+export type AlignmentMethod = (typeof ALIGNMENT_METHODS)[number]
+
+/**
+ * Stable identifier for one structure in a viewer scene.
+ *
+ * IDs are deliberately URL/JSON friendly so they can travel through every
+ * adapter and be echoed by a model: 1-64 characters, starting with a letter or
+ * digit, then letters, digits, `.`, `_` or `-`.
+ */
+export const STRUCTURE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+
+export function isStructureId(value: unknown): value is string {
+  return typeof value === 'string' && STRUCTURE_ID_PATTERN.test(value)
+}
+
 /**
  * Bytes plus the explicit format the adapter selected for them.
  *
@@ -99,14 +117,16 @@ export interface ElementSchema {
   readonly type_symbol?: string
 }
 
-/**
- * A selection an agent can express without knowing atom indices.
- *
- * Adapters pass these through unchanged; core compiles them to Mol* selection
- * queries or schemas. This shape is the stable part of the agent-facing
- * contract, so adding a variant is a protocol change.
- */
-export type StructureSelector =
+/** Fields that scope a selector to one structure in a multi-structure scene. */
+export type StructureSelectorScope = {
+  /**
+   * Structure id returned by `load`/`addStructure` (or the adapters' tools).
+   * Omitted means "every loaded structure", matching single-structure scenes.
+   */
+  readonly structureId?: string
+}
+
+type StructureSelectorBody =
   | { readonly kind: 'all' }
   | { readonly kind: 'polymer' }
   | { readonly kind: 'protein' }
@@ -119,6 +139,16 @@ export type StructureSelector =
   | { readonly kind: 'residues'; readonly chain?: string; readonly start: number; readonly end: number; readonly auth?: boolean }
   | { readonly kind: 'comp'; readonly compId: string }
   | { readonly kind: 'schema'; readonly schema: ElementSchema }
+
+/**
+ * A selection an agent can express without knowing atom indices.
+ *
+ * Adapters pass these through unchanged; core compiles them to Mol* selection
+ * queries or schemas. This shape is the stable part of the agent-facing
+ * contract, so adding a variant is a protocol change. `structureId` disambiguates
+ * chains with the same id in different loaded structures.
+ */
+export type StructureSelector = StructureSelectorBody & StructureSelectorScope
 
 /**
  * How much detail one inspection returns.
@@ -348,6 +378,18 @@ export type MolCommand =
     readonly targets: readonly StructureSelector[]
   }
   | { readonly op: 'label'; readonly target: StructureSelector; readonly text?: string }
+  | { readonly op: 'remove-structure'; readonly structureId: string }
+  | { readonly op: 'visibility'; readonly structureId: string; readonly visible: boolean }
+  | {
+    readonly op: 'align'
+    readonly reference: string
+    readonly target: string
+    readonly method?: AlignmentMethod
+    /** Restrict the reference alignment to one chain (auth_asym_id). */
+    readonly referenceChain?: string
+    /** Restrict the target alignment to one chain (auth_asym_id). */
+    readonly targetChain?: string
+  }
 
 export type Mol4AgentErrorCode =
   | 'INVALID_COMMAND'
@@ -361,6 +403,10 @@ export type Mol4AgentErrorCode =
   | 'INVALID_ENTRY_ID'
   | 'SUMMARY_UNSUPPORTED'
   | 'DISPOSED'
+  | 'UNKNOWN_STRUCTURE'
+  | 'DUPLICATE_STRUCTURE_ID'
+  | 'ALIGN_FAILED'
+  | 'TM_SCORE_FAILED'
 
 /** Structured failure. Tools turn this into model-facing text instead of a stack trace. */
 export class Mol4AgentError extends Error {
@@ -410,6 +456,50 @@ export interface StructureSummary {
   readonly complete: boolean
 }
 
+/** One structure currently displayed in a viewer scene. */
+export interface LoadedStructure {
+  readonly id: string
+  readonly label?: string
+  readonly format: MolFormat
+  readonly summary: StructureSummary
+}
+
+/** Metrics returned by the `align` command. */
+export interface AlignmentResult {
+  readonly method: AlignmentMethod
+  readonly reference: string
+  readonly target: string
+  /** Root-mean-square deviation of the aligned atoms, in angstroms. */
+  readonly rmsd: number
+  /** Number of aligned residues/atoms used by the algorithm. */
+  readonly alignedLength: number
+  /** TM-align only: TM-score normalized by the reference length. */
+  readonly tmScoreA?: number
+  /** TM-align only: TM-score normalized by the target length. */
+  readonly tmScoreB?: number
+}
+
+/** Two selections to compare without moving either one. */
+export interface TmScoreRequest {
+  readonly reference: StructureSelector
+  readonly target: StructureSelector
+}
+
+/** TM-align metrics for two selections. Nothing is transformed. */
+export interface TmScoreResult {
+  readonly method: 'tm-align'
+  /** Human-readable selector descriptions. */
+  readonly reference: string
+  readonly target: string
+  /** RMSD after optimal superposition of the aligned trace atoms, in angstroms. */
+  readonly rmsd: number
+  readonly tmScoreA: number
+  readonly tmScoreB: number
+  readonly alignedLength: number
+  readonly referenceAtoms: number
+  readonly targetAtoms: number
+}
+
 export interface CaptureOptions {
   readonly width?: number
   readonly height?: number
@@ -437,6 +527,9 @@ const COMMAND_OPS = new Set<MolCommand['op']>([
   'background',
   'measure',
   'label',
+  'remove-structure',
+  'visibility',
+  'align',
 ])
 
 export function isMolFormat(value: unknown): value is MolFormat {
@@ -445,6 +538,10 @@ export function isMolFormat(value: unknown): value is MolFormat {
 
 export function isPresetName(value: unknown): value is PresetName {
   return typeof value === 'string' && (PRESETS as readonly string[]).includes(value)
+}
+
+export function isAlignmentMethod(value: unknown): value is AlignmentMethod {
+  return typeof value === 'string' && (ALIGNMENT_METHODS as readonly string[]).includes(value)
 }
 
 export function isInspectDetail(value: unknown): value is InspectDetail {

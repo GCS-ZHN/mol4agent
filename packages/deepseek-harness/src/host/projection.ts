@@ -9,17 +9,20 @@ import { z } from 'zod'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { MolCommand, StyleSpec, StructureSelector, InspectTarget } from '@gcszhn/mol4agent-core/protocol'
-import { isInspectDetail, parseColor } from '@gcszhn/mol4agent-core/protocol'
+import type { InspectTarget, MolCommand, StyleSpec, StructureSelector } from '@gcszhn/mol4agent-core/protocol'
+import { isAlignmentMethod, isInspectDetail, isStructureId, parseColor } from '@gcszhn/mol4agent-core/protocol'
 import { baseNameOf, formatOfFile } from '../formats.ts'
 import { normalizeSelector } from '../selector.ts'
 import { canonicalTabPath } from '../tab-path.ts'
 import {
   EMPTY_MOL_STATE,
   PROJECTION_KEY,
+  nextStructureId,
+  structuresOfScene,
   type MolPendingCapture,
   type MolPendingInspect,
   type MolSceneState,
+  type MolSceneStructure,
   type MolSessionState,
 } from '../state.ts'
 
@@ -30,7 +33,8 @@ const LIVE_INSPECT_KINDS = new Set(['selection', 'focus'])
 
 const stateSchema = z.custom<MolSessionState>(
   value => typeof value === 'object' && value !== null
-    && 'revision' in value && 'tabs' in value && 'pending' in value && 'inspecting' in value,
+    && 'revision' in value && 'tabs' in value && 'pending' in value
+    && 'pendingAligns' in value && 'pendingTmScores' in value && 'inspecting' in value,
 )
 
 /** Build the projection unit the adapter registers on activation. */
@@ -45,7 +49,7 @@ export function molProjectionDefinition() {
       view: state => state,
       summary: false,
     },
-    stateVersion: 3,
+    stateVersion: 6,
   } satisfies ProjectionDefinition<typeof PROJECTION_KEY, MolSessionState>
 }
 
@@ -55,12 +59,17 @@ function fold(state: MolSessionState, event: SessionEvent): MolSessionState {
   }
   if (event.type === 'tool/result') {
     const callId = String(event.data.message.toolCallId)
-    if (!(callId in state.pending) && !(callId in state.inspecting)) return state
+    if (!(callId in state.pending) && !(callId in state.pendingAligns)
+      && !(callId in state.pendingTmScores) && !(callId in state.inspecting)) return state
     const pending = { ...state.pending }
     delete pending[callId]
+    const pendingAligns = { ...state.pendingAligns }
+    delete pendingAligns[callId]
+    const pendingTmScores = { ...state.pendingTmScores }
+    delete pendingTmScores[callId]
     const inspecting = { ...state.inspecting }
     delete inspecting[callId]
-    return { ...state, revision: state.revision + 1, pending, inspecting }
+    return { ...state, revision: state.revision + 1, pending, pendingAligns, pendingTmScores, inspecting }
   }
   return state
 }
@@ -119,6 +128,79 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
       return withCommands(state, tab.path, [...tab.commands, command])
     }
 
+    case 'mol_add_structure': {
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
+      const requestedPath = typeof args.path === 'string' ? args.path : undefined
+      if (requestedPath === undefined) return state
+      const path = canonicalTabPath(
+        isAbsolute(requestedPath) ? requestedPath : state.cwd === undefined ? requestedPath : resolve(state.cwd, requestedPath),
+      )
+      const format = formatOfFile(path)
+      if (format === undefined) return state
+      const structures = structuresOfScene(tab)
+      const id = args.id === undefined ? nextStructureId(structures) : args.id
+      if (!isStructureId(id)) return state
+      if (structures.some(structure => structure.id === id)) return state
+      const entry = { id, path, format, label: baseNameOf(path), callId }
+      const commands: MolCommand[] = [...tab.commands]
+      // addStructure already installs the default representation. Only append a
+      // style command when the agent asked for one explicitly.
+      if (args.type !== undefined || args.color !== undefined || args.colorParams !== undefined) {
+        const style = styleOf(args)
+        if (style === undefined) return state
+        commands.push({
+          op: 'represent',
+          style,
+          target: { kind: 'all', structureId: id },
+        })
+      }
+      if (args.focus === true) {
+        commands.push({ op: 'focus', target: { kind: 'all', structureId: id } })
+      }
+      return {
+        ...state,
+        revision: state.revision + 1,
+        tabs: {
+          ...state.tabs,
+          [tab.path]: { ...tab, structures: [...structures, entry], commands },
+        },
+        active: tab.path,
+      }
+    }
+
+    case 'mol_align': {
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
+      const reference = args.reference
+      const target = args.target
+      if (!isStructureId(reference) || !isStructureId(target) || reference === target) return state
+      const structures = activeStructures(tab)
+      if (!structures.some(structure => structure.id === reference)) return state
+      if (!structures.some(structure => structure.id === target)) return state
+      if (args.method !== undefined && !isAlignmentMethod(args.method)) return state
+      if (args.referenceChain !== undefined && typeof args.referenceChain !== 'string') return state
+      if (args.targetChain !== undefined && typeof args.targetChain !== 'string') return state
+      const command: MolCommand = {
+        op: 'align',
+        reference,
+        target,
+        ...(args.method === undefined ? {} : { method: args.method }),
+        ...(args.referenceChain === undefined ? {} : { referenceChain: String(args.referenceChain) }),
+        ...(args.targetChain === undefined ? {} : { targetChain: String(args.targetChain) }),
+      }
+      return withAlignment(state, tab, command, callId)
+    }
+
+    case 'mol_remove_structure': {
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
+      const structureId = args.structureId
+      if (!isStructureId(structureId)) return state
+      if (!activeStructures(tab).some(structure => structure.id === structureId)) return state
+      return withCommands(state, tab.path, [...tab.commands, { op: 'remove-structure', structureId }])
+    }
+
     case 'mol_measure': {
       const tab = tabOf(state, args)
       if (tab === undefined) return state
@@ -134,6 +216,22 @@ function foldToolCall(state: MolSessionState, name: string, callId: string, argu
       if (targets.length !== needed) return state
       const command: MolCommand = { op: 'measure', kind, targets }
       return withCommands(state, tab.path, [...tab.commands, command])
+    }
+
+    case 'mol_tmscore': {
+      const tab = tabOf(state, args)
+      if (tab === undefined) return state
+      const reference = selectorOf(args.reference)
+      const target = selectorOf(args.target)
+      if (reference === undefined || target === undefined) return state
+      return {
+        ...state,
+        revision: state.revision + 1,
+        pendingTmScores: {
+          ...state.pendingTmScores,
+          [callId]: { callId, path: tab.path, reference, target },
+        },
+      }
     }
 
     case 'mol_capture': {
@@ -202,6 +300,7 @@ function openScene(state: MolSessionState, args: Record<string, unknown>, callId
     path,
     format,
     label: baseNameOf(path),
+    structures: [{ id: PRIMARY_STRUCTURE_ID, path, format, label: baseNameOf(path), callId }],
     commands,
   }
   return {
@@ -221,6 +320,26 @@ function tabOf(state: MolSessionState, args: Record<string, unknown>): MolSceneS
   return state.tabs[key]
 }
 
+function withAlignment(
+  state: MolSessionState,
+  tab: MolSceneState,
+  command: MolCommand,
+  callId: string,
+): MolSessionState {
+  return {
+    ...state,
+    revision: state.revision + 1,
+    tabs: {
+      ...state.tabs,
+      [tab.path]: { ...tab, commands: [...tab.commands, command] },
+    },
+    pendingAligns: {
+      ...state.pendingAligns,
+      [callId]: { callId, path: tab.path, commandIndex: tab.commands.length },
+    },
+  }
+}
+
 function withCommands(state: MolSessionState, key: string, commands: MolCommand[]): MolSessionState {
   const tab = state.tabs[key]
   if (tab === undefined) return state
@@ -229,6 +348,18 @@ function withCommands(state: MolSessionState, key: string, commands: MolCommand[
     revision: state.revision + 1,
     tabs: { ...state.tabs, [key]: { ...tab, commands } },
   }
+}
+
+/** The primary structure id assigned by `load`/`mol_open`. */
+export const PRIMARY_STRUCTURE_ID = 'structure'
+
+/** Structures that have not been removed by a later command. */
+function activeStructures(tab: MolSceneState): readonly MolSceneStructure[] {
+  const retired = new Set<string>()
+  for (const command of tab.commands) {
+    if (command.op === 'remove-structure') retired.add(command.structureId)
+  }
+  return structuresOfScene(tab).filter(structure => !retired.has(structure.id))
 }
 
 function styleOf(args: Record<string, unknown>): StyleSpec | undefined {

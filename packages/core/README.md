@@ -25,8 +25,8 @@ core: createPluginUI -> Mol* state tree -> commands -> capture
 - Input is always `StructureData { data: string | Uint8Array, format, binary?, label? }`.
 - `format` is explicit; core never inspects a suffix or a MIME type.
 - No filesystem, network, session, or harness package imports.
-- Commands are JSON-serializable; **loading is a method, not a command**, because
-  adapter-owned bytes may not be serializable.
+- Commands are JSON-serializable; **loading and adding structures are methods,
+  not commands**, because adapter-owned bytes may not be serializable.
 - `@gcszhn/mol4agent-core/parse` is pure and works in Node and the browser.
 - `@gcszhn/mol4agent-core/sources` is pure too: it turns an entry id into a
   download plan (`url`, optional JSON `indexField`, format, file name). Network
@@ -78,6 +78,9 @@ const viewer = await createMolViewer({
 })
 
 await viewer.load({ data: bytes, format: 'pdb', label: '1crn.pdb' })
+// Optional: add a second structure and align it to the first.
+await viewer.addStructure({ data: otherBytes, format: 'pdb', label: 'target.pdb' }, { id: 'target' })
+await viewer.execute({ op: 'align', reference: 'structure', target: 'target', method: 'tm-align' })
 await viewer.apply([
   { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } },
   { op: 'select', target: { kind: 'ligand' }, mode: 'highlight', focus: true },
@@ -102,9 +105,13 @@ stylesheet once per viewer and removes it on `dispose()`.
 
 | Method | Signature | Meaning |
 |---|---|---|
-| `load` | `(data: StructureData, options?: { preset?: string }) => Promise<StructureSummary>` | Replace the displayed structure. Text formats passed as bytes are UTF-8 decoded; `binary` is respected. `preset` defaults to `default`; built-ins are `default`, `auto`, `illustrative`, `atomic-detail`, `polymer-and-ligand`, or an adapter-registered preset name. |
-| `summary` | `() => StructureSummary \| undefined` | Summary of the current structure, when loaded |
+| `load` | `(data: StructureData, options?: { preset?: string; id?: string }) => Promise<StructureSummary>` | Replace the displayed scene. Clears previous structures, components, and measurements. Text formats passed as bytes are UTF-8 decoded; `binary` is respected. `preset` defaults to `default`; built-ins are `default`, `auto`, `illustrative`, `atomic-detail`, `polymer-and-ligand`, or an adapter-registered preset name. `id` defaults to `structure`. |
+| `addStructure` | `(data: StructureData, options?: { preset?: string; id?: string }) => Promise<LoadedStructure>` | Add another structure without clearing the scene. The id must be unique; when omitted it becomes `structure-2`, `structure-3`, ... |
+| `removeStructure` | `(id: string) => Promise<void>` | Remove one structure and its components |
+| `listStructures` | `() => readonly LoadedStructure[]` | Structures in the scene, in load order |
+| `summary` | `() => StructureSummary \| undefined` | Summary of the most recently loaded structure |
 | `inspect` | `(request?: InspectRequest) => InspectResult` | Read the loaded structure and the way Mol* currently draws it; read-only, see [Inspection](#inspection) |
+| `tmScore` | `(request: TmScoreRequest) => TmScoreResult` | Compute TM-align RMSD/TM-score for two selections without moving either; read-only |
 | `execute` | `(command: MolCommand) => Promise<CommandResult>` | Run one command; failures are returned as `{ ok: false, code, message }` |
 | `apply` | `(commands: readonly MolCommand[]) => Promise<readonly CommandResult[]>` | Run commands in order |
 | `capture` | `(options?: CaptureOptions) => Promise<Uint8Array>` | Render the viewport to PNG |
@@ -119,10 +126,10 @@ stylesheet once per viewer and removes it on `dispose()`.
 {
   canvas: { width, height, clientWidth, clientHeight },
   host: { clientWidth, clientHeight },
-  structures: number,
+  structures: number,       // Mol* structure hierarchy entries
   components: number,
   representations: number,
-  atoms: number,
+  atoms: number,            // sum of every loaded structure's summary
 }
 ```
 
@@ -161,7 +168,7 @@ can be stored in a session log, then replayed after `load()`.
 
 | `op` | Fields | Effect |
 |---|---|---|
-| `represent` | `style: StyleSpec`, optional `target`, optional `replace` | `replace` defaults to `true`: remove the current representations, then draw the new one. `target` only narrows which part the new representation covers; with `replace: true` the whole scene is still cleared first. `replace: false` keeps every existing representation and overlays the new one, on the whole structure or on `target` (a new Mol* component). For `cartoon` (or omitted `type`) core uses Mol*'s `polymer-and-ligand` preset so HETATM ligands stay visible. `quality` is accepted but not applied yet. |
+| `represent` | `style: StyleSpec`, optional `target`, optional `replace` | `replace` defaults to `true`: remove the current representations, then draw the new one. `target` only narrows which part the new representation covers; with `replace: true` the whole scene is still cleared first; when `target.structureId` is set, only that structure is cleared. `replace: false` keeps every existing representation and overlays the new one, on the whole structure or on `target` (a new Mol* component). For `cartoon` (or omitted `type`) core uses Mol*'s `polymer-and-ligand` preset so HETATM ligands stay visible. `quality` is accepted but not applied yet. |
 | `select` | `target`, `mode?: 'select' \| 'highlight'`, `focus?` | Apply Mol* selection interactivity; `focus` moves the camera |
 | `clear-selection` | `mode?` | Clear select/highlight interactivity |
 | `focus` | optional `target` | Focus camera on the selection or the whole structure |
@@ -169,6 +176,9 @@ can be stored in a session log, then replayed after `load()`.
 | `background` | `color: string \| number \| 'theme'` | Set the canvas background |
 | `measure` | `kind: 'distance' \| 'angle' \| 'dihedral'`, `targets` 2/3/4 | Add a measurement |
 | `label` | `target`, optional `text` | Add a 3D label |
+| `align` | `reference`, `target`, optional `method`, `referenceChain`, `targetChain` | Superpose target onto reference; `method` is `tm-align` (default) or `sequence` |
+| `remove-structure` | `structureId` | Remove one structure from the scene |
+| `visibility` | `structureId`, `visible` | Show/hide one structure without removing it |
 
 Examples:
 
@@ -185,6 +195,9 @@ Examples:
   { kind: 'residue', chain: 'A', index: 87 },
 ] }
 { op: 'label', target: { kind: 'ligand' }, text: 'ATP' }
+{ op: 'align', reference: 'structure', target: 'target', method: 'tm-align', referenceChain: 'A', targetChain: 'A' }
+{ op: 'visibility', structureId: 'target', visible: false }
+{ op: 'remove-structure', structureId: 'target' }
 ```
 
 ### `StyleSpec`
@@ -236,7 +249,8 @@ type CommandResult =
 
 Error codes: `INVALID_COMMAND`, `UNSUPPORTED_FORMAT`, `UNSUPPORTED_REPRESENTATION`,
 `REPRESENT_FAILED`, `NO_STRUCTURE`, `LOAD_FAILED`, `CAPTURE_FAILED`,
-`SUMMARY_UNSUPPORTED`, `UNSUPPORTED_SOURCE`, `INVALID_ENTRY_ID`, `DISPOSED`.
+`SUMMARY_UNSUPPORTED`, `UNSUPPORTED_SOURCE`, `INVALID_ENTRY_ID`, `DISPOSED`,
+`UNKNOWN_STRUCTURE`, `DUPLICATE_STRUCTURE_ID`, `ALIGN_FAILED`, `TM_SCORE_FAILED`.
 
 ## Selectors
 
@@ -258,6 +272,12 @@ compiles them to Mol* selection queries or element schemas.
 | `{ kind: 'comp', compId }` | All residues with a component id |
 | `{ kind: 'schema', schema }` | Low-level subset of `StructureElement.Schema` |
 
+Every variant accepts an optional `structureId` to target one structure in a
+multi-structure scene. Omitted means "all loaded structures" for `select`/
+`focus` and "the first matching structure" for `measure`/`label`; `represent`
+with a `target` applies to each structure. This disambiguates two structures
+that both contain chain `A`.
+
 `schema` fields: `auth_asym_id`, `label_asym_id`, `auth_seq_id`, `label_seq_id`,
 `label_comp_id`, `auth_comp_id`, `beg_auth_seq_id`, `end_auth_seq_id`,
 `beg_label_seq_id`, `end_label_seq_id`, `label_atom_id`, `auth_atom_id`,
@@ -275,7 +295,9 @@ const schema = selectorSchema({ kind: 'residues', chain: 'A', start: 10, end: 25
 `viewer.inspect(request)` reads the loaded structure and the way Mol* currently
 draws it. It is the read counterpart of `execute`: nothing changes, and unlike a
 replayed command log it samples **live** state, so a selection or style a human
-made by clicking or through the Mol* panel is included.
+made by clicking or through the Mol* panel is included. In a multi-structure
+scene, a selector with `structureId` inspects only that structure, and
+coordinates come from the transformed (aligned) structure when one is present.
 
 ```ts
 const summary = viewer.inspect()
@@ -502,6 +524,59 @@ sequenceDiagram
   highlight, focus, and PNG capture.
 - The DSH adapter bundles core into one client script; see
   [`packages/deepseek-harness`](../deepseek-harness).
+
+## TM-score and RMSD
+
+`tmScore()` compares two selections without changing the scene. It is useful
+for scoring chains or regions that were never aligned, or for a read-only check
+after an alignment.
+
+```ts
+const score = viewer.tmScore({
+  reference: { kind: 'chain', chain: 'B', structureId: 'reference' },
+  target: { kind: 'chain', chain: 'A', structureId: 'target' },
+})
+// { method: 'tm-align', rmsd, tmScoreA, tmScoreB, alignedLength,
+//   referenceAtoms, targetAtoms, reference, target }
+```
+
+Both selections are reduced to polymer trace atoms (CA/C4'/P). `rmsd` is
+measured after TM-align's optimal superposition of the aligned trace atoms, not
+in the current camera frame. This is the structure-level `tmAlign` wrapper from
+Mol* (`mol-model/structure/structure/util/tm-align`), not a separate
+reimplementation; no transform is applied to the viewer.
+
+## Multiple structures and alignment
+
+`load()` starts a fresh scene; `addStructure()` appends another structure to the
+same Mol* scene. Every structure keeps its own id, components, representations,
+visibility, and measurements.
+
+```ts
+await viewer.load({ data: referenceBytes, format: 'pdb', label: '7czd.pdb' }, { id: 'reference' })
+await viewer.addStructure({ data: targetBytes, format: 'pdb', label: '4zqk.pdb' }, { id: 'target' })
+await viewer.execute({
+  op: 'represent',
+  style: { type: 'cartoon', color: 'uniform', colorParams: { value: 0xef4444 } },
+  target: { kind: 'all', structureId: 'target' },
+})
+const aligned = await viewer.execute({
+  op: 'align',
+  reference: 'reference',
+  target: 'target',
+  method: 'tm-align',
+  referenceChain: 'B',
+  targetChain: 'A',
+})
+// aligned.data: { method, rmsd, alignedLength, tmScoreA, tmScoreB }
+```
+
+Both methods use Mol*'s own superposition utilities
+(`mol-model/structure/structure/util/{superposition,tm-align}`) and its
+`TransformStructureConformation` decorator; no alignment or rendering engine is
+reimplemented here. Alignment moves the target using the polymer trace (CA/C4'/P),
+leaves the reference fixed, and frames the aligned pair. When the reference is already transformed, its
+displayed coordinate system is composed into the target transform.
 
 See [`docs/architecture.md`](../../docs/architecture.md) for the overall
 architecture; implementation details live in this package's README/AGENTS and

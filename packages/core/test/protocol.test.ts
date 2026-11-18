@@ -6,10 +6,12 @@ import {
   PRESETS,
   REPRESENTATION_TYPES,
   COLOR_THEMES,
+  isAlignmentMethod,
   isMolCommandOp,
   isMolFormat,
   isPresetName,
   isStructureData,
+  isStructureId,
 } from '../src/protocol.ts'
 
 test('format and preset tables stay closed', () => {
@@ -25,6 +27,9 @@ test('format and preset tables stay closed', () => {
 
 test('command and structure guards reject malformed input', () => {
   assert.equal(isMolCommandOp('represent'), true)
+  assert.equal(isMolCommandOp('align'), true)
+  assert.equal(isMolCommandOp('remove-structure'), true)
+  assert.equal(isMolCommandOp('add-structure'), false)
   assert.equal(isMolCommandOp('load'), false)
   assert.equal(isStructureData({ data: new Uint8Array([1]), format: 'pdb' }), true)
   assert.equal(isStructureData({ data: new Uint8Array([1]), format: 'nope' }), false)
@@ -35,4 +40,19 @@ test('command and structure guards reject malformed input', () => {
   const error = new Mol4AgentError('INVALID_COMMAND', 'bad command')
   assert.equal(error.code, 'INVALID_COMMAND')
   assert.equal(error.message, 'bad command')
+})
+
+test('multi-structure ids and alignment methods stay validated', () => {
+  assert.equal(isStructureId('structure'), true)
+  assert.equal(isStructureId('target-2'), true)
+  assert.equal(isStructureId('A_1.2'), true)
+  assert.equal(isStructureId(''), false)
+  assert.equal(isStructureId('-target'), false)
+  assert.equal(isStructureId('has space'), false)
+  assert.equal(isStructureId('x'.repeat(65)), false)
+  assert.equal(isStructureId(42), false)
+
+  assert.equal(isAlignmentMethod('tm-align'), true)
+  assert.equal(isAlignmentMethod('sequence'), true)
+  assert.equal(isAlignmentMethod('kabsch'), false)
 })

@@ -18,6 +18,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { defineTool, ToolArgsError, ToolContextUnavailableError } from '@deepseek-ai/dsh-tools'
 import {
+  ALIGNMENT_METHODS,
   COLOR_THEMES,
   DEFAULT_INSPECT_LIMIT,
   INSPECT_DETAILS,
@@ -26,6 +27,7 @@ import {
   formatColor,
   isInspectDetail,
   parseColor,
+  type AlignmentMethod,
   type StructureSummary,
 } from '@gcszhn/mol4agent-core/protocol'
 import { SOURCE_DATABASES, resolveSource, type ResolvedSource } from '@gcszhn/mol4agent-core/sources'
@@ -33,7 +35,9 @@ import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
 import { baseNameOf } from '../formats.ts'
 import { canonicalTabPath } from '../tab-path.ts'
 import { normalizeSelector } from '../selector.ts'
-import type { MolSceneState, MolSessionState } from '../state.ts'
+import { nextStructureId, resolveAddStructureId, structuresOfScene, type MolSceneState, type MolSceneStructure, type MolSessionState } from '../state.ts'
+import type { AlignHub } from './align.ts'
+import type { TmScoreHub } from './tm-score.ts'
 import { captureFileName, type CaptureHub } from './capture.ts'
 import { downloadMoleculeSource, FetchTargetError, resolveFetchTarget } from './fetch.ts'
 import { formatInspectResult } from './format-inspect.ts'
@@ -43,6 +47,10 @@ import { resolveMoleculeFile, type ResolvedMoleculeFile } from './paths.ts'
 
 export interface MolToolOptions {
   readonly hub: CaptureHub
+  readonly alignHub: AlignHub
+  readonly alignTimeoutMs: number
+  readonly tmScoreHub: TmScoreHub
+  readonly tmScoreTimeoutMs: number
   readonly inspectHub: InspectHub
   /** Read a tab page scene; defaults to the projection's active tab. */
   readonly sceneOf: (session: Session, tab?: string) => MolSceneState | undefined
@@ -60,7 +68,12 @@ const TAB_HELP = 'Tab page id returned by mol_open (its `/`-separated absolute p
 const SELECTOR_HELP =
   'A StructureSelector object. Examples: {"kind":"ligand"}, {"kind":"protein"}, '
   + '{"kind":"chain","chain":"A"}, {"kind":"residues","chain":"A","start":10,"end":25}, '
-  + '{"kind":"residue","chain":"A","index":42}, {"kind":"comp","compId":"ATP"}'
+  + '{"kind":"residue","chain":"A","index":42}, {"kind":"comp","compId":"ATP"}. '
+  + 'Add "structureId" to target one structure when several are loaded.'
+
+const STRUCTURE_ID_HELP =
+  'Structure id from mol_open (the primary is "structure") or mol_add_structure. '
+  + '1-64 letters, digits, ".", "_" or "-", starting with a letter or digit.'
 
 /** Register every molecule tool on the context. */
 export function registerTools(ctx: Context, options: MolToolOptions): void {
@@ -219,7 +232,182 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       const file = await resolveMoleculeFile(ctx, agent, args.path, options.maxFileBytes, exec.signal)
       if (args.select !== undefined) assertSelector(args.select)
       if (args.colorParams !== undefined) assertColorParams(args.colorParams)
-      return `${describeFile(file)}\n\n<viewer>Opened in the sidebar preview. Tab page: ${escapeAttribute(canonicalTabPath(file.absolutePath))}. Pass this path as tab to operate this page after opening another.</viewer>`
+      return `${describeFile(file)}\n\n<viewer>Opened in the sidebar preview. Tab page: ${escapeAttribute(canonicalTabPath(file.absolutePath))}. Primary structure id: structure. Pass the tab path as tab to operate this page after opening another.</viewer>`
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'mol_add_structure',
+    description: 'Add another structure to the active viewer scene without replacing the current one. '
+      + 'The structure gets a stable id for selectors and mol_align. Returns the id and a structure summary.',
+    parameters: {
+      tab: { type: 'string', description: TAB_HELP },
+      path: { type: 'string', required: true, description: 'Structure file path, absolute or relative to the session working directory.' },
+      id: { type: 'string', description: `Optional structure id. ${STRUCTURE_ID_HELP} Defaults to the next "structure-N".` },
+      type: { type: 'string', enum: REPRESENTATION_TYPES, description: 'Optional initial representation for this structure; defaults to the standard cartoon preset.' },
+      color: { type: 'string', enum: COLOR_THEMES, description: 'Optional color theme for this structure.' },
+      colorParams: { type: 'json', description: 'Optional color theme params; colorParams.value applies to uniform.' },
+      focus: { type: 'boolean', description: 'Focus the camera on the newly added structure.' },
+    },
+    isConcurrencySafe: () => false,
+    output: {
+      schema: { type: 'string' },
+      render: (_args, text) => [{ type: 'text', text }],
+    },
+    async execute(args, exec) {
+      const agent = requireAgent(exec)
+      const scene = requireScene(options, agent, args.tab, 'adding a structure')
+      const file = await resolveMoleculeFile(ctx, agent, args.path, options.maxFileBytes, exec.signal)
+      const resolved = resolveAddStructureId(scene, String(exec.callId), args.id)
+      if (resolved.id === undefined) throw new ToolArgsError([resolved.error])
+      const id = resolved.id
+      if (args.colorParams !== undefined) assertColorParams(args.colorParams)
+      return `${describeFile(file)}\n\nAdded to the scene as structure id "${id}". `
+        + 'Use this id in selectors ({"kind":"chain","chain":"A","structureId":"' + id + '"}) '
+        + 'and in mol_align. The tab page remains ' + escapeAttribute(scene.path) + '.'
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'mol_align',
+    description: 'Superpose one loaded structure onto another with Mol* TM-align or sequence-guided '
+      + 'superposition. Optional chains restrict the alignment to one auth chain per structure. '
+      + 'The target structure is moved; the reference stays fixed.',
+    parameters: {
+      tab: { type: 'string', description: TAB_HELP },
+      reference: { type: 'string', required: true, description: STRUCTURE_ID_HELP },
+      target: { type: 'string', required: true, description: `Structure to move onto the reference. ${STRUCTURE_ID_HELP}` },
+      method: { type: 'string', enum: ALIGNMENT_METHODS, description: 'Alignment method. Defaults to tm-align.' },
+      referenceChain: { type: 'string', description: 'Optional auth chain id in the reference structure.' },
+      targetChain: { type: 'string', description: 'Optional auth chain id in the target structure.' },
+    },
+    isConcurrencySafe: () => false,
+    output: {
+      schema: { type: 'string' },
+      render: (_args, text) => [{ type: 'text', text }],
+    },
+    async execute(args, exec) {
+      const agent = requireAgent(exec)
+      const scene = requireScene(options, agent, args.tab, 'aligning structures')
+      const structures = activeStructuresOf(scene)
+      if (!structures.some(structure => structure.id === args.reference)) {
+        throw new ToolArgsError([`no loaded structure with id "${args.reference}"`, 'use mol_list_structures to see ids'])
+      }
+      if (!structures.some(structure => structure.id === args.target)) {
+        throw new ToolArgsError([`no loaded structure with id "${args.target}"`, 'use mol_list_structures to see ids'])
+      }
+      if (args.reference === args.target) throw new ToolArgsError(['reference and target must be different structures'])
+      const method: AlignmentMethod = args.method ?? 'tm-align'
+      const reference = structures.find(structure => structure.id === args.reference)!
+      const target = structures.find(structure => structure.id === args.target)!
+      await assertChain(ctx, agent, reference, args.referenceChain, options.maxFileBytes, exec.signal)
+      await assertChain(ctx, agent, target, args.targetChain, options.maxFileBytes, exec.signal)
+      const scope = [
+        args.referenceChain === undefined ? undefined : `reference chain ${args.referenceChain}`,
+        args.targetChain === undefined ? undefined : `target chain ${args.targetChain}`,
+      ].filter(Boolean).join(', ')
+      let delivery
+      try {
+        delivery = await options.alignHub.wait(agent.id, String(exec.callId), options.alignTimeoutMs, exec.signal)
+      } catch (reason) {
+        throw new ToolArgsError([reason instanceof Error ? reason.message : String(reason)])
+      }
+      if (!delivery.ok) throw new ToolArgsError([delivery.error])
+      const result = delivery.result
+      const scores = [
+        `RMSD ${result.rmsd.toFixed(2)} A`,
+        `${result.alignedLength} aligned ${result.method === 'tm-align' ? 'residues' : 'atoms'}`,
+        ...(result.tmScoreA === undefined
+          ? []
+          : [`TM-score ${result.tmScoreA.toFixed(4)}/${result.tmScoreB?.toFixed(4) ?? 'n/a'}`]),
+      ].join(', ')
+      return `Aligned ${args.target} onto ${args.reference} with ${method}${scope === '' ? '' : ` (${scope})`}: ${scores}. `
+        + 'Use mol_capture to inspect the superposition.'
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'mol_tmscore',
+    description: 'Compute TM-score and RMSD between two selections without moving either structure. '
+      + 'This is a read-only comparison: it does not align the scene, so use it to score arbitrary '
+      + 'chains or regions, aligned or not. Both selections are reduced to polymer trace atoms (CA/C4\'/P).',
+    parameters: {
+      tab: { type: 'string', description: TAB_HELP },
+      reference: { type: 'json', required: true, description: `Reference selection. ${SELECTOR_HELP}` },
+      target: { type: 'json', required: true, description: `Target selection. ${SELECTOR_HELP}` },
+    },
+    output: {
+      schema: { type: 'string' },
+      render: (_args, text) => [{ type: 'text', text }],
+    },
+    async execute(args, exec) {
+      const agent = requireAgent(exec)
+      const scene = requireScene(options, agent, args.tab, 'computing a TM-score')
+      assertSelector(args.reference)
+      assertSelector(args.target)
+      let delivery
+      try {
+        delivery = await options.tmScoreHub.wait(agent.id, String(exec.callId), options.tmScoreTimeoutMs, exec.signal)
+      } catch (reason) {
+        throw new ToolArgsError([reason instanceof Error ? reason.message : String(reason)])
+      }
+      if (!delivery.ok) throw new ToolArgsError([delivery.message])
+      const result = delivery.result
+      return `TM-align (${result.reference} vs ${result.target}): RMSD ${result.rmsd.toFixed(2)} A, `
+        + `TM-score ${result.tmScoreA.toFixed(4)}/${result.tmScoreB.toFixed(4)}, `
+        + `${result.alignedLength} aligned residues (${result.referenceAtoms} vs ${result.targetAtoms} trace atoms). `
+        + 'No structure was moved.'
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'mol_remove_structure',
+    description: 'Remove one structure from the active viewer scene. The other structures and the tab page remain.',
+    parameters: {
+      tab: { type: 'string', description: TAB_HELP },
+      structureId: { type: 'string', required: true, description: STRUCTURE_ID_HELP },
+    },
+    isConcurrencySafe: () => false,
+    output: {
+      schema: { type: 'string' },
+      render: (_args, text) => [{ type: 'text', text }],
+    },
+    async execute(args, exec) {
+      const agent = requireAgent(exec)
+      const scene = requireScene(options, agent, args.tab, 'removing a structure')
+      if (!structuresOfScene(scene).some(structure => structure.id === args.structureId)) {
+        throw new ToolArgsError([`no loaded structure with id "${args.structureId}"`, 'use mol_list_structures to see ids'])
+      }
+      const active = activeStructuresOf(scene).some(structure => structure.id === args.structureId)
+      const last = scene.commands.at(-1)
+      const folded = last?.op === 'remove-structure' && last.structureId === args.structureId
+      if (!active && !folded) {
+        throw new ToolArgsError([`structure "${args.structureId}" is already removed`, 'use mol_list_structures to see ids'])
+      }
+      return `Removed structure "${args.structureId}" from ${scene.label}.`
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'mol_list_structures',
+    description: 'List the structures currently loaded in a viewer tab page with their ids, labels, and formats. '
+      + 'Use it after a conversation resume or before mol_align/mol_remove_structure.',
+    parameters: {
+      tab: { type: 'string', description: TAB_HELP },
+    },
+    output: {
+      schema: { type: 'string' },
+      render: (_args, text) => [{ type: 'text', text }],
+    },
+    async execute(args, exec) {
+      const agent = requireAgent(exec)
+      const scene = requireScene(options, agent, args.tab, 'listing structures')
+      const structures = activeStructuresOf(scene)
+      return `<structures tab="${escapeAttribute(scene.path)}">\n`
+        + structures
+          .map((structure, index) => `${index === 0 ? '*' : '-'} ${structure.id}: ${structure.label} (${structure.format})`)
+          .join('\n')
+        + '\n</structures>'
     },
   }))
 
@@ -436,6 +624,38 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
       }
     },
   }))
+}
+
+function activeStructuresOf(scene: MolSceneState): readonly MolSceneStructure[] {
+  const retired = new Set<string>()
+  for (const command of scene.commands) {
+    if (command.op === 'remove-structure') retired.add(command.structureId)
+  }
+  return structuresOfScene(scene).filter(structure => !retired.has(structure.id))
+}
+
+async function assertChain(
+  ctx: Context,
+  agent: Agent,
+  structure: MolSceneStructure,
+  chain: string | undefined,
+  maxFileBytes: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (chain === undefined) return
+  const file = await resolveMoleculeFile(ctx, agent, structure.path, maxFileBytes, signal)
+  let chains: readonly string[] = []
+  try {
+    chains = summarizeStructure({ data: file.bytes, format: file.format }).chains.map(item => item.id)
+  } catch {
+    return
+  }
+  if (!chains.includes(chain)) {
+    throw new ToolArgsError([
+      `chain "${chain}" does not exist in structure "${structure.id}"`,
+      `available chains: ${chains.length === 0 ? '(none)' : chains.join(', ')}`,
+    ])
+  }
 }
 
 function requireScene(

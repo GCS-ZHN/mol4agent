@@ -25,7 +25,8 @@ keep its protocol consistent for every adapter.
   selections and styles, so never re-derive it from the command log. Keep the
   Mol*-free aggregation (`inspect.ts`) separate from the extractor
   (`inspect-mol.ts`) and plugin wiring (`inspect-plugin.ts`) so the pure part
-  stays testable under Node.
+  stays testable under Node. `tmScore()` is read-only too: reuse Mol*'s
+  `tmAlign` on polymer-trace loci; never move the scene.
 - Appearance keeps `baseColor` (the representation's own theme colour) and
   `visibleColor` (what is actually drawn) distinct, with a fixed precedence:
   overpaint replaces the theme colour, then the selection marker mixes over it
@@ -48,6 +49,11 @@ keep its protocol consistent for every adapter.
 - `load()` must clear the previous structures/trajectories **and the root
   measurement group** before adding the new one. Otherwise components,
   selection representations, and measurement labels accumulate across reloads.
+- `addStructure()` is the non-clearing path: keep stable ids, never reuse an id
+  in one scene, and let every scoped command honor `selector.structureId`.
+- Alignment uses Mol*'s `superpose`/`alignAndSuperpose`/`tmAlign` plus the
+  `TransformStructureConformation` decorator. Insert the decorator once and
+  update it on later alignments; `.insert` moves existing components under it.
 
 ## Representations
 

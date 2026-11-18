@@ -46,3 +46,17 @@ test('rejects malformed selectors with model-actionable errors', () => {
     assert.throws(() => normalizeSelector(value), expected)
   }
 })
+
+test('preserves and validates a structureId scope', () => {
+  assert.deepEqual(
+    normalizeSelector({ kind: 'chain', chain: 'A', structureId: 'target' }),
+    { kind: 'chain', chain: 'A', structureId: 'target' },
+  )
+  assert.deepEqual(
+    normalizeSelector({ kind: 'all', structureId: 'structure-2' }),
+    { kind: 'all', structureId: 'structure-2' },
+  )
+  for (const structureId of ['bad id', '', '-leading', 'x'.repeat(65), 42]) {
+    assert.throws(() => normalizeSelector({ kind: 'protein', structureId }), /structureId/)
+  }
+})

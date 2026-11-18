@@ -13,8 +13,13 @@ preview that an agent can operate.
   still offers code/plain text (`bcif` has no plain-text fallback because its
   bytes are binary).
 - **Agent tools**: `mol_info`, `mol_inspect`, `mol_interface`, `mol_fetch`,
-  `mol_open`, `mol_style`, `mol_select`, `mol_focus`, `mol_measure`,
-  `mol_capture`.
+  `mol_open`, `mol_add_structure`, `mol_align`, `mol_tmscore`,
+  `mol_remove_structure`, `mol_list_structures`, `mol_style`, `mol_select`,
+  `mol_focus`, `mol_measure`, `mol_capture`.
+- **Multi-structure scenes**: one tab page can hold several structures with
+  stable ids; `mol_align` superposes one onto another, `mol_tmscore` compares
+  two selections read-only, and selectors accept `structureId` to disambiguate
+  equal chain ids.
 - **Live-state inspection**: `mol_inspect` reads what the viewer currently shows
   (residues, atoms, coordinates, per-component counts, representations and
   resolved colours) straight from the running Mol* page, including changes a
@@ -80,7 +85,12 @@ away.
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å, 0 < cutoff ≤ 30) in PDB-like files. Returns ranges for `mol_style`/`mol_focus`. |
 | `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
 | `mol_open` | `path`, `type?`, `color?`, `colorParams?`, `select?`, `focus?` | Create/update the tab page keyed by its canonical `/`-separated absolute path and make it active. Emits `represent` and optionally `select`/`focus`; the tab page id is that path. |
-| `mol_style` | `tab?`, `type?`, `color?`, `target?`, `replace?`, `colorParams?` | Append `represent` to the tab (`tab` defaults to active). `replace` defaults to `true`: clear the current representations, then draw the new one. Pass `replace: false` to keep them and overlay. `target` only narrows the new representation's coverage; it does not imply replace or overlay. `colorParams.value` applies to `uniform` and accepts a CSS name (`"red"`), hex (`"#ff0000"`), or an integer (`16711680`); invalid colours are rejected and the result echoes the resolved hex. |
+| `mol_add_structure` | `tab?`, `path`, `id?`, `type?`, `color?`, `colorParams?`, `focus?` | Add another structure to the same tab scene without replacing existing ones. Default ids are `structure-2`, `structure-3`, ...; the result echoes the id. |
+| `mol_align` | `tab?`, `reference`, `target`, `method?`, `referenceChain?`, `targetChain?` | Superpose the target onto the reference with Mol* TM-align (default) or sequence-guided superposition. Optional chains restrict the trace used for alignment. |
+| `mol_tmscore` | `tab?`, `reference`, `target` | Read-only TM-align comparison of two selections; returns RMSD, both TM-scores, and aligned length without moving either structure. Selections are reduced to polymer trace atoms. |
+| `mol_remove_structure` | `tab?`, `structureId` | Append `remove-structure`; other structures stay. |
+| `mol_list_structures` | `tab?` | List the active structures in the tab with ids, labels, and formats. |
+| `mol_style` | `tab?`, `type?`, `color?`, `target?`, `replace?`, `colorParams?` | Append `represent` to the tab (`tab` defaults to active). `replace` defaults to `true`: clear the current representations, then draw the new one (a `structureId` target limits the clear to that structure). Pass `replace: false` to keep them and overlay. `target` only narrows the new representation's coverage; it does not imply replace or overlay. `colorParams.value` applies to `uniform` and accepts a CSS name (`"red"`), hex (`"#ff0000"`), or an integer (`16711680`); invalid colours are rejected and the result echoes the resolved hex. |
 | `mol_select` | `tab?`, `target`, `mode?`, `focus?` | Append `select`. `mode` is `select` or `highlight`. |
 | `mol_focus` | `tab?`, `target?` | Append `focus`; target omitted frames the whole structure. |
 | `mol_measure` | `tab?`, `kind`, `targets` | Append `measure`. 2 targets for distance, 3 for angle, 4 for dihedral. |
@@ -196,12 +206,16 @@ range.
 | `mol_select` | Append `{ op: 'select', target, mode, focus? }` |
 | `mol_focus` | Append `{ op: 'focus', target? }` |
 | `mol_measure` | Append `{ op: 'measure', kind, targets }` |
+| `mol_add_structure` | Add a `structures[]` entry; optional targeted `represent`/`focus` commands |
+| `mol_align` | Append `{ op: 'align', reference, target, method?, referenceChain?, targetChain? }` |
+| `mol_remove_structure` | Append `{ op: 'remove-structure', structureId }` |
+| `mol_list_structures` | None; lists projection structures only |
 | `mol_capture` | Add a pending capture entry; no viewer command |
+| `mol_tmscore` | Add a pending TM-score request; no viewer command |
 | `mol_inspect` | Add a pending inspection entry; no viewer command |
 | `mol_interface` | None; returns computed ranges only |
 | `mol_fetch` | None; downloads a file only |
 | `mol_info` | None |
-| `mol_inspect` | None; adds a pending inspection the page answers from live state |
 
 ## Session projection
 
@@ -217,6 +231,12 @@ interface MolSessionState {
     path: string       // canonical `/`-separated absolute path
     format: MolFormat
     label: string
+    structures?: {
+      id: string
+      path: string
+      format: MolFormat
+      label: string
+    }[]
     commands: MolCommand[]
   }>
   active: string | null   // canonical `/`-separated absolute path
@@ -238,8 +258,14 @@ interface MolSessionState {
 ```
 
 - `mol_open` adds/replaces `tabs[path]` and sets `active`; each tab page has
-  its own `sceneKey` and command list. `mol_style`/`mol_select`/`mol_focus`/
-  `mol_measure` fold into the `tab` argument (or active tab) and bump `revision`.
+  its own `sceneKey`, structure list, and command list. `mol_style`/`mol_select`/
+  `mol_focus`/`mol_measure`/`mol_align`/`mol_remove_structure` fold into the
+  `tab` argument (or active tab) and bump `revision`; `mol_add_structure`
+  appends to `structures` and optionally appends targeted commands.
+- The client loads the primary structure with id `structure`, then reads and
+  adds every later `structures` entry before applying new commands. A removed
+  structure stays in the projection so replaying the command log reproduces the
+  same scene; the id cannot be reused in that tab.
 - `mol_capture` adds a pending entry for the `tab` argument (or active tab) and
   bumps `revision`; the header bridge activates that tab so the capture can be
   delivered. `mol_inspect` adds a matching entry under `inspecting` instead:
@@ -462,8 +488,12 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
   `colorValue` is resolved through the representation's own colour theme, so a
   theme that needs custom properties may report only the theme name.
 - `mol_style` replaces the current representations by default; `replace: false`
-  overlays the new style and is required for additive targeted styling. `target`
-  only narrows coverage. Labels are not exposed as a tool yet.
+  overlays the new style and is required for additive styling (including a
+  `target`). `target` only narrows coverage. Add `structureId` to a selector to
+  target one structure in a multi-structure scene. Labels are not exposed as a
+  tool yet.
+- `mol_align` returns RMSD/TM-score/aligned length from the browser; `mol_tmscore`
+  does the same comparison without moving either structure.
 - `mol_interface` currently parses PDB-like ATOM records (`pdb`/`pdbqt`/`pqr`)
   only; mmCIF/BCIF interface calculation is not implemented.
 - `mol_fetch` needs outbound HTTPS from the DSH Host. Downloads are capped at

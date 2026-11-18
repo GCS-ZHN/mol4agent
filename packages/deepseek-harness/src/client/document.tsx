@@ -13,9 +13,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { DocumentPreviewProps } from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
-import type { MolFormat, MolViewer } from '@gcszhn/mol4agent-core'
+import type { CommandResult, MolFormat, MolViewer } from '@gcszhn/mol4agent-core'
 import { baseNameOf, formatOfFile, isGzipFile } from '../formats.ts'
-import type { MolInspectAnswer, MolPendingCapture, MolSessionState } from '../state.ts'
+import type { MolInspectAnswer, MolPendingCapture, MolSessionState, MolTmScoreAnswer } from '../state.ts'
+import { structuresOfScene, type MolSceneState } from '../state.ts'
 import { canonicalTabPath } from '../tab-path.ts'
 import { sessionPathOf } from './address.ts'
 import { captureVisible } from './capture.ts'
@@ -27,6 +28,8 @@ import { putCachedViewer, takeCachedViewer } from './viewer-cache.ts'
 export interface MolBodyInjected {
   readonly readBytes: (path: string, signal: AbortSignal) => Promise<Uint8Array>
   readonly deliverCapture: (callId: string, png: Uint8Array, report: Record<string, unknown>) => Promise<void>
+  readonly deliverAlignResult: (callId: string, payload: unknown) => Promise<void>
+  readonly deliverTmScore: (callId: string, answer: MolTmScoreAnswer) => Promise<void>
   readonly deliverInspect: (callId: string, answer: MolInspectAnswer) => Promise<void>
   readonly theme: 'light' | 'dark'
   readonly subscribeTheme: (listener: (theme: 'light' | 'dark') => void) => () => void
@@ -52,9 +55,16 @@ interface LoadedMark {
   version: string | undefined
   sceneKey: string | undefined
   applied: number
+  structureIds: string[]
 }
 
-const EMPTY_MARK: LoadedMark = { revision: -1, version: undefined, sceneKey: undefined, applied: 0 }
+const EMPTY_MARK: LoadedMark = {
+  revision: -1,
+  version: undefined,
+  sceneKey: undefined,
+  applied: 0,
+  structureIds: [],
+}
 
 const MAX_PREVIEW_BYTES = 64 * 1024 * 1024
 
@@ -76,6 +86,9 @@ export function MolBody(props: MolBodyProps): ReactNode {
   const pendingReload = useRef(false)
   const loaded = useRef<LoadedMark>(EMPTY_MARK)
   const handledCaptures = useRef(new Set<string>())
+  const handledAligns = useRef(new Set<string>())
+  const alignResults = useRef(new Map<number, CommandResult>())
+  const handledTmScores = useRef(new Set<string>())
   const handledInspections = useRef(new Set<string>())
   const applyFailures = useRef<string[]>([])
   const applyChain = useRef<Promise<void>>(Promise.resolve())
@@ -129,10 +142,18 @@ export function MolBody(props: MolBodyProps): ReactNode {
       const raw = await latest.readBytes(latest.path, latest.signal)
       if (viewerRef.current !== viewer) return
       const bytes = isGzipFile(latest.path) ? await gunzipBytes(raw, MAX_PREVIEW_BYTES) : raw
-      await viewer.load({ data: bytes, format: latest.format, label: baseNameOf(latest.path) })
+      await viewer.load({ data: bytes, format: latest.format, label: baseNameOf(latest.path) }, { id: 'structure' })
       latest.addResource(latest.resourceAddress)
       if (latest.content.kind === 'renderer') latest.content.loaded(latest.version ?? 'unknown')
-      loaded.current = { revision: latest.revision, version: latest.version, sceneKey: undefined, applied: 0 }
+      loaded.current = {
+        revision: latest.revision,
+        version: latest.version,
+        sceneKey: undefined,
+        applied: 0,
+        structureIds: ['structure'],
+      }
+      handledAligns.current.clear()
+      alignResults.current.clear()
       setStatus('ready')
       setReadyTick(tick => tick + 1)
     } catch (reason) {
@@ -145,6 +166,23 @@ export function MolBody(props: MolBodyProps): ReactNode {
         pendingReload.current = false
         void reload()
       }
+    }
+  }, [])
+
+  const syncStructures = useCallback(async (scene: MolSceneState): Promise<void> => {
+    const viewer = viewerRef.current
+    if (viewer === undefined) return
+    const latest = current.current
+    for (const structure of structuresOfScene(scene)) {
+      if (loaded.current.structureIds.includes(structure.id)) continue
+      const raw = await latest.readBytes(structure.path, latest.signal)
+      if (viewerRef.current !== viewer) return
+      const bytes = isGzipFile(structure.path) ? await gunzipBytes(raw, MAX_PREVIEW_BYTES) : raw
+      const entry = await viewer.addStructure(
+        { data: bytes, format: structure.format, label: structure.label },
+        { id: structure.id },
+      )
+      loaded.current.structureIds = [...loaded.current.structureIds, entry.id]
     }
   }, [])
 
@@ -172,7 +210,7 @@ export function MolBody(props: MolBodyProps): ReactNode {
     if (cached !== undefined) {
       placeholder.appendChild(cached.mount)
       viewerRef.current = cached.viewer
-      loaded.current = cached.mark
+      loaded.current = { ...cached.mark, structureIds: [...(cached.mark.structureIds ?? ['structure'])] }
       cached.viewer.setTheme(themeRef.current)
       cached.viewer.resize()
       if (props.content.kind === 'renderer') props.content.loaded(cached.mark.version ?? 'unknown')
@@ -231,6 +269,7 @@ export function MolBody(props: MolBodyProps): ReactNode {
   }, [revision, version, reload])
 
   const scene = path === '' ? undefined : projection?.tabs?.[path]
+  const pendingAligns = projection?.pendingAligns
   useEffect(() => {
     const viewer = viewerRef.current
     if (viewer === undefined || scene === null || scene === undefined) return
@@ -250,7 +289,15 @@ export function MolBody(props: MolBodyProps): ReactNode {
             await reload()
             loaded.current.sceneKey = scene.sceneKey
             loaded.current.applied = 0
+            handledAligns.current.clear()
+            alignResults.current.clear()
           }
+        }
+        try {
+          await syncStructures(scene)
+        } catch (reason) {
+          applyFailures.current.push(`add structure: ${reason instanceof Error ? reason.message : String(reason)}`)
+          console.warn('[mol4agent] could not add a structure', reason)
         }
         for (let index = loaded.current.applied; index < scene.commands.length; index += 1) {
           const command = scene.commands[index]
@@ -260,8 +307,29 @@ export function MolBody(props: MolBodyProps): ReactNode {
             applyFailures.current.push(`${command.op}: ${result.message}`)
             console.warn('[mol4agent]', result.message)
           }
+          // Cache the result: the pending request can reach this tab one render
+          // after its command, and it must still get its metrics.
+          if (command.op === 'align') alignResults.current.set(index, result)
         }
         loaded.current.applied = scene.commands.length
+        for (const request of Object.values(pendingAligns ?? {})) {
+          if (request.path !== path || handledAligns.current.has(request.callId)) continue
+          const result = alignResults.current.get(request.commandIndex)
+          if (result === undefined) continue
+          handledAligns.current.add(request.callId)
+          const payload = result.ok && result.data !== undefined
+            ? { ok: true, data: result.data }
+            : {
+              ok: false,
+              error: result.ok ? 'the viewer returned no alignment metrics' : result.message,
+            }
+          try {
+            await props.deliverAlignResult(request.callId, payload)
+          } catch (reason) {
+            applyFailures.current.push(`align result: ${reason instanceof Error ? reason.message : String(reason)}`)
+            console.warn('[mol4agent] could not deliver alignment metrics', reason)
+          }
+        }
         const diagnostics = viewer.diagnostics?.()
         if (diagnostics !== undefined && diagnostics.representations === 0) {
           const fallback = await viewer.execute({ op: 'represent', style: { type: 'cartoon', color: 'chain-id' } })
@@ -272,7 +340,7 @@ export function MolBody(props: MolBodyProps): ReactNode {
         }
       })
       .catch(reason => { console.warn('[mol4agent] scene apply failed', reason) })
-  }, [scene, path, readyTick])
+  }, [scene, path, readyTick, reload, syncStructures, props.deliverAlignResult, pendingAligns])
 
   const pending = projection?.pending as Readonly<Record<string, MolPendingCapture>> | undefined
   useEffect(() => {
@@ -309,6 +377,27 @@ export function MolBody(props: MolBodyProps): ReactNode {
       })()
     }
   }, [pending, scene, status, path, error, props.deliverCapture])
+
+  const pendingTmScores = projection?.pendingTmScores
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (viewer === undefined || status !== 'ready' || pendingTmScores === undefined) return
+    if (scene === null || scene === undefined || scene.path !== path) return
+    for (const [callId, request] of Object.entries(pendingTmScores)) {
+      if (request.path !== path || handledTmScores.current.has(callId)) continue
+      handledTmScores.current.add(callId)
+      void (async () => {
+        await applyChain.current
+        let answer: MolTmScoreAnswer
+        try {
+          answer = { ok: true, result: viewer.tmScore({ reference: request.reference, target: request.target }) }
+        } catch (reason) {
+          answer = { ok: false, message: reason instanceof Error ? reason.message : String(reason) }
+        }
+        await props.deliverTmScore(callId, answer)
+      })().catch(reason => { console.warn('[mol4agent] TM-score delivery failed', reason) })
+    }
+  }, [pendingTmScores, scene, status, path, props.deliverTmScore])
 
   const inspecting = projection?.inspecting
   useEffect(() => {

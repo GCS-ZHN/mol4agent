@@ -268,9 +268,13 @@ See the [ChatGPT README](../packages/chatgpt/README.md).
 ## 7. Implementation status
 
 - **core**: protocol, official Mol* UI viewer, selectors, summaries,
-  per-selection styling, and PNG capture are implemented.
+  per-selection styling, multi-structure scenes (`addStructure` /
+  `removeStructure` / `listStructures`), Mol*-based superposition
+  (`align` via TM-align or sequence), read-only `tmScore` comparison, and PNG
+  capture are implemented.
 - **DSH adapter**: document preview, agent tools, session projection, screenshot
-  delivery, and panel/theme/tab lifecycle are implemented.
+  delivery, panel/theme/tab lifecycle, multi-structure scenes, and
+  `mol_align`/`mol_tmscore` are implemented.
 - **ChatGPT/Codex adapter**: MCP App viewer, `mol_*` tools, long-poll scene
   updates, screenshot rendezvous, local marketplace install, and the MCP
   extension file viewer for the file tree are implemented. The per-extension

@@ -14,7 +14,7 @@ const init = (): State => definition.init({ cwd: CWD } as never)
 const key = (name: string): string => canonicalTabPath(resolve(CWD, name))
 
 test('is versioned for the per-tab schema', () => {
-  assert.equal(definition.stateVersion, 3)
+  assert.equal(definition.stateVersion, 6)
 })
 
 function call(name: string, args: Record<string, unknown>, callId: string) {
@@ -185,4 +185,87 @@ test('defaults to the active tab and reopens the same path in place', () => {
   assert.equal(state.tabs[key('a.pdb')]?.sceneKey, `${key('a.pdb')}#a2`)
   assert.equal(state.tabs[key('a.pdb')]?.commands.length, 1)
   assert.equal(state.active, key('a.pdb'))
+})
+
+test('adds, aligns, lists, and removes structures in one tab scene', () => {
+  let state = init()
+  state = definition.apply(state, call('mol_open', { path: 'a.pdb' }, 'a'))
+  const tab = key('a.pdb')
+  assert.deepEqual(state.tabs[tab]?.structures?.map(structure => structure.id), ['structure'])
+  assert.equal(state.tabs[tab]?.structures?.[0]?.callId, 'a')
+
+  state = definition.apply(state, call('mol_add_structure', {
+    path: 'b.pdb',
+    id: 'target',
+    color: 'uniform',
+    colorParams: { value: 0xff0000 },
+    focus: true,
+  }, 'add-target'))
+  assert.deepEqual(state.tabs[tab]?.structures?.map(structure => structure.id), ['structure', 'target'])
+  assert.equal(state.tabs[tab]?.structures?.[1]?.callId, 'add-target')
+  assert.deepEqual(state.tabs[tab]?.structures?.map(structure => structure.format), ['pdb', 'pdb'])
+  const addCommands = state.tabs[tab]?.commands ?? []
+  assert.equal(addCommands.length, 3)
+  const style = addCommands[1]
+  if (style?.op !== 'represent') assert.fail('expected a targeted represent command')
+  assert.deepEqual(style.target, { kind: 'all', structureId: 'target' })
+  const focus = addCommands[2]
+  if (focus?.op !== 'focus') assert.fail('expected a focus command')
+  assert.deepEqual(focus.target, { kind: 'all', structureId: 'target' })
+
+  state = definition.apply(state, call('mol_align', {
+    reference: 'structure',
+    target: 'target',
+    method: 'tm-align',
+    targetChain: 'A',
+  }, 'align'))
+  const align = state.tabs[tab]?.commands.at(-1)
+  if (align?.op !== 'align') assert.fail('expected an align command')
+  assert.equal(align.reference, 'structure')
+  assert.equal(align.target, 'target')
+  assert.equal(align.targetChain, 'A')
+  assert.deepEqual(state.pendingAligns['align'], {
+    callId: 'align',
+    path: tab,
+    commandIndex: 3,
+  })
+
+  state = definition.apply(state, result('align'))
+  assert.equal(state.pendingAligns['align'], undefined)
+
+  state = definition.apply(state, call('mol_remove_structure', { structureId: 'target' }, 'remove'))
+  const remove = state.tabs[tab]?.commands.at(-1)
+  if (remove?.op !== 'remove-structure') assert.fail('expected a remove-structure command')
+  assert.equal(remove.structureId, 'target')
+})
+
+test('rejects duplicate, malformed, or unknown structure ids in the projection', () => {
+  let state = init()
+  state = definition.apply(state, call('mol_open', { path: 'a.pdb' }, 'a'))
+  const before = state
+  const tab = key('a.pdb')
+
+  assert.equal(definition.apply(state, call('mol_add_structure', { path: 'b.pdb', id: 'bad id' }, 'bad')), before)
+  assert.equal(definition.apply(state, call('mol_add_structure', { path: 'c.txt' }, 'bad-format')), before)
+  assert.equal(definition.apply(state, call('mol_align', { reference: 'structure', target: 'missing' }, 'bad-align')), before)
+  assert.equal(definition.apply(state, call('mol_align', { reference: 'structure', target: 'structure' }, 'self-align')), before)
+  assert.equal(definition.apply(state, call('mol_remove_structure', { structureId: 'missing' }, 'bad-remove')), before)
+  assert.equal(state.tabs[tab]?.commands.length, 1)
+})
+
+test('queues and clears a standalone TM-score request', () => {
+  let state = init()
+  state = definition.apply(state, call('mol_open', { path: 'a.pdb' }, 'a'))
+  state = definition.apply(state, call('mol_tmscore', {
+    reference: { kind: 'chain', chain: 'A' },
+    target: { kind: 'chain', chain: 'B', structureId: 'target' },
+  }, 'tm'))
+  assert.deepEqual(state.pendingTmScores.tm, {
+    callId: 'tm',
+    path: key('a.pdb'),
+    reference: { kind: 'chain', chain: 'A' },
+    target: { kind: 'chain', chain: 'B', structureId: 'target' },
+  })
+  state = definition.apply(state, result('tm'))
+  assert.equal(state.pendingTmScores.tm, undefined)
 })
