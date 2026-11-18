@@ -23,7 +23,9 @@ structure file as plain text, and do not drive the viewer with shell commands.
    same path just to change the view: it replaces the active scene and resets
    the camera. Reuse the open scene with the tools below.
 4. Operate the open scene:
-   - `mol_style` for representation/color; add `target` for a selection only.
+   - `mol_style` for representation/color. It replaces the current
+     representations by default; pass `replace: false` to overlay. `target`
+     only narrows the part the new representation covers.
    - `mol_select` to select/highlight; `mol_focus` to frame it.
    - `mol_measure` for distance/angle/dihedral.
    - `colorParams.value` only applies to `uniform`; it accepts a CSS name
@@ -86,7 +88,8 @@ Then style each returned range:
   "type": "ball-and-stick",
   "color": "uniform",
   "colorParams": { "value": "red" },
-  "target": { "kind": "residues", "chain": "A", "start": 28, "end": 54 }
+  "target": { "kind": "residues", "chain": "A", "start": 28, "end": 54 },
+  "replace": false
 } }
 ```
 

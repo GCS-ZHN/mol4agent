@@ -142,7 +142,12 @@ test('openPath fails clearly when the session workspace is unknown', async () =>
 
 interface SceneSnapshot {
   revision: number
-  commands: Array<{ op: string; style?: { colorParams?: { value?: unknown } } }>
+  commands: Array<{
+    op: string
+    style?: { colorParams?: { value?: unknown } }
+    target?: unknown
+    replace?: boolean
+  }>
 }
 
 interface SceneStoreLike {
@@ -171,6 +176,26 @@ test('mol_open and mol_style normalize colors before storing the command', async
   assert.equal(styled.content, 'Applied cartoon / uniform #0000ff to the whole structure.')
   snapshot = sceneStore().snapshot('session-colour', null)
   assert.equal(snapshot?.commands[1]?.style?.colorParams?.value, 0x0000ff)
+})
+
+test('mol_style passes an explicit replace:false through to the scene log', async () => {
+  const cwd = await workspace()
+  const tools = await startTools(cwd)
+  const open = tools.get('mol_open')
+  const style = tools.get('mol_style')
+  assert.ok(open !== undefined && style !== undefined)
+  const context = { sessionID: 'session-overlay', signal: new AbortController().signal }
+
+  await open.execute({ path: 'example/1crn.pdb', type: 'cartoon' }, context)
+  const styled = await style.execute({
+    type: 'ball-and-stick',
+    target: { kind: 'residues', chain: 'A', start: 1, end: 5 },
+    replace: false,
+  }, context)
+  assert.match(styled.content, /\(overlaid\)/u)
+  const command = sceneStore().snapshot('session-overlay', null)?.commands[1]
+  assert.equal(command?.replace, false)
+  assert.deepEqual(command?.target, { kind: 'residues', chain: 'A', start: 1, end: 5 })
 })
 
 test('an invalid color is rejected before it reaches the scene log', async () => {

@@ -128,10 +128,12 @@ export function describeStyle(args: {
   readonly color?: StyleSpec['color']
   readonly colorParams?: { readonly value?: string | number }
   readonly target?: unknown
+  readonly replace?: boolean
 }): string {
   const color = resolvedColorOf(args.colorParams)
   const style = [args.type ?? 'cartoon', args.color ?? 'chain-id'].join(' / ')
     + (color === undefined ? '' : ` ${color}`)
+    + (args.replace === false ? ' (overlaid)' : '')
   if (args.target === undefined) return `Applied ${style} to the whole structure.`
   return `Applied ${style} to ${describeSelector(normalizeSelector(args.target))}.`
 }

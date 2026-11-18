@@ -254,6 +254,24 @@ export interface InspectResult {
 }
 
 /**
+ * Draw one style, replacing or overlaying what is already shown.
+ *
+ * `target` only narrows which part of the structure the new representation
+ * covers; it never implies replace or add. `replace` defaults to `true`.
+ */
+export interface RepresentCommand {
+  readonly op: 'represent'
+  readonly style: StyleSpec
+  readonly target?: StructureSelector
+  /**
+   * `true` (default): remove the existing representations in the command's
+   * scope, then draw the new one. `target` narrows only the new
+   * representation's coverage. `false`: keep them and add the new one.
+   */
+  readonly replace?: boolean
+}
+
+/**
  * One replayable viewer command.
  *
  * Loading is a method, not a command: bytes are adapter-owned input and may not
@@ -261,7 +279,7 @@ export interface InspectResult {
  * structure, so an adapter can store them in a session log and replay them.
  */
 export type MolCommand =
-  | { readonly op: 'represent'; readonly style: StyleSpec; readonly target?: StructureSelector }
+  | RepresentCommand
   | {
     readonly op: 'select'
     readonly target: StructureSelector

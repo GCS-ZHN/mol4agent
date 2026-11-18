@@ -80,7 +80,7 @@ away.
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å, 0 < cutoff ≤ 30) in PDB-like files. Returns ranges for `mol_style`/`mol_focus`. |
 | `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
 | `mol_open` | `path`, `type?`, `color?`, `colorParams?`, `select?`, `focus?` | Create/update the tab page keyed by its canonical `/`-separated absolute path and make it active. Emits `represent` and optionally `select`/`focus`; the tab page id is that path. |
-| `mol_style` | `tab?`, `type?`, `color?`, `target?`, `colorParams?` | Append `represent` to the tab (`tab` defaults to active). Without `target` it replaces the scene representation; with `target` it adds a representation to that selection only. `colorParams.value` applies to `uniform` and accepts a CSS name (`"red"`), hex (`"#ff0000"`), or an integer (`16711680`); invalid colours are rejected and the result echoes the resolved hex. |
+| `mol_style` | `tab?`, `type?`, `color?`, `target?`, `replace?`, `colorParams?` | Append `represent` to the tab (`tab` defaults to active). `replace` defaults to `true`: clear the current representations, then draw the new one. Pass `replace: false` to keep them and overlay. `target` only narrows the new representation's coverage; it does not imply replace or overlay. `colorParams.value` applies to `uniform` and accepts a CSS name (`"red"`), hex (`"#ff0000"`), or an integer (`16711680`); invalid colours are rejected and the result echoes the resolved hex. |
 | `mol_select` | `tab?`, `target`, `mode?`, `focus?` | Append `select`. `mode` is `select` or `highlight`. |
 | `mol_focus` | `tab?`, `target?` | Append `focus`; target omitted frames the whole structure. |
 | `mol_measure` | `tab?`, `kind`, `targets` | Append `measure`. 2 targets for distance, 3 for angle, 4 for dihedral. |
@@ -192,7 +192,7 @@ range.
 | Tool | Scene effect |
 |---|---|
 | `mol_open` | New `sceneKey`; commands `[represent, select?]` or `[represent, focus?]` |
-| `mol_style` | Append `{ op: 'represent', style, target? }` |
+| `mol_style` | Append `{ op: 'represent', style, target?, replace? }` |
 | `mol_select` | Append `{ op: 'select', target, mode, focus? }` |
 | `mol_focus` | Append `{ op: 'focus', target? }` |
 | `mol_measure` | Append `{ op: 'measure', kind, targets }` |
@@ -392,8 +392,9 @@ commands have been applied, so it never reports a half-applied style.
   holder; remounting the same tab reattaches and resizes instead of re-reading
   the file. The two most recent tabs are kept; plugin unload disposes them.
 - **Ligands stay visible**: global `cartoon` uses Mol*'s
-  `polymer-and-ligand` preset. When replacing a representation, core snapshots
-  old representation refs and removes only those after the new ones exist.
+  `polymer-and-ligand` preset. With `replace` (the default), core clears the
+  structure components before building either style family; with
+  `replace: false` it adds the new representation without clearing.
 
 ## Build
 
@@ -460,8 +461,9 @@ enabled as `@gcszhn/mol4agent-deepseekharness`.
   `occupancy`/`bFactor` are absent for formats that do not carry them.
   `colorValue` is resolved through the representation's own colour theme, so a
   theme that needs custom properties may report only the theme name.
-- `mol_style` without `target` changes the global representation; with `target`
-  it adds a selection component. Labels are not exposed as a tool yet.
+- `mol_style` replaces the current representations by default; `replace: false`
+  overlays the new style and is required for additive targeted styling. `target`
+  only narrows coverage. Labels are not exposed as a tool yet.
 - `mol_interface` currently parses PDB-like ATOM records (`pdb`/`pdbqt`/`pqr`)
   only; mmCIF/BCIF interface calculation is not implemented.
 - `mol_fetch` needs outbound HTTPS from the DSH Host. Downloads are capped at

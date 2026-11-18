@@ -107,7 +107,7 @@ store 保留一个**活跃 agent scene** 和多个独立的 **file-viewer scene*
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 找两组链之间的界面残基（默认 8 Å），仅 PDB-like。 |
 | `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
 | `mol_open` | `path`、`type?`、`color?`、`colorParams?`、`select?`、`focus?` | 打开场景、渲染 MCP App 卡片，可选高亮/聚焦。 |
-| `mol_style` | `type?`、`color?`、`target?`、`colorParams?` | 替换全局表示，或给选择集叠加表示。`colorParams.value` 只对 `uniform` 生效，接受 CSS 颜色名（`"red"`）、十六进制（`"#ff0000"`）或整数（`16711680`）；非法颜色会被拒绝，结果会回显解析后的十六进制。 |
+| `mol_style` | `type?`、`color?`、`target?`、`replace?`、`colorParams?` | 默认替换当前表示（`replace: true`），传 `replace: false` 时叠加。`target` 只限定新表示的覆盖范围。`colorParams.value` 只对 `uniform` 生效，接受 CSS 颜色名（`"red"`）、十六进制（`"#ff0000"`）或整数（`16711680`）；非法颜色会被拒绝，结果会回显解析后的十六进制。 |
 | `mol_select` | `target`、`mode?`、`focus?` | 选择/高亮。 |
 | `mol_focus` | `target?` | 聚焦选择集或整体。 |
 | `mol_measure` | `kind`、`targets` | 距离（2）/角度（3）/二面角（4）。 |

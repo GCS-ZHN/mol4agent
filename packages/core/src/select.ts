@@ -1,6 +1,6 @@
 /** Selector compilation: protocol selectors to Mol* schemas/queries. @module @gcszhn/mol4agent-core/select */
-import { StructureElement } from 'molstar/lib/mol-model/structure'
-import { StructureSelectionQueries } from 'molstar/lib/mol-plugin-state/helpers/structure-selection-query'
+import { StructureElement } from 'molstar/lib/mol-model/structure.js'
+import { StructureSelectionQueries } from 'molstar/lib/mol-plugin-state/helpers/structure-selection-query.js'
 import type { Expression } from 'molstar/lib/mol-script/language/expression'
 import type { ElementSchema, StructureSelector } from './protocol.ts'
 
@@ -73,6 +73,22 @@ export function selectorExpression(selector: StructureSelector): Expression {
   return 'elements' in compiled
     ? StructureElement.Schema.toExpression(compiled.elements)
     : compiled.expression(undefined)
+}
+
+/**
+ * Stable component key for one selection.
+ *
+ * Repeated targeted styles of the same selection reuse one Mol* cell; each
+ * `replace: false` command adds its own representation there, so cartoon +
+ * stick + line overlays do not fragment into sibling components.
+ */
+export function selectionKey(selector: StructureSelector): string {
+  let hash = 2166136261
+  for (const char of JSON.stringify(selector)) {
+    hash ^= char.charCodeAt(0)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `mol4agent-sel-${(hash >>> 0).toString(36)}`
 }
 
 /** Short human label for a selector, used in tool and inspection output. */

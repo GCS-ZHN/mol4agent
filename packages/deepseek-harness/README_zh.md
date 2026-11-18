@@ -73,7 +73,7 @@ session、projection、UI。`@gcszhn/mol4agent-core` 只接收字节 + 显式 fo
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 在 PDB-like 文件中找两个链组之间的界面残基（默认 8 Å，0 < cutoff ≤ 30），返回可用于 `mol_style`/`mol_focus` 的区间。 |
 | `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
 | `mol_open` | `path`、`type?`、`color?`、`colorParams?`、`select?`、`focus?` | 按规范化（canonical）的 `/` 分隔绝对路径创建/更新 tab 页面并设为活动 tab；发出 `represent`，可选 `select`/`focus`。tab 页面 id 即该路径。 |
-| `mol_style` | `tab?`、`type?`、`color?`、`target?`、`colorParams?` | 给指定 tab（默认活动 tab）追加 `represent`。不传 `target` 替换整个场景表示；传 `target` 只给该选择添加表示。`colorParams.value` 只对 `uniform` 生效，可传 CSS 名称（`"red"`）、十六进制（`"#ff0000"`）或整数（`16711680`）；非法颜色会被拒绝，结果会回显解析后的十六进制。 |
+| `mol_style` | `tab?`、`type?`、`color?`、`target?`、`replace?`、`colorParams?` | 给指定 tab（默认活动 tab）追加 `represent`。`replace` 默认 `true`：先清空当前表示再绘制；传 `replace: false` 保留已有表示并叠加。`target` 只限定新表示的覆盖范围，不隐含替换或叠加。`colorParams.value` 只对 `uniform` 生效，可传 CSS 名称（`"red"`）、十六进制（`"#ff0000"`）或整数（`16711680`）；非法颜色会被拒绝，结果会回显解析后的十六进制。 |
 | `mol_select` | `tab?`、`target`、`mode?`、`focus?` | 追加 `select`；`mode` 为 `select` 或 `highlight`。 |
 | `mol_focus` | `tab?`、`target?` | 追加 `focus`；不传 target 聚焦整个结构。 |
 | `mol_measure` | `tab?`、`kind`、`targets` | 追加 `measure`；距离 2 个目标，角度 3 个，二面角 4 个。 |
@@ -181,7 +181,7 @@ Host 会先通过 AlphaFold JSON API 解析 `0.pdbUrl`，再下载实际文件�
 | 工具 | 场景效果 |
 |---|---|
 | `mol_open` | 新 `sceneKey`；命令 `[represent, select?]` 或 `[represent, focus?]` |
-| `mol_style` | 追加 `{ op: 'represent', style, target? }` |
+| `mol_style` | 追加 `{ op: 'represent', style, target?, replace? }` |
 | `mol_select` | 追加 `{ op: 'select', target, mode, focus? }` |
 | `mol_focus` | 追加 `{ op: 'focus', target? }` |
 | `mol_measure` | 追加 `{ op: 'measure', kind, targets }` |
@@ -367,7 +367,8 @@ body 不会在首帧就截图：它先等待画布完成布局、representation 
   mount 时 reattach + resize，而不是重新读文件。保留最近 2 个 tab；插件卸载
   时统一 dispose。
 - **配体保持可见**：全局 `cartoon` 使用 Mol* 的 `polymer-and-ligand` preset。
-  替换表示时，core 先快照旧 representation ref，等新表示建好后再只删除旧 ref。
+  默认 `replace` 为 true 时，core 先清空 structure component，再构建任一风格；
+  `replace: false` 时则直接叠加，不清空。
 
 ## 构建
 
@@ -429,8 +430,8 @@ dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.3.0
   粗粒化（sphere/gaussian 或低分辨率）unit 没有原子层级，不会列出；
   格式不携带 `occupancy`/`bFactor` 时这两个字段缺省。`colorValue` 通过该
   表示自己的配色主题解析，需要 custom property 的主题可能只给出主题名。
-- `mol_style` 不传 `target` 时修改全局表示；传 `target` 时添加选择 component。
-  标签（label）还没有暴露成工具。
+- `mol_style` 默认替换当前表示；叠加式（包括带 `target` 的叠加）必须显式传
+  `replace: false`，`target` 只限定覆盖范围。标签（label）还没有暴露成工具。
 - `mol_interface` 目前只解析 PDB-like ATOM 记录（`pdb`/`pdbqt`/`pqr`）；
   mmCIF/BCIF 的界面计算尚未实现。
 - `mol_fetch` 需要 DSH Host 能访问外网 HTTPS。下载上限 64 MiB、30 秒超时；

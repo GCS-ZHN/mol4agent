@@ -226,12 +226,13 @@ export function registerTools(ctx: Context, options: MolToolOptions): void {
   ctx.tools.register(defineTool({
     name: 'mol_style',
     description: 'Change the representation or color theme of a molecular viewer tab page. '
-      + 'Without target this replaces the current representation; with target it adds a representation to that selection.',
+      + 'Replaces the current representations by default; pass replace:false to overlay a new style on top. target narrows which part the new representation covers.',
     parameters: {
       tab: { type: 'string', description: TAB_HELP },
       type: { type: 'string', enum: REPRESENTATION_TYPES, description: 'Representation type, e.g. cartoon or ball-and-stick.' },
       color: { type: 'string', enum: COLOR_THEMES, description: 'Color theme, e.g. chain-id, element-symbol, residue-name.' },
-      target: { type: 'json', description: `Optional selection to style additively; the rest of the structure keeps its representation. ${SELECTOR_HELP}` },
+      target: { type: 'json', description: `Optional selection the new representation covers; it does not imply replace or overlay. ${SELECTOR_HELP}` },
+      replace: { type: 'boolean', description: 'Defaults to true: clear the current representations before drawing. Pass false to keep them and overlay the new style.' },
       colorParams: { type: 'json', description: 'Optional color theme params. For a uniform color pass {"value": "red"}, {"value": "#ff0000"}, or {"value": 16711680}.' },
     },
     isConcurrencySafe: () => false,

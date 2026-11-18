@@ -372,12 +372,15 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
 
   server.registerTool('mol_style', {
     title: 'Change representation or color',
-    description: 'Change the representation or color theme of the active structure. Without target this '
-      + 'replaces the scene representation. With target it adds a representation only to that selection.',
+    description: 'Change the representation or color theme of the active structure. Replaces the current '
+      + 'representations by default; pass replace:false to keep them and overlay the new style. target '
+      + 'narrows only the part the new representation covers.',
     inputSchema: {
       ...styleFields,
       target: selectorSchema.optional()
-        .describe(`Optional selection to style additively. ${SELECTOR_HELP}`),
+        .describe(`Optional selection the new representation covers; it does not imply replace or overlay. ${SELECTOR_HELP}`),
+      replace: z.boolean().optional()
+        .describe('Defaults to true: clear the current representations before drawing. Pass false to overlay.'),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async (args) => {
@@ -387,6 +390,7 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       op: 'represent',
       style: styleOf(args),
       ...(target === undefined ? {} : { target }),
+      ...(args.replace === undefined ? {} : { replace: args.replace }),
     }
     const scene = requireScene(store, 'style')
     const next = store.pushAgent(command)
@@ -934,11 +938,13 @@ function describeStyle(args: {
   readonly color?: StyleSpec['color']
   readonly colorParams?: { readonly value: string | number }
   readonly target?: unknown
+  readonly replace?: boolean
 }): string {
   const color = args.colorParams === undefined ? '' : ` ${formatColor(parseColor(args.colorParams.value))}`
   const style = [args.type ?? 'cartoon', args.color ?? 'chain-id'].join(' / ') + color
-  if (args.target === undefined) return `Applied ${style} to the whole structure.`
-  return `Applied ${style} to ${describeSelector(normalizeSelector(args.target))}.`
+  const mode = args.replace === false ? ' (overlaid)' : ''
+  if (args.target === undefined) return `Applied ${style}${mode} to the whole structure.`
+  return `Applied ${style}${mode} to ${describeSelector(normalizeSelector(args.target))}.`
 }
 
 function describeSelector(value: { readonly kind: string } & Record<string, unknown>): string {

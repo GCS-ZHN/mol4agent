@@ -39,7 +39,7 @@ reattaches it, so camera, representations, and panel state survive a switch
 | `mol_interface` | Finds residues within a cutoff between two chain groups (PDB-like files) |
 | `mol_fetch` | Downloads a database entry (RCSB PDB, AlphaFold, PubChem, ChEMBL) to a workspace path |
 | `mol_open` | Opens the structure in a tab page (id = absolute path) and makes it active |
-| `mol_style` | Replaces the representation/theme, or adds one to a `target` selection |
+| `mol_style` | Replaces the representation/theme by default, or overlays one with `replace: false`; `target` narrows coverage |
 | `mol_select` | Selects or highlights a chain/residue/ligand/water/ion |
 | `mol_focus` | Moves the camera to a selection (or the whole structure) |
 | `mol_measure` | Adds a distance, angle, or dihedral between selections |
@@ -68,8 +68,10 @@ Selections are JSON, for example:
 
 - The structure summary is computed on the Host from bytes; binary CIF (`bcif`)
   can be rendered but has no summary yet.
-- `mol_style` without `target` applies one global representation; with `target`
-  it adds a selection component (e.g. red sticks on an interface).
+- `mol_style` replaces the current representations unless `replace: false` is
+  passed; overlay a selection (e.g. red sticks on an interface) with
+  `target` + `replace: false`. Without `replace: false`, `target` still replaces
+  the scene and only narrows the new representation's coverage.
 - `mol_interface` currently handles PDB-like ATOM files only.
 - Files larger than 64 MiB are refused.
 - WebGL 2 is required; a machine without a usable GPU shows a load error.

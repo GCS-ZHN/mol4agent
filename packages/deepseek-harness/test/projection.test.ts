@@ -103,6 +103,30 @@ test('normalizes named colour params and rejects unresolvable colours', () => {
   assert.equal(unchanged, fresh)
 })
 
+test('folds an explicit replace flag and leaves the core default otherwise', () => {
+  let state = init()
+  state = definition.apply(state, call('mol_open', { path: 'a.pdb' }, 'a'))
+  state = definition.apply(state, call('mol_style', {
+    tab: key('a.pdb'),
+    type: 'ball-and-stick',
+    target: { kind: 'residues', chain: 'A', start: 1, end: 5 },
+    replace: false,
+  }, 'overlay'))
+  const overlay = state.tabs[key('a.pdb')]?.commands[1]
+  if (overlay?.op !== 'represent') assert.fail('expected a represent command')
+  assert.equal(overlay.replace, false)
+  assert.deepEqual(overlay.target, { kind: 'residues', chain: 'A', start: 1, end: 5 })
+
+  state = definition.apply(state, call('mol_style', {
+    tab: key('a.pdb'),
+    type: 'cartoon',
+    target: { kind: 'ligand' },
+  }, 'default-replace'))
+  const defaulted = state.tabs[key('a.pdb')]?.commands[2]
+  if (defaulted?.op !== 'represent') assert.fail('expected a represent command')
+  assert.equal('replace' in defaulted, false, 'omitted replace must fall back to the core default')
+})
+
 test('capture targets the requested tab and clears on result', () => {
   let state = init()
   state = definition.apply(state, call('mol_open', { path: 'a.pdb' }, 'a'))
