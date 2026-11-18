@@ -9,14 +9,18 @@
  */
 import { App, PostMessageTransport } from '@modelcontextprotocol/ext-apps'
 import { createMolViewer, type MolViewer } from '@gcszhn/mol4agent-core'
-import type { MolFormat } from '@gcszhn/mol4agent-core/protocol'
-import type { SceneSnapshot, SceneSource } from '../scene.ts'
+import type { CommandResult, MolFormat } from '@gcszhn/mol4agent-core/protocol'
+import type { SceneSnapshot, SceneSource, SceneStructureSnapshot } from '../scene.ts'
 import type { PendingCapture } from '../capture.ts'
 import { gunzipBytes } from './gzip.ts'
+import type { PendingInspect, PendingTmScore } from '../inspect.ts'
+import { encodeInspectAnswer, encodeTmScoreAnswer } from './inspect.ts'
 
 interface PollResult {
   readonly scene: SceneSnapshot | null
   readonly capture: PendingCapture | null
+  readonly inspect: PendingInspect | null
+  readonly tmscore: PendingTmScore | null
   readonly timedOut: boolean
   readonly missing?: boolean
 }
@@ -41,6 +45,7 @@ const expand = document.getElementById('expand') as HTMLButtonElement
 let viewer: MolViewer | null = null
 let theme: 'light' | 'dark' = 'dark'
 let loadedSceneId: string | null = null
+let loadedStructureIds: string[] = []
 let appliedCommands = 0
 let currentSceneId = ''
 let currentRevision = -1
@@ -183,7 +188,23 @@ async function pollLoop(): Promise<void> {
         const capture = poll.capture
         await enqueue(() => deliverCapture(capture))
       }
-      if (poll?.timedOut === true && !poll.scene && !poll.capture) await sleep(100)
+      if (poll?.inspect !== null && poll?.inspect !== undefined) {
+        const inspect = poll.inspect
+        await enqueue(() => deliverInspect(inspect))
+      }
+      if (poll?.tmscore !== null && poll?.tmscore !== undefined) {
+        const tmscore = poll.tmscore
+        await enqueue(() => deliverTmScore(tmscore))
+      }
+      if (
+        poll?.timedOut === true
+        && !poll.scene
+        && !poll.capture
+        && !poll.inspect
+        && !poll.tmscore
+      ) {
+        await sleep(100)
+      }
     } catch (reason) {
       if (disposed) return
       meta.textContent = 'reconnecting to mol4agent…'
@@ -224,27 +245,37 @@ async function applyScene(scene: SceneSnapshot): Promise<boolean> {
     const currentViewer = await ensureViewer()
     if (scene.sceneId !== loadedSceneId) {
       showStatus(`Loading ${scene.label}…`)
-      const uri = scene.fileResourceUri ?? `mol4agent://structure/${scene.sceneId}`
-      const resource = await withTimeout(
-        app.readServerResource({ uri }),
-        15_000,
-        `timed out reading ${scene.label}`,
+      const primary = primaryStructureOf(scene)
+      const data = await readStructure(scene, primary)
+      await currentViewer.load(
+        { data, format: primary.format, label: primary.label },
+        { id: primary.id },
       )
-      let data = decodeStructure(resource)
-      if (scene.fileGzip === true) {
-        const raw = typeof data === 'string' ? new TextEncoder().encode(data) : data
-        data = await gunzipBytes(raw, MAX_STRUCTURE_BYTES)
-      }
-      await currentViewer.load({ data, format: scene.format, label: scene.label })
       loadedSceneId = scene.sceneId
+      loadedStructureIds = [primary.id]
       appliedCommands = 0
+    }
+    for (const structure of scene.structures ?? []) {
+      if (loadedStructureIds.includes(structure.id)) continue
+      const data = await readStructure(scene, structure)
+      const entry = await currentViewer.addStructure(
+        { data, format: structure.format, label: structure.label },
+        { id: structure.id },
+      )
+      loadedStructureIds = [...loadedStructureIds, entry.id]
     }
     if (scene.commands.length < appliedCommands) appliedCommands = 0
     const commands = scene.commands.slice(appliedCommands)
     if (commands.length > 0) {
+      const firstIndex = appliedCommands
       const results = await currentViewer.apply(commands)
-      for (const result of results) {
+      for (let offset = 0; offset < results.length; offset += 1) {
+        const result = results[offset]
+        if (result === undefined) continue
         if (!result.ok) console.warn('[mol4agent]', result.message)
+        if (commands[offset]?.op === 'align') {
+          await deliverAlign(scene.sceneId, firstIndex + offset, result)
+        }
       }
       appliedCommands = scene.commands.length
     }
@@ -257,6 +288,97 @@ async function applyScene(scene: SceneSnapshot): Promise<boolean> {
   } catch (reason) {
     showStatus(`Could not load ${scene.label}.\n${messageOf(reason)}`, 'error')
     throw reason
+  }
+}
+
+/** Primary structure of a scene; older snapshots lack the structures array. */
+function primaryStructureOf(scene: SceneSnapshot): SceneStructureSnapshot {
+  return scene.structures?.[0] ?? {
+    id: 'structure',
+    label: scene.label,
+    format: scene.format,
+    ...(scene.fileResourceUri === undefined ? {} : { fileResourceUri: scene.fileResourceUri }),
+    ...(scene.fileGzip === undefined ? {} : { fileGzip: scene.fileGzip }),
+  }
+}
+
+async function readStructure(
+  scene: SceneSnapshot,
+  structure: SceneStructureSnapshot,
+): Promise<string | Uint8Array> {
+  const uri = structure.fileResourceUri
+    ?? `mol4agent://structure/${scene.sceneId}/${encodeURIComponent(structure.id)}`
+  const resource = await withTimeout(
+    app.readServerResource({ uri }),
+    15_000,
+    `timed out reading ${structure.label}`,
+  )
+  let data = decodeStructure(resource)
+  if (structure.fileGzip === true) {
+    const raw = typeof data === 'string' ? new TextEncoder().encode(data) : data
+    data = await gunzipBytes(raw, MAX_STRUCTURE_BYTES)
+  }
+  return data
+}
+
+async function deliverAlign(
+  sceneId: string,
+  commandIndex: number,
+  result: CommandResult,
+): Promise<void> {
+  const answer = result.ok && result.data !== undefined
+    ? { ok: true, result: result.data }
+    : {
+      ok: false,
+      message: result.ok ? 'the viewer returned no alignment metrics' : result.message,
+    }
+  await app.callServerTool({
+    name: 'mol_align_deliver',
+    arguments: {
+      sceneId,
+      commandIndex,
+      data: JSON.stringify(answer),
+    },
+  }).catch(reason => { console.warn('[mol4agent] align delivery failed', reason) })
+}
+
+async function deliverInspect(pending: PendingInspect): Promise<void> {
+  try {
+    const currentViewer = await ensureViewer()
+    const result = currentViewer.inspect(pending.request)
+    await app.callServerTool({
+      name: 'mol_inspect_deliver',
+      arguments: {
+        queryId: pending.queryId,
+        data: await encodeInspectAnswer({ ok: true, result }),
+      },
+    })
+  } catch (reason) {
+    const message = messageOf(reason)
+    await app.callServerTool({
+      name: 'mol_inspect_fail',
+      arguments: { queryId: pending.queryId, message },
+    }).catch(() => {})
+  }
+}
+
+async function deliverTmScore(pending: PendingTmScore): Promise<void> {
+  try {
+    const currentViewer = await ensureViewer()
+    const result = currentViewer.tmScore(pending.request)
+    await app.callServerTool({
+      name: 'mol_tmscore_deliver',
+      arguments: {
+        queryId: pending.queryId,
+        data: encodeTmScoreAnswer({ ok: true, result }),
+      },
+    })
+  } catch (reason) {
+    const message = messageOf(reason)
+    await app.callServerTool({
+      name: 'mol_tmscore_fail',
+      arguments: { queryId: pending.queryId, message },
+    }).catch(() => {})
   }
 }
 
