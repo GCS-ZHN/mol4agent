@@ -14,7 +14,7 @@ const init = (): State => definition.init({ cwd: CWD } as never)
 const key = (name: string): string => canonicalTabPath(resolve(CWD, name))
 
 test('is versioned for the per-tab schema', () => {
-  assert.equal(definition.stateVersion, 2)
+  assert.equal(definition.stateVersion, 3)
 })
 
 function call(name: string, args: Record<string, unknown>, callId: string) {

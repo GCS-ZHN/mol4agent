@@ -4,7 +4,13 @@
  *
  * @module @gcszhn/mol4agent-deepseekharness/state
  */
-import type { MolCommand, MolFormat } from '@gcszhn/mol4agent-core/protocol'
+import type {
+  InspectDetail,
+  InspectResult,
+  InspectTarget,
+  MolCommand,
+  MolFormat,
+} from '@gcszhn/mol4agent-core/protocol'
 import type {} from '@deepseek-ai/dsh-session-projection/types'
 
 /** Projection key owned by this adapter. */
@@ -32,6 +38,24 @@ export interface MolPendingCapture {
   readonly path?: string
 }
 
+/**
+ * One read-only query the agent asked for, paired with the tool call waiting
+ * on it. No viewer command: the browser answers from current Mol* state.
+ */
+export interface MolPendingInspect {
+  readonly callId: string
+  readonly target?: InspectTarget
+  readonly detail?: InspectDetail
+  readonly limit?: number
+  /** Scene path this query belongs to; non-matching tabs must ignore it. */
+  readonly path?: string
+}
+
+/** The browser's answer to one queued query. */
+export type MolInspectAnswer =
+  | { readonly ok: true; readonly result: InspectResult }
+  | { readonly ok: false; readonly message: string }
+
 /** Whole client-visible projection value. */
 export interface MolSessionState {
   readonly revision: number
@@ -42,14 +66,21 @@ export interface MolSessionState {
   /** Last tab opened by mol_open; tools default to it when tab is omitted. */
   readonly active: string | null
   readonly pending: Readonly<Record<string, MolPendingCapture>>
+  readonly inspecting: Readonly<Record<string, MolPendingInspect>>
 }
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {
-    /** Per-tab molecular viewer scenes plus pending screenshot requests. */
+    /** Per-tab molecular viewer scenes, screenshot requests, and inspect queries. */
     mol4agent: MolSessionState
   }
 }
 
 /** Initial value before any molecule tool call. */
-export const EMPTY_MOL_STATE: MolSessionState = { revision: 0, tabs: {}, active: null, pending: {} }
+export const EMPTY_MOL_STATE: MolSessionState = {
+  revision: 0,
+  tabs: {},
+  active: null,
+  pending: {},
+  inspecting: {},
+}

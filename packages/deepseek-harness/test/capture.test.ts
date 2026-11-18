@@ -8,15 +8,15 @@ const ref = { attachmentId: 1 } as never
 test('delivers a pending capture with its report', async () => {
   const hub = new CaptureHub()
   const pending = hub.wait(session, 'call', 1000, new AbortController().signal)
-  assert.equal(hub.deliver(session, 'call', ref, { status: 'ready' }), true)
+  assert.equal(hub.deliver(session, 'call', { ref, report: { status: 'ready' } }), true)
   assert.deepEqual(await pending, { ref, report: { status: 'ready' } })
   hub.dispose()
 })
 
 test('buffers a delivery that arrives before wait', async () => {
   const hub = new CaptureHub()
-  assert.equal(hub.deliver(session, 'early', ref), true)
-  assert.deepEqual(await hub.wait(session, 'early', 1000, new AbortController().signal), { ref, report: undefined })
+  assert.equal(hub.deliver(session, 'early', { ref }), true)
+  assert.deepEqual(await hub.wait(session, 'early', 1000, new AbortController().signal), { ref })
   hub.dispose()
 })
 
@@ -38,9 +38,9 @@ test('rejects duplicate, cancelled, timed-out, and disposed waits', async () => 
 
 test('dispose clears early deliveries', () => {
   const hub = new CaptureHub()
-  hub.deliver(session, 'early', ref)
+  hub.deliver(session, 'early', { ref })
   hub.dispose()
-  assert.equal(hub.deliver(session, 'early', ref), true)
+  assert.equal(hub.deliver(session, 'early', { ref }), true)
   hub.dispose()
 })
 
