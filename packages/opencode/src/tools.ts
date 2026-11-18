@@ -10,8 +10,11 @@ import {
   REPRESENTATION_TYPES,
   formatColor,
   parseColor,
+  type AlignmentResult,
+  type InspectTarget,
   type MolFormat,
   type StyleSpec,
+  type TmScoreResult,
   type StructureSelector,
   type StructureSummary,
 } from '@gcszhn/mol4agent-core/protocol'
@@ -20,46 +23,74 @@ import type { InterfaceResult } from './interface.ts'
 import type { ResolvedMoleculeFile } from './paths.ts'
 import { normalizeSelector } from './selector.ts'
 
+/** Human description used by selector-shaped tool arguments. */
+export const SELECTOR_DESCRIPTION =
+  'A StructureSelector object. Examples: {"kind":"ligand"}, {"kind":"protein"}, '
+  + '{"kind":"chain","chain":"A"}, {"kind":"residues","chain":"A","start":10,"end":25}, '
+  + '{"kind":"residue","chain":"A","index":42}, {"kind":"comp","compId":"ATP"}. '
+  + 'Add "structureId" to target one structure when several are loaded.'
+
+/** Optional structure scope every selector variant accepts. */
+const STRUCTURE_SCOPE_SCHEMA = {
+  structureId: {
+    type: 'string',
+    description: 'Structure id from mol_open (primary is "structure") or mol_add_structure. '
+      + 'Omit to target every loaded structure.',
+  },
+}
+
 /** JSON Schema for a StructureSelector (used by the tool input schemas). */
 export const SELECTOR_SCHEMA = {
   oneOf: [
-    { type: 'object', properties: { kind: { enum: ['all'] } }, required: ['kind'], additionalProperties: false },
-    { type: 'object', properties: { kind: { enum: ['polymer'] } }, required: ['kind'], additionalProperties: false },
-    { type: 'object', properties: { kind: { enum: ['protein'] } }, required: ['kind'], additionalProperties: false },
-    { type: 'object', properties: { kind: { enum: ['nucleic'] } }, required: ['kind'], additionalProperties: false },
-    { type: 'object', properties: { kind: { enum: ['ligand'] } }, required: ['kind'], additionalProperties: false },
-    { type: 'object', properties: { kind: { enum: ['water'] } }, required: ['kind'], additionalProperties: false },
-    { type: 'object', properties: { kind: { enum: ['ion'] } }, required: ['kind'], additionalProperties: false },
+    { type: 'object', properties: { kind: { enum: ['all'] }, ...STRUCTURE_SCOPE_SCHEMA }, required: ['kind'], additionalProperties: false },
+    { type: 'object', properties: { kind: { enum: ['polymer'] }, ...STRUCTURE_SCOPE_SCHEMA }, required: ['kind'], additionalProperties: false },
+    { type: 'object', properties: { kind: { enum: ['protein'] }, ...STRUCTURE_SCOPE_SCHEMA }, required: ['kind'], additionalProperties: false },
+    { type: 'object', properties: { kind: { enum: ['nucleic'] }, ...STRUCTURE_SCOPE_SCHEMA }, required: ['kind'], additionalProperties: false },
+    { type: 'object', properties: { kind: { enum: ['ligand'] }, ...STRUCTURE_SCOPE_SCHEMA }, required: ['kind'], additionalProperties: false },
+    { type: 'object', properties: { kind: { enum: ['water'] }, ...STRUCTURE_SCOPE_SCHEMA }, required: ['kind'], additionalProperties: false },
+    { type: 'object', properties: { kind: { enum: ['ion'] }, ...STRUCTURE_SCOPE_SCHEMA }, required: ['kind'], additionalProperties: false },
     {
       type: 'object',
-      properties: { kind: { enum: ['chain'] }, chain: { type: 'string', minLength: 1 } },
+      properties: { kind: { enum: ['chain'] }, ...STRUCTURE_SCOPE_SCHEMA, chain: { type: 'string', minLength: 1 } },
       required: ['kind', 'chain'],
       additionalProperties: false,
     },
     {
       type: 'object',
-      properties: { kind: { enum: ['residue'] }, chain: { type: 'string' }, index: { type: 'integer' }, auth: { type: 'boolean' } },
+      properties: { kind: { enum: ['residue'] }, ...STRUCTURE_SCOPE_SCHEMA, chain: { type: 'string' }, index: { type: 'integer' }, auth: { type: 'boolean' } },
       required: ['kind', 'index'],
       additionalProperties: false,
     },
     {
       type: 'object',
-      properties: { kind: { enum: ['residues'] }, chain: { type: 'string' }, start: { type: 'integer' }, end: { type: 'integer' }, auth: { type: 'boolean' } },
+      properties: { kind: { enum: ['residues'] }, ...STRUCTURE_SCOPE_SCHEMA, chain: { type: 'string' }, start: { type: 'integer' }, end: { type: 'integer' }, auth: { type: 'boolean' } },
       required: ['kind', 'start', 'end'],
       additionalProperties: false,
     },
     {
       type: 'object',
-      properties: { kind: { enum: ['comp'] }, compId: { type: 'string', minLength: 1 } },
+      properties: { kind: { enum: ['comp'] }, ...STRUCTURE_SCOPE_SCHEMA, compId: { type: 'string', minLength: 1 } },
       required: ['kind', 'compId'],
       additionalProperties: false,
     },
     {
       type: 'object',
-      properties: { kind: { enum: ['schema'] }, schema: { type: 'object' } },
+      properties: { kind: { enum: ['schema'] }, ...STRUCTURE_SCOPE_SCHEMA, schema: { type: 'object' } },
       required: ['kind', 'schema'],
       additionalProperties: false,
     },
+  ],
+}
+
+/**
+ * JSON Schema for an inspection target: any structure selector plus the two
+ * live viewer states only Mol* knows (`selection`, `focus`).
+ */
+export const INSPECT_TARGET_SCHEMA = {
+  oneOf: [
+    ...SELECTOR_SCHEMA.oneOf,
+    { type: 'object', properties: { kind: { enum: ['selection'] } }, required: ['kind'], additionalProperties: false },
+    { type: 'object', properties: { kind: { enum: ['focus'] } }, required: ['kind'], additionalProperties: false },
   ],
 }
 
@@ -184,6 +215,24 @@ export function summarizeSafely(bytes: Uint8Array, format: MolFormat): Structure
   }
 }
 
+/** Model-facing summary of one alignment command result. */
+export function formatAlignment(result: AlignmentResult): string {
+  const method = result.method === 'tm-align' ? 'TM-align' : 'sequence alignment'
+  const score = result.tmScoreA === undefined
+    ? `RMSD ${result.rmsd.toFixed(2)} A over ${result.alignedLength} aligned atoms`
+    : `TM-score ${result.tmScoreA.toFixed(4)}/${result.tmScoreB?.toFixed(4) ?? 'n/a'}, `
+      + `RMSD ${result.rmsd.toFixed(2)} A, ${result.alignedLength} aligned residues`
+  return `Aligned ${result.target} onto ${result.reference} (${method}): ${score}.`
+}
+
+/** Model-facing summary of one read-only TM-score query. */
+export function formatTmScore(result: TmScoreResult): string {
+  return `TM-score ${result.tmScoreA.toFixed(4)}/${result.tmScoreB.toFixed(4)}, `
+    + `RMSD ${result.rmsd.toFixed(2)} A, ${result.alignedLength} aligned residues `
+    + `(reference ${result.reference}: ${result.referenceAtoms} trace atoms; `
+    + `target ${result.target}: ${result.targetAtoms} trace atoms).`
+}
+
 export function formatInterface(label: string, result: InterfaceResult): string {
   if (result.residues.length === 0) {
     return `No interface residues within ${result.cutoff} A for ${label}.`
@@ -223,13 +272,15 @@ export function validateSelectorAgainst(
         ...summary.chains.flatMap(chain => chain.compIds),
         ...summary.ligands.map(ligand => ligand.compId),
       ])]
-      if (!components.includes(selector.compId)) {
-        throw new Error(
-          `component "${selector.compId}" does not exist; available components: `
-          + `${components.length === 0 ? '(none)' : components.join(', ')}`,
-        )
-      }
-      return
+      if (components.includes(selector.compId)) return
+      // `ChainSummary.compIds` is a display list capped at 12 entries, so an
+      // absent polymer component proves nothing once a chain is saturated. Do
+      // not reject a valid target just because the summary hid it.
+      if (summary.chains.some(chain => chain.compIds.length >= 12)) return
+      throw new Error(
+        `component "${selector.compId}" does not exist; available components: `
+        + `${components.length === 0 ? '(none)' : components.join(', ')}`,
+      )
     }
     case 'residue':
     case 'residues': {

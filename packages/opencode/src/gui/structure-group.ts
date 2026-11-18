@@ -19,6 +19,7 @@
 import { createComponent, createEffect, createRoot, onCleanup, type JSX } from 'solid-js'
 import type { MountedSession } from '@opencode/plugin/gui'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
+import type { CommandResult } from '@gcszhn/mol4agent-core/protocol'
 import { StructureViewer, type FetchedScene, type SceneInfo } from './viewer.tsx'
 import { oldestEvictions } from './routing.ts'
 
@@ -35,8 +36,15 @@ const MAX_LIVE_VIEWERS = 12
 export interface StructurePoolOptions {
   readonly scene: (sessionID: string, path: string) => SceneInfo | undefined
   readonly fetchScene: (sceneId: string, sessionID: string) => Promise<FetchedScene>
+  readonly fetchStructure: (sceneId: string, structureId: string, sessionID: string) => Promise<FetchedScene>
   readonly theme: () => 'light' | 'dark'
-  readonly onViewer: (sceneId: string, viewer: MolViewer | undefined) => void
+  readonly onViewer: (sceneId: string, viewer: MolViewer | undefined, whenIdle?: () => Promise<void>) => void
+  readonly onAlignResult: (
+    sessionID: string,
+    sceneId: string,
+    commandIndex: number,
+    result: CommandResult,
+  ) => void
 }
 
 export class StructurePool {
@@ -87,8 +95,12 @@ export class StructurePool {
         const viewer = createComponent(StructureViewer, {
           scene: () => this.options.scene(sessionID, path),
           fetchScene: (sceneId: string) => this.options.fetchScene(sceneId, sessionID),
+          fetchStructure: (sceneId: string, structureId: string) =>
+            this.options.fetchStructure(sceneId, structureId, sessionID),
           theme: this.options.theme,
           onViewer: this.options.onViewer,
+          onAlignResult: (sceneId: string, commandIndex: number, result: CommandResult) =>
+            this.options.onAlignResult(sessionID, sceneId, commandIndex, result),
         })
         if (viewer instanceof Node) host.appendChild(viewer)
         return disposeRoot

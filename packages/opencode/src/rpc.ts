@@ -36,8 +36,23 @@ export const Mol4Agent = Rpc.define({
                 binary: { type: 'boolean' },
                 revision: { type: 'integer' },
                 commands: { type: 'array', items: {} },
+                structures: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      path: { type: 'string' },
+                      label: { type: 'string' },
+                      format: { type: 'string' },
+                      binary: { type: 'boolean' },
+                    },
+                    required: ['id', 'path', 'label', 'format', 'binary'],
+                    additionalProperties: false,
+                  },
+                },
               },
-              required: ['sceneId', 'path', 'label', 'format', 'binary', 'revision', 'commands'],
+              required: ['sceneId', 'path', 'label', 'format', 'binary', 'revision', 'commands', 'structures'],
               additionalProperties: false,
             },
           },
@@ -57,12 +72,38 @@ export const Mol4Agent = Rpc.define({
         type: 'object',
         properties: {
           sceneId: { type: 'string' },
+          structureId: { type: 'string' },
           format: { type: 'string' },
           label: { type: 'string' },
           binary: { type: 'boolean' },
           data: { type: 'string' },
         },
         required: ['sceneId', 'format', 'label', 'binary', 'data'],
+        additionalProperties: false,
+      },
+    },
+    fetchStructure: {
+      input: {
+        type: 'object',
+        properties: {
+          sceneId: { type: 'string' },
+          structureId: { type: 'string' },
+          sessionID: { type: 'string' },
+        },
+        required: ['sceneId', 'structureId'],
+        additionalProperties: false,
+      },
+      output: {
+        type: 'object',
+        properties: {
+          sceneId: { type: 'string' },
+          structureId: { type: 'string' },
+          format: { type: 'string' },
+          label: { type: 'string' },
+          binary: { type: 'boolean' },
+          data: { type: 'string' },
+        },
+        required: ['sceneId', 'structureId', 'format', 'label', 'binary', 'data'],
         additionalProperties: false,
       },
     },
@@ -113,6 +154,64 @@ export const Mol4Agent = Rpc.define({
       },
       output: { type: 'object', properties: {}, additionalProperties: false },
     },
+    deliverInspect: {
+      input: {
+        type: 'object',
+        properties: {
+          inspectId: { type: 'string' },
+          ok: { type: 'boolean' },
+          result: { type: 'object' },
+          message: { type: 'string' },
+        },
+        required: ['inspectId', 'ok'],
+        additionalProperties: false,
+      },
+      output: {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+        required: ['ok'],
+        additionalProperties: false,
+      },
+    },
+    deliverAlign: {
+      input: {
+        type: 'object',
+        properties: {
+          sceneId: { type: 'string' },
+          commandIndex: { type: 'integer' },
+          ok: { type: 'boolean' },
+          result: { type: 'object' },
+          message: { type: 'string' },
+        },
+        required: ['sceneId', 'commandIndex', 'ok'],
+        additionalProperties: false,
+      },
+      output: {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+        required: ['ok'],
+        additionalProperties: false,
+      },
+    },
+    deliverTmScore: {
+      input: {
+        type: 'object',
+        properties: {
+          tmScoreId: { type: 'string' },
+          ok: { type: 'boolean' },
+          result: { type: 'object' },
+          message: { type: 'string' },
+        },
+        required: ['tmScoreId', 'ok'],
+        additionalProperties: false,
+      },
+      output: {
+        type: 'object',
+        properties: { ok: { type: 'boolean' } },
+        required: ['ok'],
+        additionalProperties: false,
+      },
+    },
     pendingCaptures: {
       input: {
         type: 'object',
@@ -144,6 +243,67 @@ export const Mol4Agent = Rpc.define({
         additionalProperties: false,
       },
     },
+    pendingInspections: {
+      input: {
+        type: 'object',
+        properties: { sessionID: { type: 'string' } },
+        additionalProperties: false,
+      },
+      output: {
+        type: 'object',
+        properties: {
+          inspections: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                inspectId: { type: 'string' },
+                sceneId: { type: 'string' },
+                path: { type: 'string' },
+                label: { type: 'string' },
+                target: { type: 'object' },
+                detail: { type: 'string' },
+                limit: { type: 'integer' },
+              },
+              required: ['inspectId', 'sceneId', 'path', 'label'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['inspections'],
+        additionalProperties: false,
+      },
+    },
+    pendingTmScores: {
+      input: {
+        type: 'object',
+        properties: { sessionID: { type: 'string' } },
+        additionalProperties: false,
+      },
+      output: {
+        type: 'object',
+        properties: {
+          queries: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                tmScoreId: { type: 'string' },
+                sceneId: { type: 'string' },
+                path: { type: 'string' },
+                label: { type: 'string' },
+                reference: { type: 'object' },
+                target: { type: 'object' },
+              },
+              required: ['tmScoreId', 'sceneId', 'path', 'label', 'reference', 'target'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['queries'],
+        additionalProperties: false,
+      },
+    },
   },
   events: {
     scene: {
@@ -171,6 +331,39 @@ export const Mol4Agent = Rpc.define({
           transparent: { type: 'boolean' },
         },
         required: ['sessionID', 'captureId', 'sceneId', 'path', 'width', 'height'],
+        additionalProperties: false,
+      },
+    },
+    inspect: {
+      schema: {
+        type: 'object',
+        properties: {
+          sessionID: { type: 'string' },
+          inspectId: { type: 'string' },
+          sceneId: { type: 'string' },
+          path: { type: 'string' },
+          label: { type: 'string' },
+          target: { type: 'object' },
+          detail: { type: 'string' },
+          limit: { type: 'integer' },
+        },
+        required: ['sessionID', 'inspectId', 'sceneId', 'path', 'label'],
+        additionalProperties: false,
+      },
+    },
+    tmScore: {
+      schema: {
+        type: 'object',
+        properties: {
+          sessionID: { type: 'string' },
+          tmScoreId: { type: 'string' },
+          sceneId: { type: 'string' },
+          path: { type: 'string' },
+          label: { type: 'string' },
+          reference: { type: 'object' },
+          target: { type: 'object' },
+        },
+        required: ['sessionID', 'tmScoreId', 'sceneId', 'path', 'label', 'reference', 'target'],
         additionalProperties: false,
       },
     },

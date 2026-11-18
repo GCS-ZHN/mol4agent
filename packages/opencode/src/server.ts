@@ -13,26 +13,45 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Plugin } from '@opencode/plugin'
-import { Mol4AgentError, type MolCommand, type StructureSelector } from '@gcszhn/mol4agent-core/protocol'
+import {
+  ALIGNMENT_METHODS,
+  INSPECT_DETAILS,
+  Mol4AgentError,
+  isAlignmentMethod,
+  isInspectDetail,
+  isStructureId,
+  type AlignmentMethod,
+  type InspectRequest,
+  type MolCommand,
+  type StructureSelector,
+  type TmScoreRequest,
+} from '@gcszhn/mol4agent-core/protocol'
 import { SOURCE_DATABASES, resolveSource, type ResolvedSource, type SourceDatabase } from '@gcszhn/mol4agent-core/sources'
+import { AlignHub, alignAnswerOf } from './align.ts'
 import { base64ToBytes } from './base64.ts'
 import { CaptureHub } from './capture.ts'
 import { FetchTargetError, downloadMoleculeSource, resolveFetchTarget } from './fetch.ts'
+import { formatInspectResult } from './format-inspect.ts'
 import { baseNameOf } from './formats.ts'
 import { findInterfaceResidues } from './interface.ts'
+import { InspectHub, TmScoreHub, inspectAnswerOf, tmScoreAnswerOf } from './inspect.ts'
 import { resolveMoleculeFile, type ResolvedMoleculeFile } from './paths.ts'
 import { Mol4Agent } from './rpc.ts'
-import { SceneStore, type SceneSnapshot } from './scene.ts'
-import { normalizeSelector } from './selector.ts'
+import { SceneStore, activeStructures, nextStructureId, type SceneRecord, type SceneSnapshot } from './scene.ts'
+import { normalizeInspectTarget, normalizeSelector } from './selector.ts'
 import {
+  INSPECT_TARGET_SCHEMA,
   MEASUREMENT_KINDS,
+  SELECTOR_DESCRIPTION,
   SELECTOR_SCHEMA,
   STYLE_SCHEMA,
   assertColorParams,
   describeFile,
   describeSelector,
   describeStyle,
+  formatAlignment,
   formatInterface,
+  formatTmScore,
   styleOf,
   summarizeSafely,
   tabOf,
@@ -44,6 +63,9 @@ const FETCH_TIMEOUT_MS = 30_000
 const DEFAULT_CAPTURE_WIDTH = 1024
 const DEFAULT_CAPTURE_HEIGHT = 768
 const CAPTURE_TIMEOUT_MS = readPositiveInt('MOL4AGENT_CAPTURE_TIMEOUT_MS', 45_000)
+const INSPECT_TIMEOUT_MS = readPositiveInt('MOL4AGENT_INSPECT_TIMEOUT_MS', 20_000)
+const ALIGN_TIMEOUT_MS = readPositiveInt('MOL4AGENT_ALIGN_TIMEOUT_MS', 45_000)
+const TM_SCORE_TIMEOUT_MS = readPositiveInt('MOL4AGENT_TMSCORE_TIMEOUT_MS', 30_000)
 
 /**
  * Process-wide scene log and capture hub.
@@ -62,6 +84,9 @@ const globalKey = '__mol4agent_opencode_state__'
 const g = globalThis as unknown as Record<string, unknown>
 const store = (g[`${globalKey}store`] ??= new SceneStore()) as SceneStore
 const captures = (g[`${globalKey}captures`] ??= new CaptureHub()) as CaptureHub
+const inspections = (g[`${globalKey}inspections`] ??= new InspectHub()) as InspectHub
+const tmScores = (g[`${globalKey}tmScores`] ??= new TmScoreHub()) as TmScoreHub
+const aligns = (g[`${globalKey}aligns`] ??= new AlignHub()) as AlignHub
 
 export default Plugin.define({
   id: 'mol4agent-opencode',
@@ -93,6 +118,46 @@ export default Plugin.define({
 
     const recordOf = (scene: SceneSnapshot) => store.recordBySceneId(scene.sceneId)
 
+    const validateTarget = (scene: SceneSnapshot, selector: StructureSelector): void => {
+      const record = recordOf(scene)
+      if (record === undefined) return
+      if (selector.structureId !== undefined) {
+        const structure = record.structures.find(candidate => candidate.id === selector.structureId)
+        if (structure === undefined) {
+          throw new Error(
+            `no structure with id "${selector.structureId}" in this scene; available: `
+            + record.structures.map(candidate => candidate.id).join(', '),
+          )
+        }
+        validateSelectorAgainst(structure.summary, structure.bytes, structure.format, selector)
+        return
+      }
+      // An unscoped selector applies to every structure, so it is valid when it
+      // matches any one of them (e.g. chain B only exists in the second).
+      let firstError: unknown
+      for (const structure of record.structures) {
+        try {
+          validateSelectorAgainst(structure.summary, structure.bytes, structure.format, selector)
+          return
+        } catch (reason) {
+          firstError ??= reason
+        }
+      }
+      if (firstError !== undefined) throw firstError
+    }
+
+    const requireStructure = (scene: SceneSnapshot, structureId: string) => {
+      const record = recordOf(scene)
+      const structure = record?.structures.find(candidate => candidate.id === structureId)
+      if (structure === undefined) {
+        throw new Error(
+          `no structure with id "${structureId}" in this scene; available: `
+          + (record?.structures.map(candidate => candidate.id).join(', ') ?? '(none)'),
+        )
+      }
+      return structure
+    }
+
     // ---- RPC (GUI <-> server) ---------------------------------------------
 
     const registration = await ctx.rpc.register(Mol4Agent, {
@@ -104,6 +169,18 @@ export default Plugin.define({
         const { sceneId, sessionID } = input as { sceneId: string; sessionID?: string }
         const data = store.fetch(sceneId, sessionID)
         if (data === undefined) throw new Error(`structure scene ${sceneId} is no longer available`)
+        return data
+      },
+      async fetchStructure(input) {
+        const { sceneId, structureId, sessionID } = input as {
+          sceneId: string
+          structureId: string
+          sessionID?: string
+        }
+        const data = store.fetchStructure(sceneId, structureId, sessionID)
+        if (data === undefined) {
+          throw new Error(`structure ${structureId} of scene ${sceneId} is no longer available`)
+        }
         return data
       },
       async openPath(input) {
@@ -176,6 +253,53 @@ export default Plugin.define({
           })),
         }
       },
+      async deliverInspect(input) {
+        const { inspectId } = input as { inspectId: string }
+        // Treat the browser's answer as untrusted JSON; a malformed payload must
+        // not reach the formatter.
+        const answer = inspectAnswerOf(input)
+        if (answer === undefined) return { ok: false }
+        return { ok: inspections.deliver(inspectId, answer) }
+      },
+      async pendingInspections(input) {
+        const { sessionID } = input as { sessionID?: string }
+        return {
+          inspections: inspections.pendingForSession(sessionID ?? '').map(inspect => ({
+            inspectId: inspect.queryId,
+            sceneId: inspect.scene.sceneId,
+            path: inspect.scene.path,
+            label: inspect.scene.label,
+            ...(inspect.request.target === undefined ? {} : { target: inspect.request.target }),
+            ...(inspect.request.detail === undefined ? {} : { detail: inspect.request.detail }),
+            ...(inspect.request.limit === undefined ? {} : { limit: inspect.request.limit }),
+          })),
+        }
+      },
+      async deliverAlign(input) {
+        const { sceneId, commandIndex } = input as { sceneId: string; commandIndex: number }
+        const answer = alignAnswerOf(input)
+        if (answer === undefined) return { ok: false }
+        return { ok: aligns.deliver(sceneId, commandIndex, answer) }
+      },
+      async deliverTmScore(input) {
+        const { tmScoreId } = input as { tmScoreId: string }
+        const answer = tmScoreAnswerOf(input)
+        if (answer === undefined) return { ok: false }
+        return { ok: tmScores.deliver(tmScoreId, answer) }
+      },
+      async pendingTmScores(input) {
+        const { sessionID } = input as { sessionID?: string }
+        return {
+          queries: tmScores.pendingForSession(sessionID ?? '').map(query => ({
+            tmScoreId: query.queryId,
+            sceneId: query.scene.sceneId,
+            path: query.scene.path,
+            label: query.scene.label,
+            reference: query.request.reference,
+            target: query.request.target,
+          })),
+        }
+      },
     })
 
     const emitScene = (sessionID: string, openedPath?: string): void => {
@@ -194,6 +318,44 @@ export default Plugin.define({
       transparent: boolean
     }): void => {
       void registration.events.emit('capture', capture)
+    }
+    const emitInspect = (inspect: {
+      sessionID: string
+      inspectId: string
+      sceneId: string
+      path: string
+      label: string
+      request: InspectRequest
+    }): void => {
+      void registration.events.emit('inspect', {
+        sessionID: inspect.sessionID,
+        inspectId: inspect.inspectId,
+        sceneId: inspect.sceneId,
+        path: inspect.path,
+        label: inspect.label,
+        ...(inspect.request.target === undefined ? {} : { target: inspect.request.target }),
+        ...(inspect.request.detail === undefined ? {} : { detail: inspect.request.detail }),
+        ...(inspect.request.limit === undefined ? {} : { limit: inspect.request.limit }),
+      })
+    }
+
+    const emitTmScore = (query: {
+      sessionID: string
+      tmScoreId: string
+      sceneId: string
+      path: string
+      label: string
+      request: TmScoreRequest
+    }): void => {
+      void registration.events.emit('tmScore', {
+        sessionID: query.sessionID,
+        tmScoreId: query.tmScoreId,
+        sceneId: query.sceneId,
+        path: query.path,
+        label: query.label,
+        reference: query.request.reference,
+        target: query.request.target,
+      })
     }
 
     // ---- Tools --------------------------------------------------------------
@@ -216,6 +378,80 @@ export default Plugin.define({
           const cwd = await sessionDirectory(context.sessionID)
           const file = await resolveMoleculeFile(cwd, path, MAX_FILE_BYTES, context.signal)
           return { content: `${describeFile(file)}\n\nUse mol_open to display it in the viewer.` }
+        },
+      })
+
+      editor.add({
+        name: 'mol_inspect',
+        description:
+          'Read what the molecular viewer currently shows: residue/atom identity, coordinates, '
+          + 'per-component counts (waters, ligands, amino-acid types), and how the target is drawn '
+          + '(representation type, colour theme, size theme, resolved colour). '
+          + 'Answers come from the live Mol* page, so they include changes a human made by clicking or '
+          + 'through the Mol* panel. Use it instead of parsing the structure file. Read-only: it changes nothing.',
+        input: {
+          type: 'object',
+          properties: {
+            tab: {
+              type: 'string',
+              description:
+                'Pass the path mol_open returned to inspect a specific open structure; defaults to the active one.',
+            },
+            target: {
+              ...INSPECT_TARGET_SCHEMA,
+              description:
+                'What to inspect. Omit for the whole structure. Accepts any selector, plus '
+                + '{"kind":"selection"} for what is currently selected and {"kind":"focus"} for the last clicked location.',
+            },
+            detail: {
+              enum: INSPECT_DETAILS,
+              description:
+                'summary = totals, per-component counts, and styles; residues = also residue rows; '
+                + 'atoms = residue rows with per-atom coordinates. Defaults to summary.',
+            },
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              description: 'Maximum residue rows to return. Defaults to 200; totals and counts are never truncated.',
+            },
+          },
+          additionalProperties: false,
+        },
+        execute: async (input, context) => {
+          const args = input as { tab?: string; target?: unknown; detail?: unknown; limit?: unknown }
+          const tab = tabOf(args)
+          const scene = requireScene(context.sessionID, 'inspect', tab)
+          if (args.detail !== undefined && !isInspectDetail(args.detail)) {
+            throw new Error(`detail must be one of ${INSPECT_DETAILS.join(', ')}`)
+          }
+          if (args.limit !== undefined && (!Number.isInteger(args.limit) || (args.limit as number) <= 0)) {
+            throw new Error('limit must be a positive integer')
+          }
+          const target = args.target === undefined ? undefined : normalizeInspectTarget(args.target)
+          if (target !== undefined && target.kind !== 'selection' && target.kind !== 'focus') {
+            validateTarget(scene, target)
+          }
+          const request: InspectRequest = {
+            ...(target === undefined ? {} : { target }),
+            ...(isInspectDetail(args.detail) ? { detail: args.detail } : {}),
+            ...(typeof args.limit === 'number' ? { limit: args.limit } : {}),
+          }
+          const pending = inspections.enqueue({
+            sessionID: context.sessionID,
+            scene,
+            request,
+          })
+          emitInspect({
+            sessionID: context.sessionID,
+            inspectId: pending.queryId,
+            sceneId: scene.sceneId,
+            path: scene.path,
+            label: scene.label,
+            request,
+          })
+          const answer = await inspections.wait(pending.queryId, INSPECT_TIMEOUT_MS, context.signal)
+          if (!answer.ok) return { content: `Could not inspect ${scene.label}: ${answer.message}` }
+          return { content: formatInspectResult(answer.result) }
         },
       })
 
@@ -378,8 +614,249 @@ export default Plugin.define({
           return {
             content:
               `${describeFile(file)}\n\nOpened ${file.label} in the mol4agent viewer (tab: ${scene.path}). `
-              + 'Use mol_style, mol_select, mol_focus, mol_measure, or mol_capture with this tab to operate it.',
+              + 'Primary structure id: "structure". Use mol_style, mol_select, mol_focus, mol_measure, '
+              + 'mol_inspect, or mol_capture with this tab to operate it.',
           }
+        },
+      })
+
+      editor.add({
+        name: 'mol_add_structure',
+        description:
+          'Add another structure to an open viewer tab without replacing the current one. The structure '
+          + 'gets a stable id for selectors, mol_align, and mol_tmscore. Returns the id and a summary.',
+        input: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', minLength: 1 },
+            id: {
+              type: 'string',
+              pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$',
+              description: 'Optional structure id. Defaults to the next "structure-N".',
+            },
+            ...STYLE_SCHEMA,
+            focus: { type: 'boolean', description: 'Focus the camera on the newly added structure.' },
+            tab: { type: 'string' },
+          },
+          required: ['path'],
+          additionalProperties: false,
+        },
+        execute: async (input, context) => {
+          const args = input as {
+            path: string
+            id?: string
+            type?: string
+            color?: string
+            colorParams?: { value?: string | number }
+            focus?: boolean
+            tab?: string
+          }
+          const tab = tabOf(args)
+          const scene = requireScene(context.sessionID, 'add a structure to', tab)
+          if (args.colorParams !== undefined) assertColorParams(args.colorParams)
+          const file = await resolveMoleculeFile(
+            await sessionDirectory(context.sessionID),
+            args.path,
+            MAX_FILE_BYTES,
+            context.signal,
+          )
+          const record = recordOf(scene)
+          const id = args.id ?? nextStructureId(record?.structures ?? [])
+          if (!isStructureId(id)) {
+            throw new Error(
+              'structure id must start with a letter or digit and contain only letters, digits, ".", "_", or "-"',
+            )
+          }
+          if (record?.structures.some(structure => structure.id === id) === true) {
+            throw new Error(`structure id "${id}" is already used in this scene; choose another id`)
+          }
+          let next = store.addStructure(context.sessionID, tab ?? null, {
+            id,
+            path: file.absolutePath,
+            label: file.label,
+            format: file.format,
+            bytes: file.bytes,
+          })
+          if (next === null) throw new Error('open a structure with mol_open before adding another')
+          if (args.type !== undefined || args.color !== undefined || args.colorParams !== undefined) {
+            next = store.push(context.sessionID, tab ?? null, {
+              op: 'represent',
+              style: styleOf({ type: args.type as never, color: args.color as never, colorParams: args.colorParams }),
+              target: { kind: 'all', structureId: id },
+            }) ?? next
+          }
+          if (args.focus === true) {
+            next = store.push(context.sessionID, tab ?? null, {
+              op: 'focus',
+              target: { kind: 'all', structureId: id },
+            }) ?? next
+          }
+          emitScene(context.sessionID)
+          return {
+            content:
+              `${describeFile(file)}\n\nAdded to ${scene.label} as structure id "${id}". `
+              + `Use {"kind":"chain","chain":"A","structureId":"${id}"} in selectors and pass `
+              + `reference/target "${id}" to mol_align or mol_tmscore.`,
+          }
+        },
+      })
+
+      editor.add({
+        name: 'mol_list_structures',
+        description: 'List the structures loaded in an open viewer tab, with their ids, formats, and counts. '
+          + 'Use the ids in selector structureId, mol_align, mol_tmscore, or mol_remove_structure.',
+        input: {
+          type: 'object',
+          properties: { tab: { type: 'string' } },
+          additionalProperties: false,
+        },
+        execute: async (input, context) => {
+          const scene = requireScene(context.sessionID, 'list structures in', tabOf(input))
+          const record = recordOf(scene)
+          const structures = record === undefined ? [] : activeStructures(scene)
+          const lines = [`<structures tab="${scene.path}">`]
+          for (const structure of structures) {
+            const source = record?.structures.find(candidate => candidate.id === structure.id)
+            const summary = source?.summary
+            lines.push(
+              `- ${structure.id}: ${structure.label} (${structure.format})`
+              + `${summary === undefined
+                ? ''
+                : `, ${summary.atomCount} atoms, ${summary.residueCount} residues`}`
+              + `${structure.id === 'structure' ? ' [primary]' : ''}`,
+            )
+          }
+          if (structures.length === 0) lines.push('- none')
+          lines.push('</structures>')
+          return { content: lines.join('\n') }
+        },
+      })
+
+      editor.add({
+        name: 'mol_remove_structure',
+        description: 'Remove one structure from an open viewer tab without closing the tab. '
+          + 'Use the primary id "structure" or an id from mol_add_structure/mol_list_structures.',
+        input: {
+          type: 'object',
+          properties: { structureId: { type: 'string', minLength: 1 }, tab: { type: 'string' } },
+          required: ['structureId'],
+          additionalProperties: false,
+        },
+        execute: async (input, context) => {
+          const args = input as { structureId: string; tab?: string }
+          const tab = tabOf(args)
+          const scene = requireScene(context.sessionID, 'remove a structure from', tab)
+          if (!activeStructures(scene).some(structure => structure.id === args.structureId)) {
+            throw new Error(`no active structure with id "${args.structureId}" in this tab`)
+          }
+          store.push(context.sessionID, tab ?? null, {
+            op: 'remove-structure',
+            structureId: args.structureId,
+          })
+          emitScene(context.sessionID)
+          return { content: `Removed structure "${args.structureId}".` }
+        },
+      })
+
+      editor.add({
+        name: 'mol_align',
+        description:
+          'Superpose one loaded structure onto another. Both structures must be in the same viewer tab; '
+          + 'add the second one with mol_add_structure. Returns RMSD and TM-score (default tm-align) or '
+          + 'RMSD for sequence alignment. Optionally restrict the alignment to one auth chain per structure.',
+        input: {
+          type: 'object',
+          properties: {
+            reference: { type: 'string', minLength: 1, description: 'Reference structure id (stays fixed).' },
+            target: { type: 'string', minLength: 1, description: 'Target structure id (is moved).' },
+            method: { enum: ALIGNMENT_METHODS },
+            referenceChain: { type: 'string', description: 'Optional reference auth chain id.' },
+            targetChain: { type: 'string', description: 'Optional target auth chain id.' },
+            tab: { type: 'string' },
+          },
+          required: ['reference', 'target'],
+          additionalProperties: false,
+        },
+        execute: async (input, context) => {
+          const args = input as {
+            reference: string
+            target: string
+            method?: AlignmentMethod
+            referenceChain?: string
+            targetChain?: string
+            tab?: string
+          }
+          const tab = tabOf(args)
+          const scene = requireScene(context.sessionID, 'align structures in', tab)
+          if (args.reference === args.target) throw new Error('reference and target must be different structures')
+          const active = activeStructures(scene)
+          for (const id of [args.reference, args.target]) {
+            if (!active.some(structure => structure.id === id)) {
+              throw new Error(
+                `no active structure with id "${id}" in this tab; available: `
+                + active.map(structure => structure.id).join(', '),
+              )
+            }
+          }
+          if (args.method !== undefined && !isAlignmentMethod(args.method)) {
+            throw new Error(`method must be one of ${ALIGNMENT_METHODS.join(', ')}`)
+          }
+          const referenceChain = args.referenceChain?.trim()
+          const targetChain = args.targetChain?.trim()
+          const next = store.push(context.sessionID, tab ?? null, {
+            op: 'align',
+            reference: args.reference,
+            target: args.target,
+            ...(args.method === undefined ? {} : { method: args.method }),
+            ...(referenceChain === undefined || referenceChain === '' ? {} : { referenceChain }),
+            ...(targetChain === undefined || targetChain === '' ? {} : { targetChain }),
+          })
+          if (next === null) throw new Error('open a structure with mol_open before aligning')
+          const commandIndex = next.commands.length - 1
+          const waiting = aligns.wait(scene.sceneId, commandIndex, ALIGN_TIMEOUT_MS, context.signal)
+          emitScene(context.sessionID)
+          const answer = await waiting
+          if (!answer.ok) return { content: `Could not align ${args.target} onto ${args.reference}: ${answer.message}` }
+          return { content: formatAlignment(answer.result) }
+        },
+      })
+
+      editor.add({
+        name: 'mol_tmscore',
+        description:
+          'Compute TM-score and RMSD between two selections without moving either structure. Use '
+          + 'structureId in the selectors when several structures are loaded. Read-only.',
+        input: {
+          type: 'object',
+          properties: {
+            reference: { ...SELECTOR_SCHEMA, description: `Reference selection. ${SELECTOR_DESCRIPTION}` },
+            target: { ...SELECTOR_SCHEMA, description: `Target selection. ${SELECTOR_DESCRIPTION}` },
+            tab: { type: 'string' },
+          },
+          required: ['reference', 'target'],
+          additionalProperties: false,
+        },
+        execute: async (input, context) => {
+          const args = input as { reference: unknown; target: unknown; tab?: string }
+          const tab = tabOf(args)
+          const scene = requireScene(context.sessionID, 'compute a TM-score in', tab)
+          const reference = normalizeSelector(args.reference)
+          const target = normalizeSelector(args.target)
+          validateTarget(scene, reference)
+          validateTarget(scene, target)
+          const request: TmScoreRequest = { reference, target }
+          const pending = tmScores.enqueue({ sessionID: context.sessionID, scene, request })
+          emitTmScore({
+            sessionID: context.sessionID,
+            tmScoreId: pending.queryId,
+            sceneId: scene.sceneId,
+            path: scene.path,
+            label: scene.label,
+            request,
+          })
+          const answer = await tmScores.wait(pending.queryId, TM_SCORE_TIMEOUT_MS, context.signal)
+          if (!answer.ok) return { content: `Could not compute a TM-score: ${answer.message}` }
+          return { content: formatTmScore(answer.result) }
         },
       })
 
@@ -413,10 +890,7 @@ export default Plugin.define({
           const scene = requireScene(context.sessionID, 'style', tab)
           if (args.colorParams !== undefined) assertColorParams(args.colorParams)
           const target = args.target === undefined ? undefined : normalizeSelector(args.target)
-          const record = recordOf(scene)
-          if (target !== undefined && record !== undefined) {
-            validateSelectorAgainst(record.summary, record.bytes, record.format, target)
-          }
+          if (target !== undefined) validateTarget(scene, target)
           store.push(context.sessionID, tab ?? null, {
             op: 'represent',
             style: styleOf({ type: args.type as never, color: args.color as never, colorParams: args.colorParams }),
@@ -457,8 +931,7 @@ export default Plugin.define({
           const tab = tabOf(args)
           const scene = requireScene(context.sessionID, 'select', tab)
           const target = normalizeSelector(args.target)
-          const record = recordOf(scene)
-          if (record !== undefined) validateSelectorAgainst(record.summary, record.bytes, record.format, target)
+          validateTarget(scene, target)
           store.push(context.sessionID, tab ?? null, {
             op: 'select',
             target,
@@ -489,10 +962,7 @@ export default Plugin.define({
           const tab = tabOf(args)
           const scene = requireScene(context.sessionID, 'focus', tab)
           const target = args.target === undefined ? undefined : normalizeSelector(args.target)
-          if (target !== undefined) {
-            const record = recordOf(scene)
-            if (record !== undefined) validateSelectorAgainst(record.summary, record.bytes, record.format, target)
-          }
+          if (target !== undefined) validateTarget(scene, target)
           store.push(context.sessionID, tab ?? null, { op: 'focus', ...(target === undefined ? {} : { target }) })
           emitScene(context.sessionID)
           return {
@@ -531,10 +1001,7 @@ export default Plugin.define({
               throw new Error(`measure targets must be chain/residue/residues/comp/schema selectors; received ${target.kind}`)
             }
           }
-          const record = recordOf(scene)
-          if (record !== undefined) {
-            for (const target of targets) validateSelectorAgainst(record.summary, record.bytes, record.format, target)
-          }
+          for (const target of targets) validateTarget(scene, target)
           store.push(context.sessionID, tab ?? null, { op: 'measure', kind: args.kind, targets })
           emitScene(context.sessionID)
           return { content: `Added a ${args.kind} measurement.` }

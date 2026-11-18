@@ -28,6 +28,7 @@ import { Plugin, Panel, Command, MenuItem, LinkHandler, type SessionRef } from '
 import { createComponent, createEffect } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
 import type { MolViewer } from '@gcszhn/mol4agent-core'
+import type { InspectRequest, TmScoreRequest } from '@gcszhn/mol4agent-core/protocol'
 import { bytesToBase64 } from '../base64.ts'
 import { Mol4Agent } from '../rpc.ts'
 import { MOLECULAR_HREF, basenameOf, hrefToPath, isPathLike, isRemoteLink } from './links.ts'
@@ -53,6 +54,41 @@ interface CaptureRequest {
 
 interface CaptureEvent extends CaptureRequest {
   readonly sessionID: string
+}
+
+/** One live-state query waiting for the viewer to answer. */
+interface InspectRequestEvent {
+  readonly inspectId: string
+  readonly sceneId: string
+  readonly path: string
+  readonly label: string
+  readonly target?: InspectRequest['target']
+  readonly detail?: InspectRequest['detail']
+  readonly limit?: number
+}
+
+interface InspectEvent extends InspectRequestEvent {
+  readonly sessionID: string
+}
+
+/** One TM-score query waiting for the viewer to answer. */
+interface TmScoreRequestEvent {
+  readonly tmScoreId: string
+  readonly sceneId: string
+  readonly path: string
+  readonly label: string
+  readonly reference: TmScoreRequest['reference']
+  readonly target: TmScoreRequest['target']
+}
+
+interface TmScoreEvent extends TmScoreRequestEvent {
+  readonly sessionID: string
+}
+
+/** A registered Mol* viewer plus its command-queue drain point. */
+interface LiveViewer {
+  readonly viewer: MolViewer
+  readonly whenIdle: () => Promise<void>
 }
 
 interface SceneEvent {
@@ -100,19 +136,27 @@ export default Plugin.define({
     /** Tab objects per session and path, reused so strip updates do not rebuild triggers. */
     const tabs = new Map<string, { readonly id: string; readonly title: string; readonly group: string; readonly missing: boolean }>()
 
-    /** Live viewers keyed by sceneId, for capture delivery. */
-    const viewers = new Map<string, MolViewer>()
+    /** Live viewers keyed by sceneId, for capture and inspection delivery. */
+    const viewers = new Map<string, LiveViewer>()
     /** When each scene's viewer was registered, so a fresh mount can settle. */
     const registeredAt = new Map<string, number>()
     /** Structures opened while their session was not routed, keyed by session. */
     const pendingOpen = new Map<string, string>()
     /** Captures already being delivered, so an event + claim cannot double-run. */
     const inFlight = new Set<string>()
+    /** Inspections already being delivered, so an event + claim cannot double-run. */
+    const inspectionsInFlight = new Set<string>()
+    /** TM-score queries already being delivered. */
+    const tmScoresInFlight = new Set<string>()
 
-    const trackViewer = (sceneId: string, viewer: MolViewer | undefined): void => {
+    const trackViewer = (
+      sceneId: string,
+      viewer: MolViewer | undefined,
+      whenIdle?: () => Promise<void>,
+    ): void => {
       if (viewer !== undefined) {
         if (!viewers.has(sceneId)) registeredAt.set(sceneId, Date.now())
-        viewers.set(sceneId, viewer)
+        viewers.set(sceneId, { viewer, whenIdle: whenIdle ?? (async () => {}) })
       } else {
         viewers.delete(sceneId)
         registeredAt.delete(sceneId)
@@ -127,8 +171,29 @@ export default Plugin.define({
         if (session === undefined) throw new Error(`session ${sessionID} is no longer open`)
         return (await rpcOf(session).fetchScene({ sceneId, sessionID }, optionsOf(session))) as unknown as FetchedScene
       },
+      fetchStructure: async (sceneId: string, structureId: string, sessionID: string) => {
+        const session = sessionOf(sessionID)
+        if (session === undefined) throw new Error(`session ${sessionID} is no longer open`)
+        return (await rpcOf(session).fetchStructure(
+          { sceneId, structureId, sessionID },
+          optionsOf(session),
+        )) as unknown as FetchedScene
+      },
       theme: () => ctx.appearance.mode(),
       onViewer: trackViewer,
+      onAlignResult: (sessionID: string, sceneId: string, commandIndex: number, result) => {
+        const session = sessionOf(sessionID)
+        if (session === undefined) return
+        const rpc = rpcOf(session)
+        const payload = result.ok
+          ? typeof result.data === 'object' && result.data !== null
+            ? { sceneId, commandIndex, ok: true, result: result.data as Record<string, unknown> }
+            : { sceneId, commandIndex, ok: false, message: 'the viewer returned no alignment metrics' }
+          : { sceneId, commandIndex, ok: false, message: result.message }
+        void rpc.deliverAlign(payload, optionsOf(session)).catch(reason => {
+          console.warn('[mol4agent] could not deliver alignment metrics', reason)
+        })
+      },
     })
 
     /** `load()` starts a 250 ms camera-focus animation; a capture before it ends
@@ -184,7 +249,7 @@ export default Plugin.define({
       }
     }
 
-    const waitForViewer = async (sceneId: string, ms: number): Promise<MolViewer | undefined> => {
+    const waitForViewer = async (sceneId: string, ms: number): Promise<LiveViewer | undefined> => {
       const deadline = Date.now() + ms
       while (Date.now() < deadline) {
         const viewer = viewers.get(sceneId)
@@ -238,11 +303,11 @@ export default Plugin.define({
       await refresh(session)
       if (disposed || capture.sessionID !== currentSessionID()) return
       openTab(session, capture.path, false)
-      const viewer = await waitForViewer(capture.sceneId, 15_000)
+      const live = await waitForViewer(capture.sceneId, 15_000)
       if (disposed) return
       // A session switch during the wait must leave the capture pending for the
       // next claim, not fail it. Only fail when the session still matches.
-      const decision = captureDecision(capture.sessionID, currentSessionID(), viewer !== undefined)
+      const decision = captureDecision(capture.sessionID, currentSessionID(), live !== undefined)
       if (decision === 'leave-pending') return
       if (decision === 'fail') {
         await rpc.failCapture(
@@ -255,7 +320,8 @@ export default Plugin.define({
         )
         return
       }
-      if (viewer === undefined) return
+      if (live === undefined) return
+      const viewer = live.viewer
       if (!(await waitForViewerLayout(viewer, 5000))) {
         if (capture.sessionID !== currentSessionID()) return
         await rpc.failCapture(
@@ -287,6 +353,117 @@ export default Plugin.define({
       }
     }
 
+    const requestOf = (inspect: InspectRequestEvent): InspectRequest => ({
+      ...(inspect.target === undefined ? {} : { target: inspect.target }),
+      ...(inspect.detail === undefined ? {} : { detail: inspect.detail }),
+      ...(inspect.limit === undefined ? {} : { limit: inspect.limit }),
+    })
+
+    const deliverInspection = async (inspect: InspectEvent): Promise<void> => {
+      if (inspectionsInFlight.has(inspect.inspectId)) return
+      inspectionsInFlight.add(inspect.inspectId)
+      try {
+        await deliverInspectionOnce(inspect)
+      } finally {
+        inspectionsInFlight.delete(inspect.inspectId)
+      }
+    }
+
+    const deliverInspectionOnce = async (inspect: InspectEvent): Promise<void> => {
+      // Another session's query stays pending; the session effect claims it
+      // after the user routes back. Never answer from the wrong viewer.
+      if (disposed || inspect.sessionID !== currentSessionID()) return
+      const session = ctx.sessions.current()
+      if (session?.id !== inspect.sessionID) return
+      const rpc = rpcOf(session)
+      await refresh(session)
+      if (disposed || inspect.sessionID !== currentSessionID()) return
+      // The query samples live Mol* state, so its viewer must exist. Reveal the
+      // tab first, like a capture, and answer only after the command queue has
+      // drained: an inspection must not describe a half-applied style.
+      openTab(session, inspect.path, false)
+      const live = await waitForViewer(inspect.sceneId, 15_000)
+      if (disposed || inspect.sessionID !== currentSessionID()) return
+      if (live === undefined) {
+        await rpc.deliverInspect(
+          {
+            inspectId: inspect.inspectId,
+            ok: false,
+            message:
+              'the structure viewer tab is not available; open the molecular viewer from the side panel and retry mol_inspect',
+          },
+          optionsOf(session),
+        )
+        return
+      }
+      try {
+        await live.whenIdle()
+        if (disposed || inspect.sessionID !== currentSessionID()) return
+        const result = live.viewer.inspect(requestOf(inspect))
+        await rpc.deliverInspect({ inspectId: inspect.inspectId, ok: true, result }, optionsOf(session))
+      } catch (reason) {
+        if (disposed || inspect.sessionID !== currentSessionID()) return
+        await rpc.deliverInspect(
+          {
+            inspectId: inspect.inspectId,
+            ok: false,
+            message: reason instanceof Error ? reason.message : String(reason),
+          },
+          optionsOf(session),
+        )
+      }
+    }
+
+    const deliverTmScore = async (query: TmScoreEvent): Promise<void> => {
+      if (tmScoresInFlight.has(query.tmScoreId)) return
+      tmScoresInFlight.add(query.tmScoreId)
+      try {
+        await deliverTmScoreOnce(query)
+      } finally {
+        tmScoresInFlight.delete(query.tmScoreId)
+      }
+    }
+
+    const deliverTmScoreOnce = async (query: TmScoreEvent): Promise<void> => {
+      if (disposed || query.sessionID !== currentSessionID()) return
+      const session = ctx.sessions.current()
+      if (session?.id !== query.sessionID) return
+      const rpc = rpcOf(session)
+      await refresh(session)
+      if (disposed || query.sessionID !== currentSessionID()) return
+      openTab(session, query.path, false)
+      const live = await waitForViewer(query.sceneId, 15_000)
+      if (disposed || query.sessionID !== currentSessionID()) return
+      if (live === undefined) {
+        await rpc.deliverTmScore(
+          {
+            tmScoreId: query.tmScoreId,
+            ok: false,
+            message:
+              'the structure viewer tab is not available; open the molecular viewer from the side panel and retry mol_tmscore',
+          },
+          optionsOf(session),
+        )
+        return
+      }
+      try {
+        await live.whenIdle()
+        if (disposed || query.sessionID !== currentSessionID()) return
+        const result = live.viewer.tmScore({ reference: query.reference, target: query.target })
+        await rpc.deliverTmScore({ tmScoreId: query.tmScoreId, ok: true, result }, optionsOf(session))
+      } catch (reason) {
+        if (disposed || query.sessionID !== currentSessionID()) return
+        await rpc.deliverTmScore(
+          {
+            tmScoreId: query.tmScoreId,
+            ok: false,
+            message: reason instanceof Error ? reason.message : String(reason),
+          },
+          optionsOf(session),
+        )
+      }
+    }
+
     /** RPC events are live-only, so claim captures queued before this route. */
     const claimPending = async (session: SessionRef | undefined): Promise<void> => {
       if (session === undefined || session.id === '') return
@@ -299,6 +476,24 @@ export default Plugin.define({
         for (const capture of pending.captures) void deliver({ ...capture, sessionID })
       } catch {
         // Capture claim is best-effort.
+      }
+      try {
+        const pending = (await rpcOf(session).pendingInspections({ sessionID }, optionsOf(session))) as unknown as {
+          inspections: readonly InspectRequestEvent[]
+        }
+        if (disposed || sessionID !== currentSessionID()) return
+        for (const inspect of pending.inspections) void deliverInspection({ ...inspect, sessionID })
+      } catch {
+        // Inspection claim is best-effort.
+      }
+      try {
+        const pending = (await rpcOf(session).pendingTmScores({ sessionID }, optionsOf(session))) as unknown as {
+          queries: readonly TmScoreRequestEvent[]
+        }
+        if (disposed || sessionID !== currentSessionID()) return
+        for (const query of pending.queries) void deliverTmScore({ ...query, sessionID })
+      } catch {
+        // TM-score claim is best-effort.
       }
     }
 
@@ -329,6 +524,16 @@ export default Plugin.define({
     const handleCapture = (data: CaptureEvent | undefined): void => {
       if (data?.sessionID !== undefined && data.sessionID !== currentSessionID()) return
       if (data !== undefined) void deliver(data)
+    }
+
+    const handleInspect = (data: InspectEvent | undefined): void => {
+      if (data?.sessionID !== undefined && data.sessionID !== currentSessionID()) return
+      if (data !== undefined) void deliverInspection(data)
+    }
+
+    const handleTmScore = (data: TmScoreEvent | undefined): void => {
+      if (data?.sessionID !== undefined && data.sessionID !== currentSessionID()) return
+      if (data !== undefined) void deliverTmScore(data)
     }
 
     createEffect(() => {
@@ -371,6 +576,8 @@ export default Plugin.define({
           offs: [
             rpc.events.on('scene', (event) => handleScene((event as unknown as { data: SceneEvent }).data)),
             rpc.events.on('capture', (event) => handleCapture((event as unknown as { data: CaptureEvent }).data)),
+            rpc.events.on('inspect', (event) => handleInspect((event as unknown as { data: InspectEvent }).data)),
+            rpc.events.on('tmScore', (event) => handleTmScore((event as unknown as { data: TmScoreEvent }).data)),
           ],
         })
       }
@@ -518,11 +725,13 @@ export default Plugin.define({
       for (const watch of watches.values()) watch.offs.forEach(off => off())
       watches.clear()
       pool.disposeAll()
-      for (const viewer of viewers.values()) viewer.dispose()
+      for (const live of viewers.values()) live.viewer.dispose()
       viewers.clear()
       registeredAt.clear()
       pendingOpen.clear()
       inFlight.clear()
+      inspectionsInFlight.clear()
+      tmScoresInFlight.clear()
       tabs.clear()
     }
   },
