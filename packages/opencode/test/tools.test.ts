@@ -10,7 +10,9 @@ import {
   describeSelector,
   describeStyle,
   escapeAttribute,
+  formatAlignment,
   formatInterface,
+  formatTmScore,
   resolvedColorOf,
   styleOf,
   summarizeSafely,
@@ -208,8 +210,13 @@ test('validateSelectorAgainst rejects unknown chains, components, and ranges', (
     () => validateSelectorAgainst(summary, CRN, 'pdb', { kind: 'chain', chain: 'Z' }),
     /chain "Z" does not exist; available chains: A/u,
   )
+  const small: StructureSummary = {
+    ...summary!,
+    chains: [{ id: 'A', kind: 'polymer', atoms: 10, residues: 2, compIds: ['ALA', 'GLY'] }],
+    ligands: [],
+  }
   assert.throws(
-    () => validateSelectorAgainst(summary, CRN, 'pdb', { kind: 'comp', compId: 'NOPE' }),
+    () => validateSelectorAgainst(small, CRN, 'pdb', { kind: 'comp', compId: 'NOPE' }),
     /component "NOPE" does not exist/u,
   )
   assert.throws(
@@ -220,6 +227,13 @@ test('validateSelectorAgainst rejects unknown chains, components, and ranges', (
     () => validateSelectorAgainst(summary, CRN, 'pdb', { kind: 'residues', chain: 'Z', start: 1, end: 2 }),
     /chain "Z" does not exist/u,
   )
+})
+
+test('validateSelectorAgainst tolerates polymer components hidden by the summary cap', () => {
+  const summary = summarizeSafely(CRN, 'pdb')
+  // 1CRN has 15 residue types; the display list keeps 12 and drops THR/TYR/VAL.
+  assert.equal(summary?.chains[0]?.compIds.length, 12)
+  assert.doesNotThrow(() => validateSelectorAgainst(summary, CRN, 'pdb', { kind: 'comp', compId: 'THR' }))
 })
 
 test('validateSelectorAgainst skips validation for an incomplete summary', () => {
@@ -235,4 +249,34 @@ test('validateSelectorAgainst skips validation for an incomplete summary', () =>
   }
   validateSelectorAgainst(incomplete, CRN, 'pdb', { kind: 'chain', chain: 'Z' })
   validateSelectorAgainst(undefined, CRN, 'pdb', { kind: 'residues', start: 400, end: 500 })
+})
+
+test('formatAlignment and formatTmScore summarize metrics', () => {
+  assert.match(formatAlignment({
+    method: 'tm-align',
+    reference: 'structure',
+    target: 'pd1',
+    rmsd: 1.004,
+    alignedLength: 115,
+    tmScoreA: 0.8796,
+    tmScoreB: 0.9527,
+  }), /TM-score 0\.8796\/0\.9527, RMSD 1\.00 A, 115 aligned residues/u)
+  assert.match(formatAlignment({
+    method: 'sequence',
+    reference: 'a',
+    target: 'b',
+    rmsd: 2,
+    alignedLength: 50,
+  }), /sequence alignment/u)
+  assert.match(formatTmScore({
+    method: 'tm-align',
+    reference: 'chain B [structure]',
+    target: 'chain A [pd1]',
+    rmsd: 1,
+    tmScoreA: 0.88,
+    tmScoreB: 0.95,
+    alignedLength: 115,
+    referenceAtoms: 125,
+    targetAtoms: 115,
+  }), /reference chain B \[structure\]: 125 trace atoms/u)
 })

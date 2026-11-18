@@ -28,3 +28,21 @@ test('malformed selectors throw', () => {
   assert.throws(() => normalizeSelector({ kind: 'residue', index: 'x' }))
   assert.throws(() => normalizeSelector({ kind: 'schema' }))
 })
+
+test('structureId scopes any selector variant', () => {
+  assert.deepEqual(normalizeSelector({ kind: 'all', structureId: 'pd1' }), { kind: 'all', structureId: 'pd1' })
+  assert.deepEqual(
+    normalizeSelector({ kind: 'chain', chain: 'A', structureId: 'pd1' }),
+    { kind: 'chain', structureId: 'pd1', chain: 'A' },
+  )
+  assert.deepEqual(
+    normalizeSelector({ kind: 'residues', chain: 'A', start: 1, end: 5, structureId: 'structure' }),
+    { kind: 'residues', structureId: 'structure', chain: 'A', start: 1, end: 5 },
+  )
+})
+
+test('rejects an invalid structureId', () => {
+  assert.throws(() => normalizeSelector({ kind: 'all', structureId: '' }), /structureId/u)
+  assert.throws(() => normalizeSelector({ kind: 'all', structureId: 'bad id' }), /structureId/u)
+  assert.throws(() => normalizeSelector({ kind: 'all', structureId: 42 }), /structureId/u)
+})

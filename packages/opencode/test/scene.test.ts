@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { SceneStore } from '../src/scene.ts'
+import { SceneStore, activeStructures, nextStructureId } from '../src/scene.ts'
 
 const PDB = new TextEncoder().encode(
   'ATOM      1  N   ALA A   1      0.000   0.000   0.000  1.00  0.00           N\nEND\n',
@@ -84,4 +84,61 @@ test('fetch returns undefined for an evicted scene', () => {
   const first = open(store, 'ses', '/s0.pdb')
   for (let index = 1; index < 20; index += 1) open(store, 'ses', `/s${index}.pdb`)
   assert.equal(store.fetch(first.sceneId), undefined)
+})
+
+test('adds structures without replacing the primary scene', () => {
+  const store = new SceneStore()
+  const a = open(store, 'ses', '/a.pdb')
+  assert.deepEqual(a.structures.map(structure => structure.id), ['structure'])
+  const next = store.addStructure('ses', null, {
+    id: 'second',
+    path: '/b.pdb',
+    label: 'b.pdb',
+    format: 'pdb',
+    bytes: PDB,
+  })
+  assert.equal(next?.revision, a.revision + 1)
+  assert.deepEqual(next?.structures.map(structure => structure.id), ['structure', 'second'])
+  const fetched = store.fetchStructure(a.sceneId, 'second')
+  assert.equal(fetched?.structureId, 'second')
+  assert.equal(fetched?.label, 'b.pdb')
+})
+
+test('rejects a duplicate structure id', () => {
+  const store = new SceneStore()
+  const a = open(store, 'ses', '/a.pdb')
+  assert.throws(
+    () => store.addStructure('ses', null, {
+      id: 'structure',
+      path: '/b.pdb',
+      label: 'b.pdb',
+      format: 'pdb',
+      bytes: PDB,
+    }),
+    /already used/u,
+  )
+  assert.ok(store.fetchStructure(a.sceneId, 'structure') !== undefined)
+})
+
+test('remove commands retire structures from the active list', () => {
+  const store = new SceneStore()
+  const a = open(store, 'ses', '/a.pdb')
+  store.addStructure('ses', null, {
+    id: 'second',
+    path: '/b.pdb',
+    label: 'b.pdb',
+    format: 'pdb',
+    bytes: PDB,
+  })
+  store.push('ses', null, { op: 'remove-structure', structureId: 'second' })
+  const snapshot = store.snapshot('ses', null)
+  assert.ok(snapshot !== null)
+  assert.deepEqual(activeStructures(snapshot).map(structure => structure.id), ['structure'])
+  // The removed structure is still fetchable so a fresh viewer can replay the command.
+  assert.ok(store.fetchStructure(a.sceneId, 'second') !== undefined)
+})
+
+test('nextStructureId skips every id already used', () => {
+  assert.equal(nextStructureId([]), 'structure-2')
+  assert.equal(nextStructureId([{ id: 'structure' }, { id: 'structure-2' }]), 'structure-3')
 })
