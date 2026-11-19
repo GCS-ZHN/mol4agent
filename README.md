@@ -12,10 +12,11 @@ into a 3D page that humans can preview and agents can operate directly.
 - **Agent operation**: the LLM uses `mol_*` tools to change representations,
   colors, highlight residues/ligands, focus the camera, measure, and capture
   screenshots while the human watches the page change.
-- **Multiple structures and alignment (core + DSH)**: add a second structure to
-  the same scene and superpose it with Mol* TM-align or sequence-guided
-  alignment, then style/select each structure independently by id. Standalone
-  TM-score/RMSD comparison is available as `mol_tmscore`.
+- **Multiple structures, alignment, and live inspection**: add structures to one
+  scene, superpose them with Mol* TM-align or sequence-guided alignment, style
+  and select each structure independently by id, compare two selections with
+  the read-only `mol_tmscore`, and read the running viewer's residues,
+  coordinates, styles, and visible colors with `mol_inspect`.
 - **Agent-initiated open**: naming a file opens its structure preview
   automatically.
 - **Cross-harness**: rendering and the command protocol live in
@@ -89,10 +90,10 @@ also be listed in `dsh.profile.bundles` in that profile's `package.json`; the
 DSH Plugin manager does this when it installs/enables a bundle. Restart DSH after
 installing or updating the Host bundle.
 
-npm form (0.3.0, published):
+npm form (0.4.0, published):
 
 ```sh
-dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.3.0
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.4.0
 ```
 
 Remove with `dsh plugin --profile desktop remove @gcszhn/mol4agent-deepseekharness`

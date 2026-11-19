@@ -7,7 +7,7 @@
 - **人工打开**：在 harness 的文件预览器里点开 `.pdb` / `.cif` / `.sdf` / `.mol2` / `.xyz` / `.gro`（含 `.gz` 变体），右侧直接显示 Mol* 官方 3D 界面；「打开方式」里仍可切回纯文本/代码。
 - **agent 操作**：LLM 通过 `mol_*` 工具改表示、配色、高亮残基/配体、聚焦镜头、测量、截图，人只看着页面变化。
 - **agent 主动打开**：指定文件后页面自动打开该结构。
-- **多结构与叠合（core + DSH）**：在同一场景追加第二个结构，用 Mol* TM-align 或序列引导叠合，再按结构 id 独立着色/选择；独立比较两个选择的 TM-score/RMSD 可用 `mol_tmscore`。
+- **多结构、叠合与实时检查**：在同一场景追加多个结构，用 Mol* TM-align 或序列引导叠合，按结构 id 独立着色和选择；用只读的 `mol_tmscore` 比较两个选择，用 `mol_inspect` 读取运行中视图的残基、坐标、样式与可见颜色。
 - **跨 harness**：渲染与命令协议在 `@gcszhn/mol4agent-core`，每个 harness 一个薄适配包。
 
 ![ChatGPT/Codex 侧栏中的 mol4agent](docs/assets/chatgpt-codex.png)
@@ -76,10 +76,10 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 `dsh.profile.bundles`（DSH Plugin manager 安装/启用时会自动处理）；安装或更新
 Host bundle 后重启 DSH。
 
-npm 形式（0.3.0，已发布）：
+npm 形式（0.4.0，已发布）：
 
 ```sh
-dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.3.0
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.4.0
 ```
 
 卸载：`dsh plugin --profile desktop remove @gcszhn/mol4agent-deepseekharness`，

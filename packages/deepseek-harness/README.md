@@ -454,10 +454,10 @@ dsh plugin --profile desktop add link:"$PWD/packages/deepseek-harness"
 (the DSH Plugin manager does this when installing/enabling a bundle), then
 restart DSH.
 
-npm form (0.3.0, published):
+npm form (0.4.0, published):
 
 ```sh
-dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.3.0
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.4.0
 ```
 
 The current Desktop `desktop` profile is installed via `plugin_manager` and
