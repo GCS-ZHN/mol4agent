@@ -1,7 +1,8 @@
 # AGENTS.md
 
 Repository-level routing and cross-cutting constraints for future agent
-sessions. Read the package playbook before changing that package:
+sessions. Read the package playbook before changing that package. Version
+numbers are maintainer-owned: never bump them in feature or bug work.
 
 - **Core** (`packages/core/`): [`packages/core/AGENTS.md`](packages/core/AGENTS.md)
   — protocol, Mol* viewer lifecycle, rendering, capture, packaging.
@@ -72,8 +73,13 @@ are in its AGENTS playbook.
 - Every package under `packages/` owns its version; there is no repository-wide
   release version. The root `package.json` version is metadata, not a release
   marker.
-- Bump a package version in the same PR that changes its published artifact.
-  Do not use a separate version-only PR, and do not create release tags.
+- **Bumps and releases are the maintainer's job.** Never change a version in a
+  feat/bug/fix/refactor/docs PR or any non-release task: not `version` in
+  `package.json`, the ChatGPT `.codex-plugin/plugin.json` and `VERSION`
+  constants, the DSH `User-Agent`, or README/issue-form version examples. Say
+  in the PR which packages changed and the semver level you suggest; the
+  maintainer decides. The release workflow only publishes bumped versions, so
+  a merged feature staying unreleased is expected.
 - Patch (`0.1.1`) is a bug fix with no API or behavior-contract change. Minor
   (`0.2.0`) adds a capability or changes observable behavior; while a package
   is `0.x`, a minor bump is also a compatibility boundary and may break
@@ -86,28 +92,31 @@ are in its AGENTS playbook.
 - A change spanning core and adapters bumps core plus every adapter that must
   ship it. An adapter-only change bumps only that adapter; do not bump core or
   unrelated adapters.
-- Keep every hardcoded version string equal to `package.json`: the ChatGPT
-  `.codex-plugin/plugin.json` and the `VERSION` constants in `src/server.ts`
-  and `src/client/main.ts`, plus the DSH HTTP `User-Agent` in
-  `src/host/fetch.ts`. The release script fails on a package/plugin mismatch.
+- When the user explicitly asks for a bump, keep every hardcoded version
+  string equal to `package.json`: the ChatGPT `.codex-plugin/plugin.json` and
+  `VERSION` constants in `src/server.ts` and `src/client/main.ts`, the DSH
+  `User-Agent` in `src/host/fetch.ts`, and the README/issue-form examples and
+  lockfile specifiers. The release script fails on a package/plugin mismatch.
 
 ### Core dependency and bundled adapters
 
 - Adapters declare core with the workspace protocol, never `workspace:*`:
   `workspace:^` normally, or an explicit `workspace:>=x.y.z <1.0.0` when the
-  release depends on a newer core capability. Publishing rewrites either form
-  to the corresponding normal range. DSH's build-time core dependency uses
+  adapter needs a newer core capability. Publishing rewrites either form to
+  the corresponding normal range. DSH's build-time core dependency uses
   `workspace:>=0.2.0 <1.0.0` (published as `>=0.2.0 <1.0.0`) so its bundle can
   be built against any 0.x core. Other published dependencies use ranges too,
   except host-provided peer APIs that must pin the host version.
 - Every adapter bundles core into its artifacts: DSH `host.js`/`client.js`,
   ChatGPT `server.js`/`viewer.html`, and OpenCode `index.js`/`gui.cjs`. A core
-  patch does **not** reach an installed adapter on its own. Each adapter that
-  should ship the fix must bump and republish; the rebuild embeds the new core,
-  and `workspace:^` rewrites the manifest without a dependency edit.
+  patch does **not** reach an installed adapter on its own. The maintainer must
+  bump and republish each adapter that should ship the fix; the rebuild embeds
+  the new core, and `workspace:^` rewrites the manifest without a dependency
+  edit.
 - Core patch releases can therefore be adopted by republishing adapters with no
   code change. Core minor/major releases are compatibility boundaries: review
-  and test each adapter, then bump and republish the ones that adopt them.
+  and test each adapter, then the maintainer bumps and republishes the ones
+  that adopt them.
 
 ### Release execution
 
@@ -117,8 +126,8 @@ are in its AGENTS playbook.
   branch for ChatGPT) and skips versions already published. Do not reintroduce
   tag-triggered releases or a repository-wide version check.
 - The ChatGPT plugin has no npm package: its release artifact is the
-  force-pushed `plugin-dist` branch, and its version bump is what republishes
-  it.
+  force-pushed `plugin-dist` branch, and the maintainer's version bump is what
+  republishes it.
 
 ## Cross-cutting constraints
 

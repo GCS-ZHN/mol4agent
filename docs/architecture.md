@@ -245,7 +245,7 @@ See the [ChatGPT README](../packages/chatgpt/README.md).
 - Core is the shared semantic source; adapters convert and mount, not duplicate
   the protocol.
 - Semantic changes (commands, selectors, style, capture) are cross-package
-  changes and bump core/adapter versions.
+  changes; version bumps and releases are the maintainer's job, not the PR's.
 - Packages version independently. Bump only the package whose code changed;
   publishing on `main` skips versions already on npm. npm packages contain
   compiled JS/`.d.ts`, required configuration/docs, and no source or `AGENTS.md`.
