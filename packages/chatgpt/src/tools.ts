@@ -15,22 +15,38 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server'
 import { z } from 'zod'
 import {
+  ALIGNMENT_METHODS,
   COLOR_THEMES,
+  DEFAULT_INSPECT_LIMIT,
+  INSPECT_DETAILS,
   Mol4AgentError,
   REPRESENTATION_TYPES,
+  STRUCTURE_ID_PATTERN,
   formatColor,
+  isAlignmentMethod,
   parseColor,
+  type InspectRequest,
+  type InspectTarget,
   type MolCommand,
   type StyleSpec,
   type StructureSelector,
   type StructureSummary,
+  type TmScoreRequest,
 } from '@gcszhn/mol4agent-core/protocol'
 import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
 import { SOURCE_DATABASES, resolveSource, type ResolvedSource } from '@gcszhn/mol4agent-core/sources'
 import { CaptureHub } from './capture.ts'
+import { AlignHub, decodeAlignPayload } from './align.ts'
 import { downloadMoleculeSource, FetchTargetError, resolveFetchTarget } from './fetch.ts'
+import { formatInspectResult } from './format-inspect.ts'
 import { baseNameOf, formatOfFile, isBinaryFormat, isGzipFile, previewFileExtensions } from './formats.ts'
 import { gunzipBytes } from './host/gzip.ts'
+import {
+  decodeInspectPayload,
+  decodeTmScorePayload,
+  InspectHub,
+  TmScoreHub,
+} from './inspect.ts'
 import { findInterfaceResidues, type InterfaceResult } from './interface.ts'
 import {
   inspectWorkspace,
@@ -38,7 +54,14 @@ import {
   workspaceRoot,
   type ResolvedMoleculeFile,
 } from './paths.ts'
-import { SceneStore, type SceneRecord, type SceneSnapshot } from './scene.ts'
+import {
+  activeStructures,
+  nextStructureId,
+  SceneStore,
+  type SceneRecord,
+  type SceneSnapshot,
+  type SceneStructureRecord,
+} from './scene.ts'
 import { normalizeSelector } from './selector.ts'
 
 /** UI resource served by this MCP server. */
@@ -54,33 +77,46 @@ const SELECTOR_HELP =
 
 const MEASUREMENT_KINDS = new Set(['chain', 'residue', 'residues', 'comp', 'schema'])
 
+const structureIdField = z.string().regex(STRUCTURE_ID_PATTERN).optional()
+  .describe('Structure id from mol_open (primary is "structure") or mol_add_structure.')
+
 const selectorSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('all') }),
-  z.object({ kind: z.literal('polymer') }),
-  z.object({ kind: z.literal('protein') }),
-  z.object({ kind: z.literal('nucleic') }),
-  z.object({ kind: z.literal('ligand') }),
-  z.object({ kind: z.literal('water') }),
-  z.object({ kind: z.literal('ion') }),
-  z.object({ kind: z.literal('chain'), chain: z.string().min(1) }),
+  z.object({ kind: z.literal('all'), structureId: structureIdField }),
+  z.object({ kind: z.literal('polymer'), structureId: structureIdField }),
+  z.object({ kind: z.literal('protein'), structureId: structureIdField }),
+  z.object({ kind: z.literal('nucleic'), structureId: structureIdField }),
+  z.object({ kind: z.literal('ligand'), structureId: structureIdField }),
+  z.object({ kind: z.literal('water'), structureId: structureIdField }),
+  z.object({ kind: z.literal('ion'), structureId: structureIdField }),
+  z.object({ kind: z.literal('chain'), structureId: structureIdField, chain: z.string().min(1) }),
   z.object({
     kind: z.literal('residue'),
+    structureId: structureIdField,
     chain: z.string().min(1).optional(),
     index: z.number(),
     auth: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal('residues'),
+    structureId: structureIdField,
     chain: z.string().min(1).optional(),
     start: z.number(),
     end: z.number(),
     auth: z.boolean().optional(),
   }),
-  z.object({ kind: z.literal('comp'), compId: z.string().min(1) }),
+  z.object({ kind: z.literal('comp'), structureId: structureIdField, compId: z.string().min(1) }),
   z.object({
     kind: z.literal('schema'),
+    structureId: structureIdField,
     schema: z.record(z.string(), z.union([z.string(), z.number()])),
   }),
+])
+
+/** Any structure selector plus the two live viewer states an inspection accepts. */
+const inspectTargetSchema = z.union([
+  selectorSchema,
+  z.object({ kind: z.literal('selection') }),
+  z.object({ kind: z.literal('focus') }),
 ])
 
 const colorParamsSchema = z.object({
@@ -101,10 +137,16 @@ const styleFields = {
 export interface MolToolOptions {
   readonly store: SceneStore
   readonly captures: CaptureHub
+  readonly inspects: InspectHub
+  readonly tmscores: TmScoreHub
+  readonly aligns: AlignHub
   readonly viewerHtml: string
   readonly maxFileBytes: number
   readonly fetchTimeoutMs: number
   readonly captureTimeoutMs: number
+  readonly inspectTimeoutMs: number
+  readonly alignTimeoutMs: number
+  readonly tmScoreTimeoutMs: number
   readonly captureWidth: number
   readonly captureHeight: number
   /** Test seam for `mol_fetch`; defaults to the global `fetch`. */
@@ -113,7 +155,7 @@ export interface MolToolOptions {
 
 /** Register every tool and resource the plugin exposes. */
 export function registerMolTools(server: McpServer, options: MolToolOptions): void {
-  const { store, captures } = options
+  const { store, captures, inspects, tmscores, aligns } = options
 
   registerAppResource(
     server,
@@ -163,24 +205,24 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       const rawSceneId = variables.sceneId
       const sceneId = Array.isArray(rawSceneId) ? rawSceneId[0] : rawSceneId
       if (sceneId === undefined) throw new Error('missing sceneId')
-      const record = store.record(sceneId)
-      if (record === undefined) throw new Error(`structure scene ${sceneId} is no longer available`)
-      if (isBinaryFormat(record.format)) {
-        return {
-          contents: [{
-            uri: uri.href,
-            mimeType: 'application/octet-stream',
-            blob: Buffer.from(record.bytes).toString('base64'),
-          }],
-        }
-      }
-      return {
-        contents: [{
-          uri: uri.href,
-          mimeType: 'text/plain',
-          text: new TextDecoder('utf-8', { fatal: false }).decode(record.bytes),
-        }],
-      }
+      return structureResource(store, uri.href, sceneId)
+    },
+  )
+
+  server.registerResource(
+    'mol4agent scene structure',
+    new ResourceTemplate(STRUCTURE_URI_PREFIX + '{sceneId}/{structureId}', { list: undefined }),
+    {
+      description: 'Raw bytes of one structure in a multi-structure scene, read by the mol4agent app.',
+    },
+    async (uri, variables) => {
+      const rawSceneId = variables.sceneId
+      const rawStructureId = variables.structureId
+      const sceneId = Array.isArray(rawSceneId) ? rawSceneId[0] : rawSceneId
+      const structureId = Array.isArray(rawStructureId) ? rawStructureId[0] : rawStructureId
+      if (sceneId === undefined) throw new Error('missing sceneId')
+      if (structureId === undefined) throw new Error('missing structureId')
+      return structureResource(store, uri.href, sceneId, structureId)
     },
   )
 
@@ -346,7 +388,16 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     const target = args.select === undefined ? undefined : normalizeSelector(args.select)
     if (target !== undefined) {
       const summary = summarizeSafely(file.bytes, file.format)
-      if (summary !== undefined) validateSelectorAgainst(summary, file.bytes, file.format, target)
+      if (summary !== undefined) {
+        validateSelectorAgainst([{
+          id: 'structure',
+          path: file.absolutePath,
+          label: file.label,
+          format: file.format,
+          bytes: file.bytes,
+          summary,
+        }], target)
+      }
       commands.push({
         op: 'select',
         target,
@@ -365,8 +416,56 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     })
     return textResult(
       `${describeFile(file)}\n\nOpened ${file.label} in the mol4agent viewer. `
-      + 'Use mol_style, mol_select, mol_focus, mol_measure, or mol_capture to operate it.',
+      + 'Primary structure id: "structure". Use mol_style, mol_select, mol_focus, mol_measure, '
+      + 'mol_inspect, or mol_capture to operate it.',
       { scene },
+    )
+  })
+
+  server.registerTool('mol_add_structure', {
+    title: 'Add another structure to the scene',
+    description: 'Add a second (or further) structure to the active viewer scene without replacing the '
+      + 'current one. The structure gets a stable id for selectors, mol_align, and mol_remove_structure. '
+      + 'Returns the id and a structure summary.',
+    inputSchema: {
+      path: z.string().min(1).describe('Structure file path (.gz supported), absolute or relative to the workspace.'),
+      id: z.string().regex(STRUCTURE_ID_PATTERN).optional()
+        .describe('Optional structure id. Defaults to the next "structure-N".'),
+      ...styleFields,
+      focus: z.boolean().optional().describe('Focus the camera on the newly added structure.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async (args, extra) => {
+    const scene = requireScene(store, 'add a structure to')
+    const file = await resolveMoleculeFile(server, args.path, options.maxFileBytes, extra.signal)
+    const usedIds = store.record(scene.sceneId)?.structures.map(structure => structure.id) ?? []
+    const id = args.id ?? nextStructureId(usedIds.map(id => ({ id })))
+    if (usedIds.includes(id)) {
+      throw new Error(`structure id "${id}" is already used in this scene; choose another id`)
+    }
+    let next = store.addAgentStructure({
+      id,
+      path: file.absolutePath,
+      label: file.label,
+      format: file.format,
+      bytes: file.bytes,
+    })
+    if (next === null) throw new Error('open a structure with mol_open before adding another')
+    if (args.type !== undefined || args.color !== undefined || args.colorParams !== undefined) {
+      next = store.pushAgent({
+        op: 'represent',
+        style: styleOf(args),
+        target: { kind: 'all', structureId: id },
+      }) ?? next
+    }
+    if (args.focus === true) {
+      next = store.pushAgent({ op: 'focus', target: { kind: 'all', structureId: id } }) ?? next
+    }
+    return textResult(
+      `${describeFile(file)}\n\nAdded to ${scene.label} as structure id "${id}". `
+      + `Use {"kind":"chain","chain":"A","structureId":"${id}"} in selectors and pass `
+      + `reference/target "${id}" to mol_align or mol_tmscore.`,
+      { scene: next },
     )
   })
 
@@ -474,6 +573,199 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       targets,
     })
     return textResult(`Added a ${args.kind} measurement.`, { scene: next ?? scene })
+  })
+
+  server.registerTool('mol_list_structures', {
+    title: 'List structures in the scene',
+    description: 'List the structures currently loaded in the active viewer scene with their ids, labels, '
+      + 'and formats. Use it before mol_align, mol_tmscore, mol_remove_structure, or a structure-scoped '
+      + 'selector.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async () => {
+    const scene = requireScene(store, 'list structures in')
+    const structures = activeStructures(scene)
+    if (structures.length === 0) {
+      return textResult(
+        `No structures are loaded in ${scene.label}. Use mol_open or mol_add_structure.`,
+        { scene },
+      )
+    }
+    return textResult(
+      `<structures scene="${scene.label}">\n`
+      + structures.map((structure, index) =>
+        `${index === 0 ? '*' : '-'} ${structure.id}: ${structure.label} (${structure.format})`,
+      ).join('\n')
+      + '\n</structures>',
+      { scene },
+    )
+  })
+
+  server.registerTool('mol_remove_structure', {
+    title: 'Remove a structure from the scene',
+    description: 'Remove one structure from the active viewer scene. The other structures and the viewer '
+      + 'tab remain open.',
+    inputSchema: {
+      structureId: z.string().regex(STRUCTURE_ID_PATTERN)
+        .describe('Structure id from mol_list_structures.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async (args) => {
+    const scene = requireScene(store, 'remove a structure from')
+    if (!activeStructures(scene).some(structure => structure.id === args.structureId)) {
+      throw new Error(
+        `no active structure with id "${args.structureId}"; use mol_list_structures to see ids`,
+      )
+    }
+    const next = store.pushAgent({ op: 'remove-structure', structureId: args.structureId })
+    return textResult(`Removed structure "${args.structureId}" from ${scene.label}.`, {
+      scene: next ?? scene,
+    })
+  })
+
+  server.registerTool('mol_align', {
+    title: 'Superpose one structure onto another',
+    description: 'Superpose one loaded structure onto another with Mol* TM-align or sequence-guided '
+      + 'superposition. Optional chains restrict the alignment to one auth chain per structure. '
+      + 'The target structure moves; the reference stays fixed. Returns RMSD, aligned length, and '
+      + 'TM-scores for TM-align.',
+    inputSchema: {
+      reference: z.string().regex(STRUCTURE_ID_PATTERN)
+        .describe('Reference structure id; it stays fixed.'),
+      target: z.string().regex(STRUCTURE_ID_PATTERN)
+        .describe('Target structure id; it is moved onto the reference.'),
+      method: z.enum(ALIGNMENT_METHODS).optional()
+        .describe('Alignment method. Defaults to tm-align.'),
+      referenceChain: z.string().min(1).optional()
+        .describe('Optional auth chain id in the reference structure.'),
+      targetChain: z.string().min(1).optional()
+        .describe('Optional auth chain id in the target structure.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async (args, extra) => {
+    const scene = requireScene(store, 'align structures in')
+    const structures = activeStructures(scene)
+    for (const id of [args.reference, args.target]) {
+      if (!structures.some(structure => structure.id === id)) {
+        throw new Error(`no active structure with id "${id}"; use mol_list_structures to see ids`)
+      }
+    }
+    if (args.reference === args.target) {
+      throw new Error('reference and target must be different structures')
+    }
+    const method = args.method ?? 'tm-align'
+    if (!isAlignmentMethod(method)) throw new Error(`unknown alignment method "${method}"`)
+    const commandIndex = scene.commands.length
+    const waiting = aligns.wait(scene.sceneId, commandIndex, options.alignTimeoutMs, extra.signal)
+    const command: MolCommand = {
+      op: 'align',
+      reference: args.reference,
+      target: args.target,
+      method,
+      ...(args.referenceChain === undefined ? {} : { referenceChain: args.referenceChain }),
+      ...(args.targetChain === undefined ? {} : { targetChain: args.targetChain }),
+    }
+    const next = store.pushAgent(command)
+    if (next === null) throw new Error('the active scene is no longer available')
+    const answer = await waiting
+    if (!answer.ok) {
+      throw new Error(`could not align ${args.target} onto ${args.reference}: ${answer.message}`)
+    }
+    const result = answer.result
+    const scores = [
+      `RMSD ${result.rmsd.toFixed(2)} A`,
+      `${result.alignedLength} aligned ${result.method === 'tm-align' ? 'residues' : 'atoms'}`,
+      ...(result.tmScoreA === undefined
+        ? []
+        : [`TM-score ${result.tmScoreA.toFixed(4)}/${result.tmScoreB?.toFixed(4) ?? 'n/a'}`]),
+    ].join(', ')
+    const scope = [
+      args.referenceChain === undefined ? undefined : `reference chain ${args.referenceChain}`,
+      args.targetChain === undefined ? undefined : `target chain ${args.targetChain}`,
+    ].filter((part): part is string => part !== undefined).join(', ')
+    return textResult(
+      `Aligned ${args.target} onto ${args.reference} with ${method}`
+      + `${scope === '' ? '' : ` (${scope})`}: ${scores}. `
+      + 'Use mol_capture to inspect the superposition.',
+    )
+  })
+
+  server.registerTool('mol_tmscore', {
+    title: 'Score two selections with TM-align',
+    description: 'Compute TM-score and RMSD between two selections without moving either structure. '
+      + 'Read-only: use it to compare arbitrary chains or regions, aligned or not. Both selections are '
+      + 'reduced to polymer trace atoms (CA/C4\'/P).',
+    inputSchema: {
+      reference: selectorSchema.describe(`Reference selection. ${SELECTOR_HELP}`),
+      target: selectorSchema.describe(`Target selection. ${SELECTOR_HELP}`),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async (args, extra) => {
+    const scene = requireScene(store, 'compute a TM-score in')
+    const reference = normalizeSelector(args.reference)
+    const target = normalizeSelector(args.target)
+    validateTargets(store, [reference, target])
+    const request: TmScoreRequest = { reference, target }
+    const pending = tmscores.enqueue(scene.sceneId, request)
+    store.wake()
+    const answer = await tmscores.wait(pending.queryId, options.tmScoreTimeoutMs, extra.signal)
+    if (!answer.ok) {
+      return textResult(`Could not compute a TM-score for ${scene.label}: ${answer.message}`)
+    }
+    const result = answer.result
+    return textResult(
+      `TM-align (${result.reference} vs ${result.target}): RMSD ${result.rmsd.toFixed(2)} A, `
+      + `TM-score ${result.tmScoreA.toFixed(4)}/${result.tmScoreB.toFixed(4)}, `
+      + `${result.alignedLength} aligned residues (${result.referenceAtoms} vs ${result.targetAtoms} `
+      + 'trace atoms). No structure was moved.',
+    )
+  })
+
+  // Inspection samples the live Mol* page, so it must not become a scene
+  // command: human-driven styles and selections never reach the command log.
+  server.registerTool('mol_inspect', {
+    title: 'Inspect the live molecular viewer',
+    description: 'Read what the molecular viewer currently shows: residue/atom identity, coordinates, '
+      + 'per-component counts (waters, ligands, amino-acid types), the representations and colour/size '
+      + 'themes drawing the target, and the visible colour after selection or overpaint layers. Answers '
+      + 'come from the live Mol* page, so they include changes a human made by clicking or through the '
+      + 'Mol* panel. Use it instead of parsing the structure file. Read-only: it changes nothing.',
+    inputSchema: {
+      target: inspectTargetSchema.optional().describe(
+        'What to inspect. Omit for the whole scene. Accepts any selector (including a structureId), '
+        + 'plus {"kind":"selection"} for what is currently selected and {"kind":"focus"} for the last '
+        + `clicked location. ${SELECTOR_HELP}`,
+      ),
+      detail: z.enum(INSPECT_DETAILS).optional().describe(
+        'summary = totals, per-component counts, styles, and appearance; residues = also residue rows; '
+        + 'atoms = residue rows with per-atom coordinates. Defaults to summary.',
+      ),
+      limit: z.number().int().min(1).max(5_000).optional().describe(
+        `Maximum residue rows to return. Defaults to ${DEFAULT_INSPECT_LIMIT}; `
+        + 'totals and counts are never truncated.',
+      ),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async (args, extra) => {
+    const scene = requireScene(store, 'inspect')
+    const target = args.target === undefined ? undefined : normalizeInspectTarget(args.target)
+    if (target !== undefined && target.kind !== 'selection' && target.kind !== 'focus') {
+      validateTargets(store, [target])
+    }
+    const request: InspectRequest = {
+      ...(target === undefined ? {} : { target }),
+      ...(args.detail === undefined ? {} : { detail: args.detail }),
+      ...(args.limit === undefined ? {} : { limit: args.limit }),
+    }
+    const pending = inspects.enqueue(scene.sceneId, request)
+    store.wake()
+    const answer = await inspects.wait(pending.queryId, options.inspectTimeoutMs, extra.signal)
+    if (!answer.ok) {
+      return textResult(`Could not inspect ${scene.label}: ${answer.message}`)
+    }
+    // Text-only on purpose: Codex surfaces structuredContent in place of the
+    // content block, which would hide the formatted inspection from the model.
+    return textResult(formatInspectResult(answer.result))
   })
 
   // Capture must stay a plain tool. Advertising the viewer template makes the
@@ -590,8 +882,8 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
 
   server.registerTool('mol_viewer_poll', {
     title: 'Wait for viewer changes',
-    description: 'Internal app tool: long-poll for a scene revision change or a pending capture. '
-      + 'Not intended for the model.',
+    description: 'Internal app tool: long-poll for a scene revision change, a pending capture, or a '
+      + 'pending inspection/TM-score query. Not intended for the model.',
     inputSchema: {
       sceneId: z.string().optional().describe('The scene the app currently has.'),
       revision: z.number().int().optional().describe('The scene revision the app has applied.'),
@@ -644,10 +936,19 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
       }
       const sceneChanged = scene !== null
         && (args.sceneId === undefined || scene.sceneId !== args.sceneId || scene.revision !== args.revision)
-      if (sceneChanged) return pollResult(scene, null, false)
-
+      const inspect = inspects.claim(scene?.sceneId)
+      const tmscore = tmscores.claim(scene?.sceneId)
       const capture = captures.claim(scene?.sceneId)
-      if (capture !== null) return pollResult(scene ?? capture.scene, capture, false)
+      if (sceneChanged || capture !== null || inspect !== null || tmscore !== null) {
+        return pollResult(
+          scene ?? capture?.scene ?? null,
+          capture,
+          false,
+          false,
+          inspect,
+          tmscore,
+        )
+      }
 
       const remaining = deadline - Date.now()
       if (remaining <= 0) return pollResult(scene, null, true)
@@ -704,6 +1005,107 @@ export function registerMolTools(server: McpServer, options: MolToolOptions): vo
     captures.fail(args.captureId, args.message)
     return textResult('Capture failure recorded.')
   })
+
+  server.registerTool('mol_inspect_deliver', {
+    title: 'Deliver an inspection answer',
+    description: 'Internal app tool: commit the compressed live-viewer answer for a pending mol_inspect request.',
+    inputSchema: {
+      queryId: z.string().min(1),
+      data: z.string().min(1).describe('Base64 gzip JSON: {ok:true,result} or {ok:false,message}.'),
+    },
+    _meta: { ui: { visibility: ['app'] } },
+  }, async (args) => {
+    const answer = decodeInspectPayload(args.data)
+    if (answer === undefined) {
+      inspects.fail(args.queryId, 'the viewer sent a malformed or oversized inspection answer')
+      return {
+        isError: true,
+        content: [{ type: 'text', text: 'The inspection answer was malformed or too large.' }],
+      }
+    }
+    if (!inspects.deliver(args.queryId, answer)) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: 'The inspection request expired before the answer arrived.' }],
+      }
+    }
+    return textResult('Inspection answer delivered.', { ok: true })
+  })
+
+  server.registerTool('mol_inspect_fail', {
+    title: 'Fail an inspection request',
+    description: 'Internal app tool: report why a pending mol_inspect request could not be answered.',
+    inputSchema: {
+      queryId: z.string().min(1),
+      message: z.string().min(1),
+    },
+    _meta: { ui: { visibility: ['app'] } },
+  }, async (args) => {
+    inspects.fail(args.queryId, args.message)
+    return textResult('Inspection failure recorded.')
+  })
+
+  server.registerTool('mol_tmscore_deliver', {
+    title: 'Deliver a TM-score answer',
+    description: 'Internal app tool: commit the live-viewer TM-score result for a pending mol_tmscore request.',
+    inputSchema: {
+      queryId: z.string().min(1),
+      data: z.string().min(1).describe('JSON: {ok:true,result} or {ok:false,message}.'),
+    },
+    _meta: { ui: { visibility: ['app'] } },
+  }, async (args) => {
+    const answer = decodeTmScorePayload(args.data)
+    if (answer === undefined) {
+      tmscores.fail(args.queryId, 'the viewer sent a malformed TM-score answer')
+      return {
+        isError: true,
+        content: [{ type: 'text', text: 'The TM-score answer was malformed.' }],
+      }
+    }
+    if (!tmscores.deliver(args.queryId, answer)) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: 'The TM-score request expired before the answer arrived.' }],
+      }
+    }
+    return textResult('TM-score answer delivered.', { ok: true })
+  })
+
+  server.registerTool('mol_tmscore_fail', {
+    title: 'Fail a TM-score request',
+    description: 'Internal app tool: report why a pending mol_tmscore request could not be computed.',
+    inputSchema: {
+      queryId: z.string().min(1),
+      message: z.string().min(1),
+    },
+    _meta: { ui: { visibility: ['app'] } },
+  }, async (args) => {
+    tmscores.fail(args.queryId, args.message)
+    return textResult('TM-score failure recorded.')
+  })
+
+  server.registerTool('mol_align_deliver', {
+    title: 'Deliver alignment metrics',
+    description: 'Internal app tool: report the result of executing one align command to a waiting mol_align call.',
+    inputSchema: {
+      sceneId: z.string().min(1),
+      commandIndex: z.number().int().min(0),
+      data: z.string().min(1).describe('JSON: {ok:true,result} or {ok:false,message}.'),
+    },
+    _meta: { ui: { visibility: ['app'] } },
+  }, async (args) => {
+    const answer = decodeAlignPayload(args.data)
+    if (answer === undefined) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: 'The alignment answer was malformed.' }],
+      }
+    }
+    if (!aligns.deliver(args.sceneId, args.commandIndex, answer)) {
+      return textResult('No tool call was waiting for this alignment.', { ok: true, matched: false })
+    }
+    return textResult('Alignment result delivered.', { ok: true, matched: true })
+  })
 }
 
 function pollResult(
@@ -711,10 +1113,43 @@ function pollResult(
   capture: ReturnType<CaptureHub['claim']>,
   timedOut: boolean,
   missing = false,
+  inspect: ReturnType<InspectHub['claim']> = null,
+  tmscore: ReturnType<TmScoreHub['claim']> = null,
 ): CallToolResult {
   return {
     content: [{ type: 'text', text: timedOut ? 'No viewer changes.' : 'Viewer update.' }],
-    structuredContent: { scene, capture, timedOut, ...(missing ? { missing: true } : {}) },
+    structuredContent: { scene, capture, inspect, tmscore, timedOut, ...(missing ? { missing: true } : {}) },
+  }
+}
+
+/** Serve one structure's raw bytes on the shared scene resource. */
+function structureResource(
+  store: SceneStore,
+  href: string,
+  sceneId: string,
+  structureId?: string,
+) {
+  const structure = store.structure(sceneId, structureId)
+  if (structure === undefined) {
+    throw new Error(structureId === undefined
+      ? `structure scene ${sceneId} is no longer available`
+      : `structure "${structureId}" in scene ${sceneId} is no longer available`)
+  }
+  if (isBinaryFormat(structure.format)) {
+    return {
+      contents: [{
+        uri: href,
+        mimeType: 'application/octet-stream',
+        blob: Buffer.from(structure.bytes).toString('base64'),
+      }],
+    }
+  }
+  return {
+    contents: [{
+      uri: href,
+      mimeType: 'text/plain',
+      text: new TextDecoder('utf-8', { fatal: false }).decode(structure.bytes),
+    }],
   }
 }
 
@@ -731,39 +1166,61 @@ function requireScene(store: SceneStore, action: string): SceneSnapshot {
   return scene
 }
 
+/** A structure selector or one of the live viewer states an inspection accepts. */
+function normalizeInspectTarget(value: unknown): InspectTarget {
+  if (typeof value === 'object' && value !== null) {
+    const kind = (value as { kind?: unknown }).kind
+    if (kind === 'selection') return { kind: 'selection' }
+    if (kind === 'focus') return { kind: 'focus' }
+  }
+  return normalizeSelector(value)
+}
+
 function validateTargets(store: SceneStore, selectors: readonly StructureSelector[]): void {
   const scene = store.snapshotAgent()
   if (scene === null) return
   const record = store.record(scene.sceneId)
-  if (record?.summary === undefined) return
+  if (record === undefined) return
+  const activeIds = new Set(activeStructures(record).map(structure => structure.id))
+  const structures = record.structures.filter(structure => activeIds.has(structure.id))
   for (const selector of selectors) {
-    validateSelectorAgainst(record.summary, record.bytes, record.format, selector)
+    const scoped = selector.structureId === undefined
+      ? structures
+      : structures.filter(structure => structure.id === selector.structureId)
+    if (selector.structureId !== undefined && scoped.length === 0) {
+      throw new Error(
+        `no active structure with id "${selector.structureId}"; use mol_list_structures to see ids`,
+      )
+    }
+    validateSelectorAgainst(scoped, selector)
   }
 }
 
 function validateSelectorAgainst(
-  summary: StructureSummary,
-  bytes: Uint8Array,
-  format: SceneRecord['format'],
+  structures: readonly SceneStructureRecord[],
   selector: StructureSelector,
 ): void {
-  if (!summary.complete) return
-  const chains = summary.chains.map(chain => chain.id)
+  const summaries = structures
+    .map(structure => structure.summary)
+    .filter((summary): summary is StructureSummary => summary !== undefined && summary.complete)
+  if (summaries.length === 0) return
+  const chains = [...new Set(summaries.flatMap(summary => summary.chains.map(chain => chain.id)))]
   const chainList = chains.length === 0 ? '(none)' : chains.join(', ')
+  const scope = selector.structureId === undefined ? '' : ` in structure "${selector.structureId}"`
   switch (selector.kind) {
     case 'chain':
       if (!chains.includes(selector.chain)) {
-        throw new Error(`chain "${selector.chain}" does not exist; available chains: ${chainList}`)
+        throw new Error(`chain "${selector.chain}" does not exist${scope}; available chains: ${chainList}`)
       }
       return
     case 'comp': {
       const components = [...new Set([
-        ...summary.chains.flatMap(chain => chain.compIds),
-        ...summary.ligands.map(ligand => ligand.compId),
+        ...summaries.flatMap(summary => summary.chains.flatMap(chain => chain.compIds)),
+        ...summaries.flatMap(summary => summary.ligands.map(ligand => ligand.compId)),
       ])]
       if (!components.includes(selector.compId)) {
         throw new Error(
-          `component "${selector.compId}" does not exist; available components: `
+          `component "${selector.compId}" does not exist${scope}; available components: `
           + `${components.length === 0 ? '(none)' : components.join(', ')}`,
         )
       }
@@ -771,13 +1228,32 @@ function validateSelectorAgainst(
     }
     case 'residue':
     case 'residues': {
-      if (selector.chain !== undefined && !chains.includes(selector.chain)) {
-        throw new Error(`chain "${selector.chain}" does not exist; available chains: ${chainList}`)
+      const candidates = selector.chain === undefined
+        ? structures
+        : structures.filter(structure =>
+          structure.summary?.chains.some(chain => chain.id === selector.chain) === true)
+      if (candidates.length === 0) {
+        throw new Error(`chain "${selector.chain ?? ''}" does not exist${scope}; available chains: ${chainList}`)
       }
-      if (selector.kind === 'residue') {
-        validateResidueRange(bytes, format, selector.chain, selector.index, selector.index)
-      } else {
-        validateResidueRange(bytes, format, selector.chain, selector.start, selector.end)
+      const start = selector.kind === 'residue' ? selector.index : selector.start
+      const end = selector.kind === 'residue' ? selector.index : selector.end
+      const extents = candidates.map(structure => ({
+        structure,
+        extent: residueExtent(structure.bytes, structure.format, selector.chain),
+      }))
+      // A format without a parsed residue table cannot be checked cheaply;
+      // leave that to Mol* rather than rejecting a valid selection.
+      if (extents.some(entry => entry.extent === undefined)) return
+      const hits = extents.filter(entry =>
+        entry.extent !== undefined && end >= entry.extent.min && start <= entry.extent.max)
+      if (hits.length === 0) {
+        const detail = extents.map(entry =>
+          `${entry.structure.id}: ${String(entry.extent?.min)}-${String(entry.extent?.max)}`).join(', ')
+        throw new Error(
+          `residues ${String(start)}-${String(end)} do not intersect `
+          + `${selector.chain === undefined ? 'structure' : `chain ${selector.chain}`}${scope} `
+          + `(parsed ranges ${detail})`,
+        )
       }
       return
     }
@@ -790,24 +1266,6 @@ function validateSelectorAgainst(
     case 'ion':
     case 'schema':
       return
-  }
-}
-
-function validateResidueRange(
-  bytes: Uint8Array,
-  format: SceneRecord['format'],
-  chain: string | undefined,
-  start: number,
-  end: number,
-): void {
-  const extent = residueExtent(bytes, format, chain)
-  if (extent === undefined) return
-  const label = chain === undefined ? 'structure' : `chain ${chain}`
-  if (end < extent.min || start > extent.max) {
-    throw new Error(
-      `residues ${String(start)}-${String(end)} do not intersect ${label} `
-      + `(parsed residue range ${String(extent.min)}-${String(extent.max)})`,
-    )
   }
 }
 
@@ -948,12 +1406,13 @@ function describeStyle(args: {
 }
 
 function describeSelector(value: { readonly kind: string } & Record<string, unknown>): string {
+  const scope = typeof value.structureId === 'string' ? ` in structure ${value.structureId}` : ''
   switch (value.kind) {
-    case 'chain': return `chain ${String(value.chain)}`
-    case 'residue': return `residue ${String(value.chain ?? '')}${String(value.index)}`.trim()
-    case 'residues': return `residues ${String(value.chain ?? '')}${String(value.start)}-${String(value.end)}`.trim()
-    case 'comp': return `residues named ${String(value.compId)}`
-    default: return value.kind
+    case 'chain': return `chain ${String(value.chain)}${scope}`
+    case 'residue': return `residue ${String(value.chain ?? '')}${String(value.index)}${scope}`.trim()
+    case 'residues': return `residues ${String(value.chain ?? '')}${String(value.start)}-${String(value.end)}${scope}`.trim()
+    case 'comp': return `residues named ${String(value.compId)}${scope}`
+    default: return `${value.kind}${scope}`
   }
 }
 

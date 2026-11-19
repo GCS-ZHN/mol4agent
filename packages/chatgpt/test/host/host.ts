@@ -17,6 +17,7 @@ const scene = {
   label: '1atp.pdb',
   format: 'pdb',
   source: 'agent',
+  structures: [{ id: 'structure', label: '1atp.pdb', format: 'pdb' }],
   commands: [
     { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } },
     { op: 'select', target: { kind: 'ligand' }, mode: 'highlight', focus: true },
@@ -60,7 +61,12 @@ const bridge = new AppBridge(
 )
 
 bridge.onreadresource = async (params): Promise<ReadResourceResult> => {
-  if (params.uri !== 'mol4agent://structure/test-scene') throw new Error(`unknown resource ${params.uri}`)
+  if (
+    params.uri !== 'mol4agent://structure/test-scene'
+    && params.uri !== 'mol4agent://structure/test-scene/structure'
+  ) {
+    throw new Error(`unknown resource ${params.uri}`)
+  }
   const response = await fetch('/fixture.pdb')
   if (!response.ok) throw new Error(`fixture fetch failed: ${String(response.status)}`)
   return {

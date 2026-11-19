@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import { gzipSync } from 'node:zlib'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { createServer } from '../lib/server.js'
@@ -46,14 +47,25 @@ test('lists the agent tools and the viewer resource', async t => {
     'mol_interface',
     'mol_fetch',
     'mol_open',
+    'mol_add_structure',
+    'mol_list_structures',
+    'mol_remove_structure',
     'mol_style',
     'mol_select',
     'mol_focus',
     'mol_measure',
+    'mol_inspect',
+    'mol_align',
+    'mol_tmscore',
     'mol_capture',
     'mol_viewer_poll',
     'mol_capture_deliver',
     'mol_capture_fail',
+    'mol_inspect_deliver',
+    'mol_inspect_fail',
+    'mol_tmscore_deliver',
+    'mol_tmscore_fail',
+    'mol_align_deliver',
   ]) {
     assert.ok(names.includes(expected), `missing tool ${expected}`)
   }
@@ -621,6 +633,232 @@ test('rendezvous: capture claim and PNG delivery', async t => {
   const image = captured.content.find(block => block.type === 'image')
   assert.equal(image?.mimeType, 'image/png')
   assert.equal(image?.data, onePixelPng)
+})
+
+test('adds, lists, and removes structures in one scene', async t => {
+  const { client } = await withClient(t)
+  const opened = await client.callTool({ name: 'mol_open', arguments: { path: fixture } })
+  const scene = opened.structuredContent.scene
+  assert.deepEqual(scene.structures.map(structure => structure.id), ['structure'])
+
+  const added = await client.callTool({
+    name: 'mol_add_structure',
+    arguments: { path: join(repoRoot, 'fixtures/4zqk.pdb'), id: 'pdl1', type: 'cartoon', color: 'chain-id' },
+  })
+  assert.equal(added.isError, undefined)
+  const addedScene = added.structuredContent.scene
+  assert.deepEqual(addedScene.structures.map(structure => structure.id), ['structure', 'pdl1'])
+  assert.deepEqual(addedScene.commands.at(-1), {
+    op: 'represent',
+    style: { type: 'cartoon', color: 'chain-id' },
+    target: { kind: 'all', structureId: 'pdl1' },
+  })
+
+  const listed = await client.callTool({ name: 'mol_list_structures', arguments: {} })
+  assert.match(listed.content[0].text, /structure: 1crn\.pdb/)
+  assert.match(listed.content[0].text, /pdl1: 4zqk\.pdb/)
+
+  const duplicate = await client.callTool({
+    name: 'mol_add_structure',
+    arguments: { path: join(repoRoot, 'fixtures/4zqk.pdb'), id: 'pdl1' },
+  })
+  assert.equal(duplicate.isError, true)
+  assert.match(duplicate.content[0].text, /already used/)
+
+  const removed = await client.callTool({
+    name: 'mol_remove_structure',
+    arguments: { structureId: 'pdl1' },
+  })
+  assert.equal(removed.isError, undefined)
+  assert.deepEqual(removed.structuredContent.scene.commands.at(-1), {
+    op: 'remove-structure',
+    structureId: 'pdl1',
+  })
+
+  const after = await client.callTool({ name: 'mol_list_structures', arguments: {} })
+  assert.doesNotMatch(after.content[0].text, /pdl1:/)
+
+  const scoped = await client.callTool({
+    name: 'mol_style',
+    arguments: { target: { kind: 'chain', chain: 'A', structureId: 'missing' } },
+  })
+  assert.equal(scoped.isError, true)
+  assert.match(scoped.content[0].text, /no active structure with id "missing"/)
+})
+
+test('rendezvous: inspection answer with appearance and selection groups', async t => {
+  const { client } = await withClient(t, { inspectTimeoutMs: 4000 })
+  const opened = await client.callTool({ name: 'mol_open', arguments: { path: fixture } })
+  const scene = opened.structuredContent.scene
+
+  const pending = client.callTool({
+    name: 'mol_inspect',
+    arguments: { target: { kind: 'selection' }, detail: 'residues', limit: 5 },
+  })
+  let poll
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    poll = await client.callTool({
+      name: 'mol_viewer_poll',
+      arguments: { sceneId: scene.sceneId, revision: scene.revision, timeoutMs: 1000 },
+    })
+    if (poll.structuredContent?.inspect !== null) break
+  }
+  assert.ok(poll?.structuredContent?.inspect)
+  const inspect = poll.structuredContent.inspect
+  assert.deepEqual(inspect.request, {
+    target: { kind: 'selection' },
+    detail: 'residues',
+    limit: 5,
+  })
+
+  const result = {
+    target: 'selection',
+    detail: 'residues',
+    atoms: 43,
+    residues: 5,
+    chains: 1,
+    models: 1,
+    counts: [{ compId: 'ASP', kind: 'polymer', residues: 1, atoms: 8 }],
+    residueRows: [{
+      chain: 'E',
+      seqId: 44,
+      labelSeqId: 44,
+      compId: 'ASP',
+      kind: 'polymer',
+      atoms: 8,
+      x: 1,
+      y: 2,
+      z: 3,
+    }],
+    styles: [{
+      component: 'Polymer',
+      type: 'cartoon',
+      color: 'chain-id',
+      size: 'uniform',
+      baseColor: '#1b9e77',
+      visibleColor: '#22bb5b',
+      overlays: [{ source: 'selection', color: '#33ff1a', strength: 0.3, label: 'selection' }],
+    }],
+    appearance: {
+      baseColor: '#1b9e77',
+      visibleColor: '#22bb5b',
+      overlays: [{ source: 'selection', color: '#33ff1a', strength: 0.3, label: 'selection' }],
+    },
+    selection: {
+      entries: 2,
+      atoms: 60,
+      residues: 7,
+      groups: [{ atoms: 43, residues: 5 }, { atoms: 17, residues: 2 }],
+    },
+    truncated: false,
+  }
+  const data = gzipSync(Buffer.from(JSON.stringify({ ok: true, result }))).toString('base64')
+  await client.callTool({
+    name: 'mol_inspect_deliver',
+    arguments: { queryId: inspect.queryId, data },
+  })
+
+  const inspected = await pending
+  assert.equal(inspected.isError, undefined)
+  assert.equal(inspected.structuredContent, undefined)
+  const text = inspected.content[0].text
+  assert.match(text, /selection: 2 entries, 7 residues, 60 atoms \(entries: 5 residues\/43 atoms, 2 residues\/17 atoms\)/)
+  assert.match(text, /base #1b9e77 -> visible #22bb5b/)
+  assert.match(text, /- selection #33ff1a strength 0\.3 on selection/)
+})
+
+test('rendezvous: alignment metrics and read-only TM-score', async t => {
+  const { client } = await withClient(t, { alignTimeoutMs: 4000, tmScoreTimeoutMs: 4000 })
+  const opened = await client.callTool({ name: 'mol_open', arguments: { path: fixture } })
+  const scene = opened.structuredContent.scene
+  await client.callTool({
+    name: 'mol_add_structure',
+    arguments: { path: join(repoRoot, 'fixtures/4zqk.pdb'), id: 'pdl1' },
+  })
+
+  const alignPromise = client.callTool({
+    name: 'mol_align',
+    arguments: { reference: 'structure', target: 'pdl1', method: 'tm-align' },
+  })
+  let poll
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    poll = await client.callTool({
+      name: 'mol_viewer_poll',
+      arguments: { sceneId: scene.sceneId, revision: scene.revision, timeoutMs: 1000 },
+    })
+    if (poll.structuredContent?.scene?.commands.some(command => command.op === 'align')) break
+  }
+  const polledScene = poll.structuredContent.scene
+  const commandIndex = polledScene.commands.findIndex(command => command.op === 'align')
+  assert.ok(commandIndex >= 0)
+  const alignment = {
+    method: 'tm-align',
+    reference: 'structure',
+    target: 'pdl1',
+    rmsd: 1.23,
+    alignedLength: 110,
+    tmScoreA: 0.9123,
+    tmScoreB: 0.9012,
+  }
+  await client.callTool({
+    name: 'mol_align_deliver',
+    arguments: {
+      sceneId: scene.sceneId,
+      commandIndex,
+      data: JSON.stringify({ ok: true, result: alignment }),
+    },
+  })
+  const aligned = await alignPromise
+  assert.equal(aligned.isError, undefined)
+  assert.equal(
+    aligned.structuredContent,
+    undefined,
+    'mol_align must return text; structuredContent would hide the metrics from the model',
+  )
+  assert.match(aligned.content[0].text, /RMSD 1\.23 A/)
+  assert.match(aligned.content[0].text, /TM-score 0\.9123\/0\.9012/)
+
+  const tmPromise = client.callTool({
+    name: 'mol_tmscore',
+    arguments: {
+      reference: { kind: 'chain', chain: 'A', structureId: 'structure' },
+      target: { kind: 'chain', chain: 'A', structureId: 'pdl1' },
+    },
+  })
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    poll = await client.callTool({
+      name: 'mol_viewer_poll',
+      arguments: { sceneId: scene.sceneId, revision: polledScene.revision, timeoutMs: 1000 },
+    })
+    if (poll.structuredContent?.tmscore !== null) break
+  }
+  assert.ok(poll?.structuredContent?.tmscore)
+  const tmscore = poll.structuredContent.tmscore
+  assert.deepEqual(tmscore.request.reference, { kind: 'chain', chain: 'A', structureId: 'structure' })
+  await client.callTool({
+    name: 'mol_tmscore_deliver',
+    arguments: {
+      queryId: tmscore.queryId,
+      data: JSON.stringify({
+        ok: true,
+        result: {
+          method: 'tm-align',
+          reference: 'chain A in structure structure',
+          target: 'chain A in structure pdl1',
+          rmsd: 2.34,
+          tmScoreA: 0.8,
+          tmScoreB: 0.7,
+          alignedLength: 90,
+          referenceAtoms: 100,
+          targetAtoms: 95,
+        },
+      }),
+    },
+  })
+  const scored = await tmPromise
+  assert.equal(scored.isError, undefined)
+  assert.match(scored.content[0].text, /TM-score 0\.8000\/0\.7000/)
+  assert.match(scored.content[0].text, /No structure was moved/)
 })
 
 test('capture times out with a model-readable error when no app claims it', async t => {

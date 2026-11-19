@@ -14,6 +14,17 @@ import { summarizeStructure } from '@gcszhn/mol4agent-core/parse'
 /** Where a scene came from; agent tools only mutate the agent scene. */
 export type SceneSource = 'agent' | 'file'
 
+/** One structure in a scene, without its bytes. */
+export interface SceneStructureSnapshot {
+  readonly id: string
+  readonly label: string
+  readonly format: MolFormat
+  /** Host resource URI for a file-viewer structure; absent for workspace files. */
+  readonly fileResourceUri?: string
+  /** The host resource is still gzip-encoded and must be decoded by the app. */
+  readonly fileGzip?: boolean
+}
+
 /** JSON-safe scene description sent to the app and stored in tool results. */
 export interface SceneSnapshot {
   readonly sceneId: string
@@ -21,11 +32,20 @@ export interface SceneSnapshot {
   readonly label: string
   readonly format: MolFormat
   readonly source: SceneSource
+  /** Every structure ever added; removed structures stay for command replay. */
+  readonly structures: readonly SceneStructureSnapshot[]
   /** Host resource URI for a file viewer; absent for agent-opened scenes. */
   readonly fileResourceUri?: string
   /** The host resource is still gzip-encoded and must be decoded by the app. */
   readonly fileGzip?: boolean
   readonly commands: readonly MolCommand[]
+}
+
+/** One structure plus its bytes and parsed summary. */
+export interface SceneStructureRecord extends SceneStructureSnapshot {
+  readonly path: string
+  readonly bytes: Uint8Array
+  readonly summary?: StructureSummary
 }
 
 /** One open structure plus its bytes and cumulative command log. */
@@ -35,6 +55,7 @@ export interface SceneRecord {
   readonly label: string
   readonly format: MolFormat
   readonly source: SceneSource
+  readonly structures: readonly SceneStructureRecord[]
   readonly bytes: Uint8Array
   readonly fileResourceUri?: string
   readonly fileGzip?: boolean
@@ -99,12 +120,23 @@ export class SceneStore {
     readonly commands: readonly MolCommand[]
   }, source: SceneSource, makeActive: boolean): SceneSnapshot {
     const summary = safeSummary(input.bytes, input.format)
+    const primary: SceneStructureRecord = {
+      id: 'structure',
+      path: input.path,
+      label: input.label,
+      format: input.format,
+      bytes: input.bytes,
+      ...(input.fileResourceUri === undefined ? {} : { fileResourceUri: input.fileResourceUri }),
+      ...(input.fileGzip === undefined ? {} : { fileGzip: input.fileGzip }),
+      ...(summary === undefined ? {} : { summary }),
+    }
     const record: SceneRecord = {
       sceneId: randomUUID(),
       path: input.path,
       label: input.label,
       format: input.format,
       source,
+      structures: [primary],
       bytes: input.bytes,
       ...(input.fileResourceUri === undefined ? {} : { fileResourceUri: input.fileResourceUri }),
       ...(input.fileGzip === undefined ? {} : { fileGzip: input.fileGzip }),
@@ -117,6 +149,53 @@ export class SceneStore {
     this.evictOldScenes()
     this.notify()
     return snapshotOf(record)
+  }
+
+  /**
+   * Add a structure to the active agent scene without touching file tabs.
+   *
+   * The structure id must be unique across everything ever added to this scene:
+   * commands replay from the full list, so reusing an id after removal would
+   * make the replayed hierarchy ambiguous.
+   */
+  addAgentStructure(input: {
+    readonly id: string
+    readonly path: string
+    readonly label: string
+    readonly format: MolFormat
+    readonly bytes: Uint8Array
+  }): SceneSnapshot | null {
+    const current = this.agentScene
+    if (current === null) return null
+    if (current.structures.some(structure => structure.id === input.id)) {
+      throw new Error(`structure id "${input.id}" is already used in this scene; choose another id`)
+    }
+    const summary = safeSummary(input.bytes, input.format)
+    const structure: SceneStructureRecord = {
+      id: input.id,
+      path: input.path,
+      label: input.label,
+      format: input.format,
+      bytes: input.bytes,
+      ...(summary === undefined ? {} : { summary }),
+    }
+    const record: SceneRecord = {
+      ...current,
+      structures: [...current.structures, structure],
+      revision: current.revision + 1,
+    }
+    this.agentScene = record
+    this.byId.set(record.sceneId, record)
+    this.notify()
+    return snapshotOf(record)
+  }
+
+  /** The structure record for a scene, by id, or the primary when omitted. */
+  structure(sceneId: string, structureId?: string): SceneStructureRecord | undefined {
+    const record = this.byId.get(sceneId)
+    if (record === undefined) return undefined
+    if (structureId === undefined) return record.structures[0]
+    return record.structures.find(structure => structure.id === structureId)
   }
 
   /** Append one command to the agent scene. Returns null when nothing is open. */
@@ -203,9 +282,36 @@ function snapshotOf(record: SceneRecord): SceneSnapshot {
     label: record.label,
     format: record.format,
     source: record.source,
+    structures: record.structures.map(structure => ({
+      id: structure.id,
+      label: structure.label,
+      format: structure.format,
+      ...(structure.fileResourceUri === undefined ? {} : { fileResourceUri: structure.fileResourceUri }),
+      ...(structure.fileGzip === undefined ? {} : { fileGzip: structure.fileGzip }),
+    })),
     ...(record.fileResourceUri === undefined ? {} : { fileResourceUri: record.fileResourceUri }),
     ...(record.fileGzip === undefined ? {} : { fileGzip: record.fileGzip }),
     commands: record.commands,
+  }
+}
+
+/** Structures still present after replaying every `remove-structure` command. */
+export function activeStructures(
+  scene: Pick<SceneSnapshot, 'structures' | 'commands'>,
+): readonly SceneStructureSnapshot[] {
+  const removed = new Set<string>()
+  for (const command of scene.commands) {
+    if (command.op === 'remove-structure') removed.add(command.structureId)
+  }
+  return scene.structures.filter(structure => !removed.has(structure.id))
+}
+
+/** Next generated structure id, skipping ids already used in the scene. */
+export function nextStructureId(structures: readonly { readonly id: string }[]): string {
+  const used = new Set(structures.map(structure => structure.id))
+  for (let index = 2; ; index += 1) {
+    const candidate = `structure-${String(index)}`
+    if (!used.has(candidate)) return candidate
   }
 }
 

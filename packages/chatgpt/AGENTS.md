@@ -26,6 +26,13 @@ Codex's MCP extension file viewer.
   replaces the agent scene. Each app binds to its initial `sceneId`, ignores
   scenes with another id, and polls with its own mode (`agent`/`file`). Never
   let a new `mol_open` hijack an older tab.
+- A scene holds a list of structures. `mol_open` creates primary id
+  `structure`; `mol_add_structure` appends without replacing; selectors may
+  carry `structureId`. Removed structures stay in the snapshot so the command
+  log replays, and `activeStructures()` filters them for tools. Ids are never
+  reused in one scene. The app loads the primary with `viewer.load(..., {id})`
+  and then calls `viewer.addStructure` for every unseen id before applying
+  commands.
 - `mol_capture` is a plain tool with **no** viewer `_meta`: the already-mounted
   agent tab claims the pending capture through its normal long poll. Adding a
   UI template mounts a second viewer per screenshot and resets the camera.
@@ -34,8 +41,9 @@ Codex's MCP extension file viewer.
 - A new model-facing tool is a cross-package change: update core semantics if
   needed, the DSH adapter and prompt, this adapter, and every relevant README in
   the same change. Transport-only app tools (`mol_viewer_poll`,
-  `mol_capture_deliver`, `mol_capture_fail`) stay adapter-internal and
-  `_meta.ui.visibility: ["app"]`.
+  `mol_capture_deliver`, `mol_capture_fail`, `mol_inspect_deliver`,
+  `mol_inspect_fail`, `mol_tmscore_deliver`, `mol_tmscore_fail`,
+  `mol_align_deliver`) stay adapter-internal and `_meta.ui.visibility: ["app"]`.
 - `mol_view_file` is the file-tree entrypoint. Its `_meta["openai/ui"]` must
   contain `entrypoints: [{ type: "file", extensions: [...] }]`, plus
   `_meta.ui.resourceUri` and `openai/outputTemplate`. The host calls it with
@@ -45,6 +53,10 @@ Codex's MCP extension file viewer.
   and list the gzip suffixes in the file-viewer entrypoint. Only a raw
   host-resource fallback is decoded again by the app (`DecompressionStream`);
   scene snapshots mark it with `fileGzip`.
+- Serve `mol4agent://structure/{sceneId}` for the primary structure and
+  `mol4agent://structure/{sceneId}/{structureId}` for every structure in a
+  multi-structure scene. `mol_view_file` may use the host `fileResourceUri` for
+  its single primary structure only.
 
 ## Distribution
 
@@ -78,7 +90,7 @@ Codex's MCP extension file viewer.
 - Use a short timer (not `requestAnimationFrame`) before `viewer.capture()`;
   headless hosts can throttle rAF and hang the capture.
 
-## Capture rendezvous
+## Capture, inspection, and alignment rendezvous
 
 - `mol_capture` enqueues a `PendingCapture` and blocks; the app claims it from
   the long poll, renders, and commits with `mol_capture_deliver`. Do not replace
@@ -90,6 +102,15 @@ Codex's MCP extension file viewer.
   rejects promptly instead of waiting for the timeout.
 - Validate the PNG signature and size on the server before saving. Captures go
   under `<workspace>/.mol4agent/captures/` and must never be committed.
+- `mol_inspect` and `mol_tmscore` are read-only queries claimed from the same
+  long poll. They are never `MolCommand`s. Inspection text is returned as the
+  content block only: Codex surfaces `structuredContent` in place of `content`,
+  which would hide the formatted result. Inspection payloads are gzipped under
+  `MAX_INSPECT_PAYLOAD_BYTES`; TM-score answers are small plain JSON.
+- `mol_align` appends a replayable `align` command and parks the tool until the
+  app reports that command's result through `mol_align_deliver`. The rendezvous
+  key is `sceneId` + command index, never the scene revision. A replay in a new
+  tab may report the same command again; an unmatched report is success.
 
 ## Build and packaging
 

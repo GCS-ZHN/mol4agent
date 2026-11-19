@@ -17,6 +17,13 @@ in the conversation and lets the agent operate it with `mol_*` tools.
 - **Agent-operated page**: representation, color, selection/highlight, focus,
   measurement, and capture all run through tools while the human watches the
   same page change.
+- **Multiple structures + alignment**: `mol_add_structure` loads a second
+  structure into the same scene; `mol_align` superposes it onto a reference with
+  Mol* TM-align or sequence-guided alignment; `mol_tmscore` scores two
+  selections without moving anything.
+- **Live inspection**: `mol_inspect` reads the running Mol* page, including
+  per-entry selection groups, representation styles, base colours, and the
+  visible colour after selection/overpaint overlays.
 - **Screenshot round trip**: `mol_capture` blocks while the open app renders the
   viewport, then returns the PNG in the tool result and saves a copy under
   `.mol4agent/captures/`.
@@ -103,6 +110,19 @@ their scenes untouched.
 Each app loads its structure resource once and applies only new commands; a
 newly mounted card reconstructs its picture from a full snapshot.
 
+### Multiple structures and alignment
+
+`mol_open` creates the primary structure with id `structure`.
+`mol_add_structure` appends another structure to the same scene under a stable
+id (`pdl1`, `structure-2`, ...), and every selector accepts an optional
+`structureId` to disambiguate identical chain ids. `mol_list_structures`
+reports the active ids.
+
+`mol_align` appends a replayable `align` command and waits for the mounted tab
+to report the metrics. The command stays in the scene log, so a later tab
+reproduces the superposition. `mol_tmscore` is a read-only query and never
+moves a structure. Both use the same long-poll rendezvous as inspection.
+
 ### Capture rendezvous
 
 `mol_capture` enqueues a request and waits. The agent tab opened by `mol_open`
@@ -123,15 +143,23 @@ Model-facing tools:
 | `mol_interface` | `path`, `chainsA`, `chainsB`, `cutoff?` | Find interface residues between two chain groups (default 8 Å) in PDB-like files. |
 | `mol_fetch` | `entry_id`, `target_path`, `source_db?` | Download a structure from an online database and save it at `target_path`. `source_db` defaults to `rcsb-pdb`; see [database sources](#database-sources). A directory target (or trailing slash) appends the source file name, and a suffix-less path gets the source suffix. Returns the saved path plus a summary. |
 | `mol_open` | `path`, `type?`, `color?`, `colorParams?`, `select?`, `focus?` | Open a scene, render the MCP App card, and optionally highlight/focus a selection. |
+| `mol_add_structure` | `path`, `id?`, `type?`, `color?`, `colorParams?`, `focus?` | Add another structure to the active scene. Returns the stable structure id used by selectors and alignment tools. |
+| `mol_list_structures` | — | List active structure ids, labels, and formats. |
+| `mol_remove_structure` | `structureId` | Remove one structure from the scene; other structures and the tab remain. |
 | `mol_style` | `type?`, `color?`, `target?`, `replace?`, `colorParams?` | Replace the current representations by default (`replace: true`), or overlay one with `replace: false`. `target` only narrows the new representation's coverage. `colorParams.value` applies to `uniform` and accepts a CSS name (`"red"`), hex (`"#ff0000"`), or an integer (`16711680`); invalid colours are rejected and the result echoes the resolved hex. |
 | `mol_select` | `target`, `mode?`, `focus?` | Apply select/highlight interactivity. |
 | `mol_focus` | `target?` | Focus a selection or the whole structure. |
 | `mol_measure` | `kind`, `targets` | Add a distance (2), angle (3), or dihedral (4) measurement. |
+| `mol_inspect` | `target?`, `detail?`, `limit?` | Read the live viewer: totals, complete per-component counts, residue/atom rows, representation styles, `baseColor`/`visibleColor`, appearance overlays, and selection/focus groups. `target` accepts any selector plus `{"kind":"selection"}` and `{"kind":"focus"}`. |
+| `mol_align` | `reference`, `target`, `method?`, `referenceChain?`, `targetChain?` | Superpose `target` onto `reference` with `tm-align` (default) or `sequence`. Returns RMSD, aligned length, and TM-scores. |
+| `mol_tmscore` | `reference`, `target` | Read-only TM-align comparison of two selections; nothing is moved. |
 | `mol_capture` | `width?`, `height?`, `transparent?` | Return a PNG from the open app and save it under `.mol4agent/captures/`. |
 | `mol_view_file` | `file` | Host file-tree entrypoint; opens the selected file in the structure preview. Not model-callable. |
 
 App/host-only internal tools: `mol_viewer_poll`, `mol_capture_deliver`,
-`mol_capture_fail`, and `mol_view_file` (the file-tree entrypoint).
+`mol_capture_fail`, `mol_inspect_deliver`, `mol_inspect_fail`,
+`mol_tmscore_deliver`, `mol_tmscore_fail`, `mol_align_deliver`, and
+`mol_view_file` (the file-tree entrypoint).
 
 `color` selects the Mol* colour theme; `colorParams.value` only affects the
 `uniform` theme. Besides CSS names and hex strings it accepts `0x`/bare hex,
@@ -146,6 +174,12 @@ Selectors use the same JSON shapes as the DSH adapter:
 { "kind": "residues", "chain": "A", "start": 10, "end": 25 }
 { "kind": "residue", "chain": "A", "index": 42 }
 { "kind": "comp", "compId": "ATP" }
+```
+
+Add `structureId` to any selector when the scene holds more than one structure:
+
+```json
+{ "kind": "chain", "chain": "A", "structureId": "pdl1" }
 ```
 
 ### Database sources
@@ -179,7 +213,8 @@ the AlphaFold JSON API before downloading.
 | URI | Purpose |
 |---|---|
 | `ui://mol4agent/viewer.html` | Self-contained MCP App HTML (core + Mol* + official UI CSS, about 4.4 MiB). |
-| `mol4agent://structure/{sceneId}` | Raw bytes for the current scene, read by the app through the host. |
+| `mol4agent://structure/{sceneId}` | Raw bytes for the primary structure, read by the app through the host. |
+| `mol4agent://structure/{sceneId}/{structureId}` | Raw bytes for one structure in a multi-structure scene. |
 
 The MCP App MIME type is `text/html;profile=mcp-app`. The app resource declares no
 external CSP domains; the viewer and Mol* assets are inlined.
@@ -232,8 +267,8 @@ portable.
   the server can read bytes once and share `mol4agent://structure/{sceneId}`;
   if the path is unavailable it falls back to the app-scoped host resource.
 - **One active agent scene**: `mol_open` replaces the agent scene targeted by
-  model tools. Older agent tabs and file tabs stay on their own bound scenes.
-  `mol_capture` captures the active agent scene.
+  model tools; `mol_add_structure` appends to it. Older agent tabs and file tabs
+  stay on their own bound scenes. `mol_capture` captures the active agent scene.
 - **Capture needs a viewer**: `mol_capture` uses the agent tab that `mol_open`
   already mounted. Reopen the structure with `mol_open` if that tab was closed
   and retry. If the host blocks app→tool calls, the tool times out.

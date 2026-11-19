@@ -14,6 +14,11 @@ agent 通过 `mol_*` 工具直接操作它。
   （Codex 首次会按扩展名询问一次）；**Open with** 仍可切回内置文本/代码查看器。
 - **agent 操作同一页面**：表示、配色、选择/高亮、聚焦、测量、截图都走工具，
   人看到的是同一页面的实时变化。
+- **多结构与对齐**：`mol_add_structure` 在同一场景里加载第二个结构；
+  `mol_align` 用 Mol* TM-align 或 sequence 引导把目标叠到参考结构上；
+  `mol_tmscore` 只评分、不移动任何结构。
+- **实时感知**：`mol_inspect` 读取运行中的 Mol* 页面，包括按 selection entry
+  分组的统计、表示样式、基础颜色，以及叠加 selection/overpaint 后的可见颜色。
 - **截图回传**：`mol_capture` 阻塞等待打开页渲染视口，把 PNG 放回工具结果，
   同时保存到 `.mol4agent/captures/`。
 - **与 DSH 相同的分子语义**：适配器把相同的 `MolFormat`、选择器、命令、
@@ -89,6 +94,16 @@ store 保留一个**活跃 agent scene** 和多个独立的 **file-viewer scene*
 每个 app 只加载一次结构资源，之后只应用新增命令；新挂载的卡片用完整快照重建
 自己的画面。
 
+### 多结构与对齐
+
+`mol_open` 创建主结构，id 为 `structure`。`mol_add_structure` 用稳定 id
+（`pdl1`、`structure-2` 等）追加结构；任何选择器都可以加可选的
+`structureId`，用于区分同名链。`mol_list_structures` 列出当前活跃结构。
+
+`mol_align` 追加可重放的 `align` 命令，并等待已挂载 tab 回报指标；命令保留在
+场景日志里，后续新 tab 能重放同一叠加。`mol_tmscore` 是只读查询，不移动结构。
+两者和 inspection 复用同一套长轮询会合。
+
 ### 截图会合
 
 `mol_capture` 入队后等待；`mol_open` 打开的 agent tab 在下一次轮询里 claim，
@@ -107,15 +122,23 @@ store 保留一个**活跃 agent scene** 和多个独立的 **file-viewer scene*
 | `mol_interface` | `path`、`chainsA`、`chainsB`、`cutoff?` | 找两组链之间的界面残基（默认 8 Å），仅 PDB-like。 |
 | `mol_fetch` | `entry_id`、`target_path`、`source_db?` | 从在线数据库下载结构并保存到 `target_path`。`source_db` 默认 `rcsb-pdb`，见[数据库来源](#数据库来源)。目标为目录（或以 `/` 结尾）时自动追加来源文件名；无后缀的路径补上来源后缀。返回保存路径和结构摘要。 |
 | `mol_open` | `path`、`type?`、`color?`、`colorParams?`、`select?`、`focus?` | 打开场景、渲染 MCP App 卡片，可选高亮/聚焦。 |
+| `mol_add_structure` | `path`、`id?`、`type?`、`color?`、`colorParams?`、`focus?` | 向活跃场景追加结构，返回供选择器和对齐工具使用的稳定 id。 |
+| `mol_list_structures` | — | 列出活跃结构的 id、标签和格式。 |
+| `mol_remove_structure` | `structureId` | 从场景移除一个结构，其他结构和 tab 保持打开。 |
 | `mol_style` | `type?`、`color?`、`target?`、`replace?`、`colorParams?` | 默认替换当前表示（`replace: true`），传 `replace: false` 时叠加。`target` 只限定新表示的覆盖范围。`colorParams.value` 只对 `uniform` 生效，接受 CSS 颜色名（`"red"`）、十六进制（`"#ff0000"`）或整数（`16711680`）；非法颜色会被拒绝，结果会回显解析后的十六进制。 |
 | `mol_select` | `target`、`mode?`、`focus?` | 选择/高亮。 |
 | `mol_focus` | `target?` | 聚焦选择集或整体。 |
 | `mol_measure` | `kind`、`targets` | 距离（2）/角度（3）/二面角（4）。 |
+| `mol_inspect` | `target?`、`detail?`、`limit?` | 读取实时页面：总数、完整组分计数、残基/原子行、表示样式、`baseColor`/`visibleColor`、appearance 叠加层，以及 selection/focus 分组。`target` 接受任意选择器，外加 `{"kind":"selection"}` 和 `{"kind":"focus"}`。 |
+| `mol_align` | `reference`、`target`、`method?`、`referenceChain?`、`targetChain?` | 用 `tm-align`（默认）或 `sequence` 把 `target` 叠到 `reference` 上，返回 RMSD、对齐长度和 TM-score。 |
+| `mol_tmscore` | `reference`、`target` | 只读 TM-align 比较两个选择集，不移动结构。 |
 | `mol_capture` | `width?`、`height?`、`transparent?` | 从打开页返回 PNG，并保存到 `.mol4agent/captures/`。 |
 | `mol_view_file` | `file` | 文件树入口；在结构预览中打开选中的文件。模型不可调用。 |
 
 app/宿主专用内部工具：`mol_viewer_poll`、`mol_capture_deliver`、
-`mol_capture_fail`，以及文件树入口 `mol_view_file`。
+`mol_capture_fail`、`mol_inspect_deliver`、`mol_inspect_fail`、
+`mol_tmscore_deliver`、`mol_tmscore_fail`、`mol_align_deliver`，以及文件树
+入口 `mol_view_file`。
 
 `color` 选择 Mol* 颜色主题；`colorParams.value` 只影响 `uniform` 主题。
 除 CSS 颜色名和十六进制字符串外，还接受 `0x`/裸十六进制、`rgb()`/`rgba()`
@@ -129,6 +152,12 @@ app/宿主专用内部工具：`mol_viewer_poll`、`mol_capture_deliver`、
 { "kind": "residues", "chain": "A", "start": 10, "end": 25 }
 { "kind": "residue", "chain": "A", "index": 42 }
 { "kind": "comp", "compId": "ATP" }
+```
+
+场景中有多个结构时，任何选择器都可以加 `structureId`：
+
+```json
+{ "kind": "chain", "chain": "A", "structureId": "pdl1" }
 ```
 
 ### 数据库来源
@@ -160,7 +189,8 @@ app/宿主专用内部工具：`mol_viewer_poll`、`mol_capture_deliver`、
 | URI | 用途 |
 |---|---|
 | `ui://mol4agent/viewer.html` | 自包含 MCP App HTML（core + Mol* + 官方 UI CSS，约 4.4 MiB）。 |
-| `mol4agent://structure/{sceneId}` | 当前场景原始字节，由 app 经宿主持有者读取。 |
+| `mol4agent://structure/{sceneId}` | 主结构的原始字节，由 app 经宿主持有者读取。 |
+| `mol4agent://structure/{sceneId}/{structureId}` | 多结构场景中某个结构的原始字节。 |
 
 MCP App MIME 为 `text/html;profile=mcp-app`；资源不声明外部 CSP 域，viewer 与
 Mol* 资源全部内联。
@@ -210,9 +240,9 @@ codex plugin add mol4agent@mol4agent-local
 - **宿主资源回退**：文件树 viewer 优先用宿主 metadata 路径，让 server 读一次
   字节并通过 `mol4agent://structure/{sceneId}` 共享；路径不可用时才回退到
   app 作用域的宿主资源。
-- **只有一个活跃 agent scene**：`mol_open` 替换的是模型工具操作的 agent scene；
-  旧 agent tab 和文件 tab 保持各自绑定的 scene。`mol_capture` 截取活跃
-  agent scene。
+- **只有一个活跃 agent scene**：`mol_open` 替换模型工具操作的 agent scene；
+  `mol_add_structure` 向它追加结构。旧 agent tab 和文件 tab 保持各自绑定的
+  scene。`mol_capture` 截取活跃 agent scene。
 - **截图需要 viewer**：`mol_capture` 复用 `mol_open` 已挂载的 agent tab。
   该 tab 被关闭时先用 `mol_open` 重新打开，再重试截图。宿主禁止
   app→tool 调用时才会超时。
