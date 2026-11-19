@@ -25,6 +25,15 @@ changing core semantics.
 - Mutating tools append JSON commands to the shared store and emit a `scene`
   event; `mol_capture` enqueues in the shared hub and emits a `capture` event.
   Never push WebGL objects or bytes into scene commands.
+- `mol_inspect` and `mol_tmscore` are **reads**: they append no command,
+  enqueue in `InspectHub`/`TmScoreHub`, and emit `inspect`/`tmScore` events. The
+  GUI answers from the live viewer through `deliverInspect`/`deliverTmScore`, so
+  these answers must stay out of the scene log and must never be replayed from
+  it; only the running Mol* page knows human-made selections and panel styles.
+- `mol_align` **does** append a replayable `align` command. The tool waits in
+  `AlignHub` keyed by scene id + command index; the GUI reports the executed
+  result through `deliverAlign` after applying the scene. A duplicate report
+  after remount/replay is ignored when no waiter exists.
 
 ### Per-location loading (the biggest trap)
 
@@ -40,13 +49,17 @@ const globalKey = '__mol4agent_opencode_state__'
 const g = globalThis as unknown as Record<string, unknown>
 const store = (g[`${globalKey}store`] ??= new SceneStore()) as SceneStore
 const captures = (g[`${globalKey}captures`] ??= new CaptureHub()) as CaptureHub
+const inspections = (g[`${globalKey}inspections`] ??= new InspectHub()) as InspectHub
+const tmScores = (g[`${globalKey}tmScores`] ??= new TmScoreHub()) as TmScoreHub
+const aligns = (g[`${globalKey}aligns`] ??= new AlignHub()) as AlignHub
 ```
 
-Do not move `store`/`captures` back into `setup` or onto a module-level `const`;
-both are per-location. `globalThis` is per-process, which is the scope the RPC
-event broadcast reaches. The key is stable and carries no schema version while
-the package is unreleased; a dev hot reload that changes the store shape can
-keep the old instance (`??=`), so restart the server after such a change.
+Do not move `store`/`captures`/`inspections`/`tmScores`/`aligns` back into
+`setup` or onto a module-level `const`; all are per-location. `globalThis` is per-process, which
+is the scope the RPC event broadcast reaches. The key is stable and carries no
+schema version while the package is unreleased; a dev hot reload that changes
+the store shape can keep the old instance (`??=`), so restart the server after
+such a change.
 
 ### Remote sessions (client vs. server namespace)
 
@@ -74,16 +87,18 @@ keep the old instance (`??=`), so restart the server after such a change.
   desktop global config for the panel, remote server config for tools. Keep this
   matrix in both READMEs.
 - The web app served by `opencode serve` has no plugin-GUI bridge, so the panel
-  never mounts there: `mol_open` records the scene but `mol_capture` times out.
-  The viewer depends on the desktop app's local GUI-plugin host; document the
-  browser as tool-only rather than implying parity with the desktop.
+  never mounts there: `mol_open` records the scene but `mol_capture` and
+  `mol_inspect` time out. The viewer depends on the desktop app's local
+  GUI-plugin host; document the browser as tool-only rather than implying
+  parity with the desktop.
 
 ### Session buckets and tab targeting
 
 - One server process serves several sessions. `SceneStore` is **bucketed per
   `sessionID`** (`open`/`push`/`snapshot`/`active`/`list` all take it), so one
   session's `mol_open` or style never mutates another session's panel. The GUI
-  filters `listScenes`/`pendingCaptures` and `scene`/`capture` events by
+  filters `listScenes`/`pendingCaptures`/`pendingInspections`/
+  `pendingTmScores` and `scene`/`capture`/`inspect`/`tmScore` events by
   `ctx.sessions.current()`.
 - Each bucket keeps path-keyed tabs; `mol_open` returns `tab` (the absolute
   path) and every scene tool accepts it to target a non-active tab. Without
@@ -100,16 +115,28 @@ keep the old instance (`??=`), so restart the server after such a change.
 - `events.emit` broadcasts; `events.on`/`events.subscribe` are live-only. The
   GUI must run `listScenes({ sessionID })` on mount **and whenever the routed
   session changes** (`createEffect` on `ctx.sessions.current()`), plus claim
-  `pendingCaptures({ sessionID })` at the same points — not only follow events.
-- `scene` and `capture` payloads carry `sessionID`. A `scene` event from
-  `mol_open`/`openPath` also carries `path` and `open: true`; the GUI opens that
-  tab, and queues it when another session is routed (then opens it on switch).
-  `capture` carries `path` so the GUI can reveal the right tab without a scene
-  lookup. Ignore payloads for another session; do not deliver their captures in
-  the current one.
+  `pendingCaptures({ sessionID })` and `pendingInspections({ sessionID })` at
+  the same points — not only follow events.
+- `scene`, `capture`, and `inspect` payloads carry `sessionID`. A `scene` event
+  from `mol_open`/`openPath` also carries `path` and `open: true`; the GUI opens
+  that tab, and queues it when another session is routed (then opens it on
+  switch). `capture` and `inspect` carry `path` so the GUI can reveal the right
+  tab without a scene lookup. Ignore payloads for another session; do not
+  deliver their captures or answers in the current one.
 - Event payloads are objects (`event.data`). Method inputs are JSON Schema, so
   handlers receive `unknown`; cast and validate defensively. Keep the
-  `pendingCaptures` output schema in sync with what the server returns.
+  `pendingCaptures`/`pendingInspections` output schemas in sync with what the
+  server returns.
+- `deliverInspect`, `deliverTmScore`, and `deliverAlign` carry structured RPC
+  JSON. The server validates each answer before resolving its waiter; a
+  malformed payload returns `{ ok: false }` and leaves the query pending (or
+  times out). Keep those boundary checks when adding fields the formatters
+  index.
+- A scene snapshot carries `structures` (id/path/label/format/binary). The GUI
+  loads each structure through `fetchStructure` and calls `addStructure` before
+  replaying commands; do not flatten a multi-structure scene back to one
+  `fetchScene` payload. Removed structures stay in the list so replay can apply
+  their `remove-structure` command.
 
 ## Tools
 
@@ -121,6 +148,22 @@ keep the old instance (`??=`), so restart the server after such a change.
 - OpenCode tool results have **no inline image content** (only `text`/`file`).
   `mol_capture` returns the saved path and a `file` content reference; it cannot
   attach the PNG to the model context. Document this in the README.
+- `mol_inspect` accepts `selection`/`focus` targets in addition to selectors.
+  Validate a structure selector before queueing; `selection`/`focus` are live
+  viewer state and bypass structure validation. `detail` and `limit` are checked
+  before queueing so an invalid call never leaves a pending entry.
+- Every selector variant accepts optional `structureId`. `validateTarget`
+  validates a scoped selector against that structure and an unscoped one
+  against any loaded structure; never assume the primary summary is the whole
+  scene.
+- `mol_add_structure`/`mol_list_structures`/`mol_remove_structure` own the
+  multi-structure lifecycle. `mol_align`/`mol_tmscore` require structure ids and
+  polymer trace atoms; report core's structured failure text instead of
+  inventing metrics.
+- `ChainSummary.compIds` is a **display list capped at 12**, not a complete
+  component index. Do not reject a `comp` selector solely because it is absent
+  while a chain is saturated (`validateSelectorAgainst` tolerates that case);
+  asking core for a complete index is a core change.
 
 ## GUI build (esbuild + JSX-free Solid)
 
@@ -150,6 +193,16 @@ keep the old instance (`??=`), so restart the server after such a change.
 - core imports Mol*'s theme CSS as a default-exported string; esbuild's
   `loader: { '.css': 'text' }` provides it. Route core through one lazy
   `loadCore()` so its dependency graph is never inlined eagerly.
+- `StructureViewer` registers the live viewer with a `whenIdle()` that calls
+  `sync` for the current scene and then awaits the command queue. An inspection
+  or TM-score query must await it before calling the viewer: relying only on the
+  Solid effect can read the previous style when a scene command landed but its
+  effect has not queued the apply yet. Do not query from a hidden/unregistered
+  viewer either; reveal the tab and wait for registration first.
+- `sync` adds every scene structure through `addStructure` before applying
+  commands, tracks loaded ids, and reports each executed `align` result with its
+  absolute command index. Reset the loaded ids on a scene-id change; never
+  reload a structure on every revision.
 
 ## Human open
 
@@ -175,9 +228,12 @@ keep the old instance (`??=`), so restart the server after such a change.
   hot-reloads in every window on `dist/gui.cjs` rebuild. A plugin whose GUI
   first-load **failed** ("requires a module the app does not share") needs a
   desktop-app restart — it does not retry on rebuild.
-- Verify with real fixtures (1CRN/1ATP/aspirin/7CZD): `mol_info`,
+- Verify with real fixtures (1CRN/1ATP/aspirin/7CZD/4ZQK): `mol_info`,
   `mol_interface`, `mol_open` + `mol_style`/`mol_select`/`mol_focus`/
-  `mol_measure`, and `mol_capture` returning a non-trivial PNG. Check
+  `mol_measure`, `mol_inspect` (summary counts, a styled target, `selection`
+  after `mol_select mode:"select"`, `atoms` detail, base/visible colours,
+  two tabs independently), `mol_add_structure` + `mol_align` + `mol_tmscore` on
+  7CZD chain B and 4ZQK chain A, and `mol_capture` returning a non-trivial PNG. Check
   `~/Library/Application Support/ai.opencode.desktop/logs/<run>/renderer.log`
   for the GUI console, and `~/.local/share/opencode/log/opencode.log` for the
   server.
