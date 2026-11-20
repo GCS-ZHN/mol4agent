@@ -40,7 +40,7 @@ pnpm add @gcszhn/mol4agent-core molstar
 pnpm add react
 ```
 
-本包已发布到 npm（`@gcszhn/mol4agent-core@0.4.0`）；在 monorepo 内 pnpm 会链接
+本包已发布到 npm（`@gcszhn/mol4agent-core@0.4.1`）；在 monorepo 内 pnpm 会链接
 workspace 版本。`molstar` 和 `react` 是 peer dependencies。DSH 适配包把 Mol*
 打进单个 client bundle；普通 web 应用可以直接使用本包。
 
