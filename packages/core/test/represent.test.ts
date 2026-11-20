@@ -11,8 +11,10 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { PluginContext } from 'molstar/lib/mol-plugin/context.js'
 import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js'
+import { StructureElement } from 'molstar/lib/mol-model/structure.js'
 import { applyRepresentation } from '../src/represent.ts'
-import type { RepresentCommand } from '../src/protocol.ts'
+import { selectorExpression } from '../src/select.ts'
+import type { RepresentCommand, StructureSelector } from '../src/protocol.ts'
 
 const fixture = (name: string): string => readFileSync(new URL(`../../../fixtures/${name}`, import.meta.url), 'utf8')
 
@@ -37,6 +39,26 @@ function styleKey(plugin: PluginContext): string[] {
           colorTheme?: { name?: string }
         } | undefined
         styles.push(`${label}:${values?.type?.name}/${values?.colorTheme?.name}`)
+      }
+    }
+  }
+  return styles.sort()
+}
+
+function stylesCovering(plugin: PluginContext, selector: StructureSelector): string[] {
+  const expression = selectorExpression(selector)
+  const styles: string[] = []
+  for (const structure of plugin.managers.structure.hierarchy.current.structures) {
+    for (const component of structure.components) {
+      const data = component.cell.obj?.data
+      if (data === undefined) continue
+      if (StructureElement.Loci.isEmpty(StructureElement.Loci.fromExpression(data, expression))) continue
+      for (const representation of component.representations) {
+        const values = representation.cell.params?.values as {
+          type?: { name?: string }
+          colorTheme?: { name?: string }
+        } | undefined
+        styles.push(`${values?.type?.name}/${values?.colorTheme?.name}`)
       }
     }
   }
@@ -97,20 +119,50 @@ test('replace: false adds the cartoon preset on top of an existing non-preset st
   ])
 })
 
-test('replace: true with target clears the scene and covers only the target', async t => {
+test('replace: true with target replaces only representations over that target', async t => {
+  const plugin = await load('7czd.pdb')
+  t.after(() => plugin.dispose())
+
+  await apply(plugin, { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } })
+  const chainA = { kind: 'chain', chain: 'A' } as const
+  const chainB = { kind: 'chain', chain: 'B' } as const
+  assert.ok(stylesCovering(plugin, chainA).includes('cartoon/chain-id'))
+  assert.ok(stylesCovering(plugin, chainB).includes('cartoon/chain-id'))
+
+  await apply(plugin, {
+    op: 'represent',
+    style: { type: 'ball-and-stick', color: 'uniform', colorParams: { value: 'red' } },
+    target: chainB,
+  })
+
+  assert.ok(stylesCovering(plugin, chainA).includes('cartoon/chain-id'), 'chain A keeps its cartoon')
+  assert.equal(stylesCovering(plugin, chainA).includes('ball-and-stick/uniform'), false, 'chain A is not repainted')
+  assert.equal(stylesCovering(plugin, chainB).includes('cartoon/chain-id'), false, 'chain B cartoon is replaced')
+  assert.ok(stylesCovering(plugin, chainB).includes('ball-and-stick/uniform'), 'chain B gets the new style')
+})
+
+test('replace: true with target removes only components fully inside it', async t => {
   const plugin = await load('1atp.pdb')
   t.after(() => plugin.dispose())
 
   await apply(plugin, { op: 'represent', style: { type: 'cartoon', color: 'chain-id' } })
   assert.ok(componentLabels(plugin).includes('Polymer'))
+  assert.ok(componentLabels(plugin).includes('Ligand'))
 
   await apply(plugin, {
     op: 'represent',
     style: { type: 'ball-and-stick', color: 'uniform', colorParams: { value: 'red' } },
     target: { kind: 'ligand' },
   })
-  assert.deepEqual(styleKey(plugin), ['mol4agent selection:ball-and-stick/uniform'])
-  assert.deepEqual(componentLabels(plugin), ['mol4agent selection'])
+
+  // No existing representation still draws the targeted ligand atoms; only
+  // the new target component does. Any non-target remainder may stay for
+  // atoms the ligand query did not select.
+  assert.deepEqual(stylesCovering(plugin, { kind: 'ligand' }), ['ball-and-stick/uniform'])
+  // The polymer component is outside the target, so its cartoon stays.
+  assert.ok(componentLabels(plugin).includes('Polymer'))
+  assert.ok(stylesCovering(plugin, { kind: 'protein' }).includes('cartoon/chain-id'))
+  assert.equal(stylesCovering(plugin, { kind: 'protein' }).includes('ball-and-stick/uniform'), false)
 })
 
 test('replace: false with target keeps the whole scene and adds the selection', async t => {

@@ -42,6 +42,20 @@ async function run(): Promise<void> {
     style: { type: 'cartoon', color: 'uniform', colorParams: { value: 0xef4444 } },
     target: { kind: 'all', structureId: 'target' },
   })
+  // Issue #31: replacing chain B must not erase the cartoon on chain A.
+  const replaceTarget = await viewer.execute({
+    op: 'represent',
+    style: { type: 'ball-and-stick', color: 'uniform', colorParams: { value: 0xef4444 } },
+    target: { kind: 'chain', chain: 'B', structureId: 'reference' },
+  })
+  const inspectReferenceA = viewer.inspect({
+    target: { kind: 'chain', chain: 'A', structureId: 'reference' },
+    detail: 'summary',
+  })
+  const inspectReferenceB = viewer.inspect({
+    target: { kind: 'chain', chain: 'B', structureId: 'reference' },
+    detail: 'summary',
+  })
   const tmscoreBefore = viewer.tmScore({
     reference: { kind: 'chain', chain: 'B', structureId: 'reference' },
     target: { kind: 'chain', chain: 'A', structureId: 'target' },
@@ -96,6 +110,9 @@ async function run(): Promise<void> {
       added,
       styleReference,
       styleTarget,
+      replaceTarget,
+      inspectReferenceA,
+      inspectReferenceB,
       tmscoreBefore,
       align,
       sequence,

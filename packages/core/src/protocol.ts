@@ -346,9 +346,10 @@ export interface RepresentCommand {
   readonly style: StyleSpec
   readonly target?: StructureSelector
   /**
-   * `true` (default): remove the existing representations in the command's
-   * scope, then draw the new one. `target` narrows only the new
-   * representation's coverage. `false`: keep them and add the new one.
+   * `true` (default): replace the existing representations over the command's
+   * scope, then draw the new one. Without `target` that is the whole scoped
+   * structure; with `target` only representations covering it are replaced.
+   * `false`: keep them and add the new one.
    */
   readonly replace?: boolean
 }

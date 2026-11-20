@@ -165,7 +165,7 @@ interface StructureData {
 
 | `op` | 字段 | 效果 |
 |---|---|---|
-| `represent` | `style: StyleSpec`，可选 `target`，可选 `replace` | `replace` 默认 `true`：先删除当前表示，再绘制新表示。`target` 只限定新表示覆盖哪部分；`replace: true` 时整个场景仍会先被清空；若 `target.structureId` 已指定，则只清空该结构。`replace: false` 保留所有已有表示并叠加新表示，可作用于整个结构，也可作用于 `target`（新建 Mol* component）。`type` 为 `cartoon` 或省略时，core 用 Mol* 的 `polymer-and-ligand` preset，保证 HETATM 配体仍然可见。`quality` 协议里有字段，但目前尚未生效。 |
+| `represent` | `style: StyleSpec`，可选 `target`，可选 `replace` | `replace` 默认 `true`：替换已有表示后再绘制新表示。不传 `target` 时替换整个作用域内的结构（`structureId` 可限定为单个结构）。传 `target` 时只替换覆盖该 target 的表示：完全落在 target 内的 component 会被移除，部分覆盖的 component 在非 target 部分保留原样式，场景其余部分保持不变。`replace: false` 保留所有已有表示并叠加新表示，可作用于整个结构，也可作用于 `target`（新建 Mol* component）。`type` 为 `cartoon` 或省略时，core 用 Mol* 的 `polymer-and-ligand` preset，保证 HETATM 配体仍然可见。`quality` 协议里有字段，但目前尚未生效。 |
 | `select` | `target`，`mode?: 'select' \| 'highlight'`，`focus?` | 应用 Mol* 选择交互；`focus` 会移动镜头 |
 | `clear-selection` | `mode?` | 清除 select/highlight 交互 |
 | `focus` | 可选 `target` | 聚焦选择或整个结构 |
@@ -453,8 +453,9 @@ const png = await viewer.capture({
 
 全局 `cartoon` 使用 `polymer-and-ligand` preset；`colorParams` 会传入它的
 theme，所以 `uniform` 颜色可用。带 `target` 且 `replace: false` 的 `represent`
-会创建独立的 selection component，不删除场景其余表示；不传 `replace: false`
-时，带 `target` 的命令同样会替换场景，`target` 只限定新表示的覆盖范围。
+会创建独立的 selection component，不删除场景其余表示。带 `target` 且
+`replace: true` 时只替换覆盖 target 的表示：其他链保留原样式，与 target
+共享的 component 会被拆分为 target 部分和剩余部分。
 
 ## React 绑定
 

@@ -168,7 +168,7 @@ can be stored in a session log, then replayed after `load()`.
 
 | `op` | Fields | Effect |
 |---|---|---|
-| `represent` | `style: StyleSpec`, optional `target`, optional `replace` | `replace` defaults to `true`: remove the current representations, then draw the new one. `target` only narrows which part the new representation covers; with `replace: true` the whole scene is still cleared first; when `target.structureId` is set, only that structure is cleared. `replace: false` keeps every existing representation and overlays the new one, on the whole structure or on `target` (a new Mol* component). For `cartoon` (or omitted `type`) core uses Mol*'s `polymer-and-ligand` preset so HETATM ligands stay visible. `quality` is accepted but not applied yet. |
+| `represent` | `style: StyleSpec`, optional `target`, optional `replace` | `replace` defaults to `true`: replace the existing representations, then draw the new one. Without `target`, the whole scoped structure is replaced (`structureId` limits that to one structure). With `target`, only representations covering the target are replaced: components fully inside it are removed, partially covered components keep their style on the non-target remainder, and the rest of the scene is untouched. `replace: false` keeps every existing representation and overlays the new one, on the whole structure or on `target` (a new Mol* component). For `cartoon` (or omitted `type`) core uses Mol*'s `polymer-and-ligand` preset so HETATM ligands stay visible. `quality` is accepted but not applied yet. |
 | `select` | `target`, `mode?: 'select' \| 'highlight'`, `focus?` | Apply Mol* selection interactivity; `focus` moves the camera |
 | `clear-selection` | `mode?` | Clear select/highlight interactivity |
 | `focus` | optional `target` | Focus camera on the selection or the whole structure |
@@ -471,9 +471,10 @@ Overlay a selection with `replace: false`:
 A global `cartoon` uses the `polymer-and-ligand` preset; `colorParams` is passed
 through its theme so `uniform` colors work. A targeted `represent` with
 `replace: false` creates a separate selection component and leaves the rest of
-the scene untouched. Without `replace: false` a targeted `represent` replaces
-the scene like any other command, so the target only limits the new
-representation's coverage.
+the scene untouched. A targeted `represent` with `replace: true` replaces only
+the representations covering the target: other chains keep their style, while
+a component shared with the target is split into its target and remainder
+parts.
 
 ## React binding
 

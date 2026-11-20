@@ -174,6 +174,25 @@ test('loads two structures, aligns them, and captures a PNG', { timeout: 150_000
   assert.ok(result.added.summary.atomCount > 0)
   assert.equal(result.styleReference.ok, true, JSON.stringify(result.styleReference))
   assert.equal(result.styleTarget.ok, true, JSON.stringify(result.styleTarget))
+  assert.equal(result.replaceTarget.ok, true, JSON.stringify(result.replaceTarget))
+  assert.ok(
+    result.inspectReferenceA.styles.some(style => style.type === 'cartoon'),
+    `chain A lost its cartoon: ${JSON.stringify(result.inspectReferenceA.styles)}`,
+  )
+  assert.equal(
+    result.inspectReferenceA.styles.some(style => style.baseColor === '#ef4444'),
+    false,
+    `chain A was repainted: ${JSON.stringify(result.inspectReferenceA.styles)}`,
+  )
+  assert.ok(
+    result.inspectReferenceB.styles.some(style => style.type === 'ball-and-stick' && style.baseColor === '#ef4444'),
+    `chain B did not get the new style: ${JSON.stringify(result.inspectReferenceB.styles)}`,
+  )
+  assert.equal(
+    result.inspectReferenceB.styles.some(style => style.type === 'cartoon'),
+    false,
+    `chain B kept its cartoon: ${JSON.stringify(result.inspectReferenceB.styles)}`,
+  )
   assert.equal(result.align.ok, true, JSON.stringify(result.align))
   assert.ok(result.align.data.alignedLength > 50, `only ${String(result.align.data.alignedLength)} aligned residues`)
   assert.ok(result.align.data.tmScoreA > 0.5, `TM-score ${String(result.align.data.tmScoreA)}`)
