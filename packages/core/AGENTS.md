@@ -59,15 +59,17 @@ keep its protocol consistent for every adapter.
 
 - Global `cartoon` uses the `polymer-and-ligand` preset so HETATM ligands remain
   visible; `colorParams` must be passed through the preset theme.
-- `represent.replace` is explicit and defaults to `true`. With replace, clear
-  the structure components **before** building either style family, then build;
-  the preset would otherwise update its tagged components in place and leave
-  earlier non-preset/targeted components behind. With `replace: false`, never
-  clear: add a selection component for a target, or a fresh all-atom component
-  for a global style.
+- `represent.replace` is explicit and defaults to `true`. Without a target,
+  clear the scoped structure components **before** building either style
+  family, then build; the preset would otherwise update its tagged components
+  in place and leave earlier non-preset/targeted components behind. With a
+  target, never clear the scene: remove components fully inside the target and
+  trim partially covered components to `Loci.subtract(component, target)` so
+  other chains keep their representations. With `replace: false`, never clear:
+  add a selection component for a target, or a fresh all-atom component for a
+  global style.
 - `target` only narrows the new representation's coverage; it never implies add
-  or replace. With `replace: true` the whole scene is replaced even when a
-  target is present.
+  or replace. `replace: true` with a target is target-scoped.
 - Do not remove pre-command refs *after* applying the preset: the refs can be
   the same transforms and removing them blanks the viewport. Clear before.
 - Avoid deleting reused components by ref after building a fresh component: it

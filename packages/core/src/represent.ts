@@ -9,9 +9,8 @@
  * @module @gcszhn/mol4agent-core/represent
  */
 import type { PluginContext } from 'molstar/lib/mol-plugin/context'
-import type { StructureRef } from 'molstar/lib/mol-plugin-state/manager/structure/hierarchy-state'
-import { StructureElement } from 'molstar/lib/mol-model/structure.js'
-import type { Expression } from 'molstar/lib/mol-script/language/expression'
+import type { StructureComponentRef, StructureRef } from 'molstar/lib/mol-plugin-state/manager/structure/hierarchy-state'
+import { StructureElement, type Structure } from 'molstar/lib/mol-model/structure.js'
 import {
   COLOR_THEMES,
   REPRESENTATION_TYPES,
@@ -31,6 +30,11 @@ import { selectionKey, selectorExpression } from './select.ts'
  */
 let globalComponentSeq = 0
 
+/** Fresh component key per targeted replace so a trimmed remainder is never reused. */
+let targetComponentSeq = 0
+
+type ElementLoci = ReturnType<typeof StructureElement.Loci.fromExpression>
+
 /** True when the style uses Mol*'s polymer-and-ligand preset. */
 export function usesPolymerAndLigandPreset(style: StyleSpec): boolean {
   return style.type === undefined || style.type === 'cartoon'
@@ -39,11 +43,12 @@ export function usesPolymerAndLigandPreset(style: StyleSpec): boolean {
 /**
  * Apply one `represent` command.
  *
- * `replace: true` (the default) clears the structure components first, whether
- * or not `target` is present; `target` then narrows only the new
- * representation's coverage. `replace: false` keeps every existing
- * representation and adds the new one. Returns the same structured result as
- * every other command.
+ * Without a target, `replace: true` (the default) clears the scoped structures
+ * first. With a target, it replaces only representations covering that target:
+ * components entirely inside the target are removed, partially covered
+ * components are trimmed to their non-target remainder, and everything else is
+ * left untouched. `replace: false` keeps every existing representation and
+ * adds the new one. Returns the same structured result as every other command.
  */
 export async function applyRepresentation(
   plugin: PluginContext,
@@ -79,33 +84,54 @@ export async function applyRepresentation(
 
   if (command.target !== undefined) {
     const expression = selectorExpression(command.target)
-    // Do not clear the scene for a selection that matches nothing: the command
-    // would fail after destroying the previous view. `nullIfEmpty` makes the
-    // component builder skip an empty selection, so this mirrors its check.
-    if (replace && !matchesAnyStructure(structures, expression)) {
-      return representFailed(command.op, command.target)
-    }
-    if (replace && !await clearRepresentations(plugin, structures)) {
-      return {
-        ok: false,
-        op: command.op,
-        code: 'REPRESENT_FAILED',
-        message: 'could not remove the current representations',
+    if (replace) {
+      // Replace inside the target instead of clearing the scoped structures:
+      // chain B must not erase the cartoon that still draws chain A.
+      let matched = 0
+      for (const structure of structures) {
+        const data = structure.cell.obj?.data
+        if (data === undefined) continue
+        let targetLoci: ElementLoci
+        try {
+          targetLoci = StructureElement.Loci.fromExpression(data, expression)
+        } catch {
+          continue
+        }
+        if (StructureElement.Loci.isEmpty(targetLoci)) continue
+        matched += 1
+        if (!await replaceTargetRepresentations(plugin, structure, data, targetLoci)) {
+          return {
+            ok: false,
+            op: command.op,
+            code: 'REPRESENT_FAILED',
+            message: 'could not replace the representations covering the target',
+          }
+        }
       }
+      // Never clear the scene for a selection that matches nothing: the
+      // command would fail after destroying the previous view.
+      if (matched === 0) return representFailed(command.op, command.target)
     }
+    // A fresh key is required for replace: a partially covered component may
+    // have been trimmed to a remainder above, and reusing its key would flip
+    // that remainder back to the target.
+    const componentKey = replace
+      ? `mol4agent-target-${targetComponentSeq += 1}`
+      : selectionKey(command.target)
     let targeted = 0
     for (const structure of structures) {
       const component = await plugin.builders.structure.tryCreateComponentFromExpression(
         structure.cell,
         expression,
-        selectionKey(command.target),
+        componentKey,
         { label: 'mol4agent selection' },
       )
       if (component === undefined) continue
       // No tag: with `replace: false` every targeted style must add its own
       // representation, so two styles of the same selection stack instead of
-      // updating one another. A `replace: true` command clears first, so it
-      // still leaves exactly one.
+      // updating one another. With `replace: true` the target coverage was
+      // removed from the existing components above, so this fresh component
+      // still leaves exactly one representation over the target.
       const rep = await plugin.builders.structure.representation.addRepresentation(component as never, {
         type: (style.type ?? 'ball-and-stick') as never,
         color: (style.color ?? 'uniform') as never,
@@ -187,22 +213,72 @@ export async function applyRepresentation(
   }
 }
 
-/** Whether `expression` selects at least one atom in any loaded structure. */
-function matchesAnyStructure(
-  structures: readonly StructureRef[],
-  expression: Expression,
-): boolean {
-  for (const structure of structures) {
-    const data = structure.cell.obj?.data
+/**
+ * Remove the target portion from every existing representation.
+ *
+ * Components fully inside the target are removed. A component that straddles
+ * the target keeps its representations but is updated in place to draw only
+ * its non-target remainder, so another chain's cartoon survives when only one
+ * chain is restyled. Components outside the target are untouched.
+ */
+async function replaceTargetRepresentations(
+  plugin: PluginContext,
+  structure: StructureRef,
+  parent: Structure,
+  target: ElementLoci,
+): Promise<boolean> {
+  const trimmed: Array<{
+    component: StructureComponentRef
+    remainder: ReturnType<typeof StructureElement.Bundle.fromLoci>
+  }> = []
+  const removed: StructureComponentRef[] = []
+
+  for (const component of [...structure.components]) {
+    const data = component.cell.obj?.data
     if (data === undefined) continue
+    let componentLoci: ElementLoci
     try {
-      if (!StructureElement.Loci.isEmpty(StructureElement.Loci.fromExpression(data, expression))) return true
-    } catch {
-      // Treat an expression we cannot evaluate as no match: never clear the
-      // scene for a selection the component builder may then fail to create.
+      const bundle = StructureElement.Bundle.fromSubStructure(parent, data)
+      componentLoci = StructureElement.Bundle.toLoci(bundle, parent)
+    } catch (reason) {
+      // A component that cannot be mapped onto the parent structure is not a
+      // representation this command can safely edit; leave it alone.
+      console.warn('[mol4agent] could not map a component onto the structure', reason)
+      continue
+    }
+    if (StructureElement.Loci.isEmpty(StructureElement.Loci.intersect(componentLoci, target))) continue
+    const remainder = StructureElement.Loci.subtract(componentLoci, target)
+    if (StructureElement.Loci.isEmpty(remainder)) {
+      removed.push(component)
+    } else {
+      trimmed.push({ component, remainder: StructureElement.Bundle.fromLoci(remainder) })
     }
   }
-  return false
+
+  for (const { component, remainder } of trimmed) {
+    try {
+      await plugin.state.data.build()
+        .to(component.cell)
+        .update({
+          type: { name: 'bundle', params: remainder },
+          nullIfEmpty: true,
+          label: component.cell.obj?.label ?? '',
+        })
+        .commit()
+    } catch (reason) {
+      console.warn('[mol4agent] could not trim a representation to the target', reason)
+      return false
+    }
+  }
+  if (removed.length > 0) {
+    try {
+      await plugin.managers.structure.hierarchy.remove(removed, true)
+    } catch (reason) {
+      console.warn('[mol4agent] could not remove the targeted representations', reason)
+      return false
+    }
+  }
+  return true
 }
 
 /** Remove every structure component, i.e. every agent or human representation. */
