@@ -1,0 +1,47 @@
+{
+  "name": "mol4agent",
+  "version": "0.4.1",
+  "description": "Open PDB/mmCIF/SDF structures in an interactive Mol* viewer that the agent can operate with mol_* tools.",
+  "author": {
+    "name": "gcszhn"
+  },
+  "homepage": "https://github.com/GCS-ZHN/mol4agent",
+  "repository": "https://github.com/GCS-ZHN/mol4agent",
+  "license": "MIT",
+  "keywords": [
+    "molecule",
+    "molecular viewer",
+    "pdb",
+    "mmcif",
+    "sdf",
+    "molstar",
+    "structural biology",
+    "3d",
+    "mcp app"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "mol4agent",
+    "shortDescription": "Interactive 3D molecular structures",
+    "longDescription": "Open molecular structure files in Mol*'s official 3D viewer inside ChatGPT/Codex. The agent can load several structures in one scene, align them with TM-align, score selections with TM-score, inspect live residues, coordinates, counts, styles, and visible colors, change representations and colors, highlight residues or ligands, focus the camera, measure distances, and capture PNG figures while the viewer updates live.",
+    "developerName": "gcszhn",
+    "category": "Science",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "websiteURL": "https://github.com/GCS-ZHN/mol4agent",
+    "privacyPolicyURL": "https://github.com/GCS-ZHN/mol4agent",
+    "termsOfServiceURL": "https://github.com/GCS-ZHN/mol4agent",
+    "composerIcon": "./icon.svg",
+    "logo": "./icon.svg",
+    "defaultPrompt": [
+      "Open fixtures/1atp.pdb, show cartoon colored by chain, highlight ATP, and capture a screenshot",
+      "Find the interface residues between chains A and B in fixtures/7czd.pdb",
+      "Show fixtures/aspirin.sdf as ball-and-stick and label the molecule"
+    ],
+    "brandColor": "#0F2B46",
+    "screenshots": []
+  }
+}
