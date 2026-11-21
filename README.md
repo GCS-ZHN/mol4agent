@@ -90,10 +90,10 @@ also be listed in `dsh.profile.bundles` in that profile's `package.json`; the
 DSH Plugin manager does this when it installs/enables a bundle. Restart DSH after
 installing or updating the Host bundle.
 
-npm form (0.4.0, published):
+npm form (0.4.1, published):
 
 ```sh
-dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.4.0
+dsh plugin --profile desktop add @gcszhn/mol4agent-deepseekharness@0.4.1
 ```
 
 Remove with `dsh plugin --profile desktop remove @gcszhn/mol4agent-deepseekharness`

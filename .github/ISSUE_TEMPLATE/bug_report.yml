@@ -44,8 +44,8 @@ body:
     id: plugin-version
     attributes:
       label: mol4agent plugin version
-      description: "The installed adapter package and version, for example `@gcszhn/mol4agent-deepseekharness 0.4.0`. Use the version from your install command, lockfile, or plugin manager. For a local checkout, add the commit SHA."
-      placeholder: "@gcszhn/mol4agent-deepseekharness 0.4.0"
+      description: "The installed adapter package and version, for example `@gcszhn/mol4agent-deepseekharness 0.4.1`. Use the version from your install command, lockfile, or plugin manager. For a local checkout, add the commit SHA."
+      placeholder: "@gcszhn/mol4agent-deepseekharness 0.4.1"
     validations:
       required: true
 
@@ -54,7 +54,7 @@ body:
     attributes:
       label: mol4agent core version (only if separately pinned)
       description: "Adapters bundle `@gcszhn/mol4agent-core`, so the adapter version is normally enough. Fill this in only if you installed or pinned core yourself."
-      placeholder: "0.4.0"
+      placeholder: "0.4.1"
 
   - type: input
     id: os
